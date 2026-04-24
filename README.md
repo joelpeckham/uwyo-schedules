@@ -2,21 +2,21 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+First, install dependencies and run the development server (this repo uses pnpm):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
+
+## Testing
+
+- **Unit and component tests (Vitest):** `pnpm test` (watch) or `pnpm test:run` (CI mode).
+- **End-to-end (Playwright):** `pnpm exec playwright install chromium` once per machine, then `pnpm test:e2e`. The dev server uses port `45123` by default (override with `E2E_PORT`).
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
@@ -31,6 +31,6 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Connect this repository in the [Vercel dashboard](https://vercel.com/new). Next.js is detected automatically; no `vercel.json` is required for a standard app. Node version follows [`.nvmrc`](.nvmrc) locally and in GitHub Actions; set the same major version under **Project → Settings → Node.js Version** in Vercel if you want them aligned.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
