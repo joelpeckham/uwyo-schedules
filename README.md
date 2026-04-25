@@ -13,6 +13,10 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
 
+## Design system
+
+The brand kit (tokens, copy guidelines, HTML previews, UI kit) lives in **`design-system/`**. A Cursor agent skill that points to it is at **`.cursor/skills/uwyoSchedules-design/SKILL.md`**. SVG logos and the favicon are also under **`public/brand/`** for use in the Next.js app.
+
 ## Testing
 
 - **Unit and component tests (Vitest):** `pnpm test` (watch) or `pnpm test:run` (CI mode).

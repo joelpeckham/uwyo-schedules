@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  body { padding: 32px; }
+  .grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 24px; align-items: center; }
+  .tile { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .tile img { display: block; }
+  .tile-label { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+  .wordmark { background: var(--cream-50); padding: 16px 20px; border-radius: var(--radius-md); }
+  .mark-light { background: var(--cream-50); padding: 12px; border-radius: var(--radius-md); }
+  .mark-dark { background: var(--sandstone-900); padding: 12px; border-radius: var(--radius-md); }
+</style>
+</head><body>
+<div class="grid">
+  <div class="tile">
+    <div class="wordmark"><img src="../assets/logo-wordmark.svg" width="320" height="64" alt=""></div>
+    <div class="tile-label">logo-wordmark.svg</div>
+  </div>
+  <div class="tile">
+    <div class="mark-light"><img src="../assets/logo-mark.svg" width="80" height="80" alt=""></div>
+    <div class="tile-label">on cream</div>
+  </div>
+  <div class="tile">
+    <div class="mark-dark"><img src="../assets/logo-mark.svg" width="80" height="80" alt=""></div>
+    <div class="tile-label">on dark</div>
+  </div>
+</div>
+</body></html>

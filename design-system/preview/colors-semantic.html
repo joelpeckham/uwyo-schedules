@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .sem { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .sem-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+  .sem-bar { height: 36px; }
+  .sem-soft { height: 28px; }
+  .sem-body { padding: 10px 12px; }
+  .sem-name { font-family: var(--font-sans); font-weight: 600; font-size: 13px; color: var(--fg); }
+  .sem-hex { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); margin-top: 2px; }
+</style>
+</head><body>
+<div class="sem">
+  <div class="sem-card">
+    <div class="sem-bar" style="background: var(--success);"></div>
+    <div class="sem-soft" style="background: var(--success-soft);"></div>
+    <div class="sem-body"><div class="sem-name">Success</div><div class="sem-hex">sage 500 · #4F5F3E</div></div>
+  </div>
+  <div class="sem-card">
+    <div class="sem-bar" style="background: var(--warning);"></div>
+    <div class="sem-soft" style="background: var(--warning-soft);"></div>
+    <div class="sem-body"><div class="sem-name">Warning</div><div class="sem-hex">ochre 500 · #B8893A</div></div>
+  </div>
+  <div class="sem-card">
+    <div class="sem-bar" style="background: var(--danger);"></div>
+    <div class="sem-soft" style="background: var(--danger-soft);"></div>
+    <div class="sem-body"><div class="sem-name">Danger</div><div class="sem-hex">clay 500 · #A8412A</div></div>
+  </div>
+  <div class="sem-card">
+    <div class="sem-bar" style="background: var(--info);"></div>
+    <div class="sem-soft" style="background: var(--info-soft);"></div>
+    <div class="sem-body"><div class="sem-name">Info</div><div class="sem-hex">sky 500 · #4A6A7C</div></div>
+  </div>
+</div>
+</body></html>

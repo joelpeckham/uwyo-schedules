@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 80" fill="none" stroke="#B8A685" stroke-width="1" opacity="0.5">
+  <path d="M0,40 Q100,20 200,40 T400,40 T600,40 T800,40"></path>
+  <path d="M0,50 Q100,30 200,50 T400,50 T600,50 T800,50"></path>
+  <path d="M0,60 Q100,40 200,60 T400,60 T600,60 T800,60"></path>
+  <path d="M0,30 Q100,10 200,30 T400,30 T600,30 T800,30"></path>
+</svg>

@@ -1,0 +1,193 @@
+/* uwyoSchedules — design tokens (palette, semantics, type scale, space, radii, motion) */
+
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  /* Cream / Paper */
+  --cream-50: #fbf7f0;
+  --cream-100: #f5efe3;
+  --cream-200: #ece2ce;
+  --cream-300: #dfd0b2;
+
+  /* Sandstone */
+  --sandstone-100: #e8dfcf;
+  --sandstone-200: #d6c9b2;
+  --sandstone-300: #b8a685;
+  --sandstone-400: #8c7a5c;
+  --sandstone-500: #6b5c44;
+  --sandstone-600: #4f432f;
+  --sandstone-700: #3a311f;
+  --sandstone-800: #2a2317;
+  --sandstone-900: #1b1610;
+
+  /* Rust */
+  --rust-100: #f5ddc9;
+  --rust-200: #e8b998;
+  --rust-300: #d89469;
+  --rust-400: #c4733f;
+  --rust-500: #a85a28;
+  --rust-600: #864418;
+  --rust-700: #5e2f10;
+
+  /* Sage */
+  --sage-100: #dde3d5;
+  --sage-200: #b8c4a6;
+  --sage-300: #8c9d77;
+  --sage-400: #6a7c56;
+  --sage-500: #4f5f3e;
+  --sage-600: #3a4730;
+
+  /* Ochre / Clay / Sky */
+  --ochre-100: #f5e2b0;
+  --ochre-300: #e5bb58;
+  --ochre-500: #b8893a;
+  --clay-100: #f2d4cc;
+  --clay-300: #d67960;
+  --clay-500: #a8412a;
+  --clay-700: #6e2818;
+  --sky-100: #d9e3e8;
+  --sky-300: #7e9aab;
+  --sky-500: #4a6a7c;
+
+  /* Semantic light */
+  --bg: var(--cream-50);
+  --bg-subtle: var(--cream-100);
+  --bg-muted: var(--cream-200);
+  --surface: #ffffff;
+  --surface-2: var(--cream-50);
+  --overlay: rgba(27, 22, 16, 0.55);
+
+  --fg: var(--sandstone-900);
+  --fg-1: var(--sandstone-800);
+  --fg-2: var(--sandstone-600);
+  --fg-3: var(--sandstone-500);
+  --fg-muted: var(--sandstone-400);
+  --fg-on-accent: var(--cream-50);
+
+  --border: var(--sandstone-200);
+  --border-strong: var(--sandstone-300);
+  --border-subtle: var(--cream-200);
+  --ring: var(--rust-400);
+
+  --primary: var(--rust-400);
+  --primary-hover: var(--rust-500);
+  --primary-press: var(--rust-600);
+  --primary-fg: var(--cream-50);
+  --primary-soft: var(--rust-100);
+
+  --secondary: var(--sage-400);
+  --secondary-hover: var(--sage-500);
+  --secondary-fg: var(--cream-50);
+  --secondary-soft: var(--sage-100);
+
+  --success: var(--sage-500);
+  --success-soft: var(--sage-100);
+  --warning: var(--ochre-500);
+  --warning-soft: var(--ochre-100);
+  --danger: var(--clay-500);
+  --danger-soft: var(--clay-100);
+  --info: var(--sky-500);
+  --info-soft: var(--sky-100);
+
+  /* Typography (fallbacks; app uses next/font via --font-app-*) */
+  --font-serif: "Source Serif 4", "Tiempos Headline", "Iowan Old Style", Georgia, serif;
+  --font-sans: "Inter", "Styrene B", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Söhne Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-md: 18px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 30px;
+  --text-3xl: 38px;
+  --text-4xl: 48px;
+  --text-5xl: 60px;
+  --text-6xl: 76px;
+
+  --leading-tight: 1.1;
+  --leading-snug: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-caps: 0.08em;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Spacing / radii / shadow / motion */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  --radius-xs: 3px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-full: 9999px;
+
+  --shadow-xs: 0 1px 2px rgba(58, 49, 31, 0.06);
+  --shadow-sm: 0 1px 2px rgba(58, 49, 31, 0.06), 0 1px 3px rgba(58, 49, 31, 0.08);
+  --shadow-md: 0 4px 8px -2px rgba(58, 49, 31, 0.08), 0 2px 4px -2px rgba(58, 49, 31, 0.06);
+  --shadow-lg: 0 12px 24px -8px rgba(58, 49, 31, 0.12), 0 4px 8px -4px rgba(58, 49, 31, 0.06);
+  --shadow-xl: 0 24px 48px -16px rgba(58, 49, 31, 0.18), 0 8px 16px -8px rgba(58, 49, 31, 0.08);
+  --shadow-inset-sm: inset 0 1px 2px rgba(58, 49, 31, 0.08);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+}
+
+/* Warm dark: use with .dark (shadcn) and [data-theme="dark"] (static previews) */
+.dark,
+[data-theme="dark"] {
+  --bg: var(--sandstone-900);
+  --bg-subtle: var(--sandstone-800);
+  --bg-muted: #221c13;
+  --surface: var(--sandstone-800);
+  --surface-2: var(--sandstone-700);
+  --overlay: rgba(0, 0, 0, 0.65);
+
+  --fg: var(--cream-50);
+  --fg-1: var(--cream-100);
+  --fg-2: var(--sandstone-200);
+  --fg-3: var(--sandstone-300);
+  --fg-muted: var(--sandstone-400);
+
+  --border: var(--sandstone-700);
+  --border-strong: var(--sandstone-600);
+  --border-subtle: var(--sandstone-800);
+
+  --primary: var(--rust-300);
+  --primary-hover: var(--rust-200);
+  --primary-press: var(--rust-100);
+  --primary-fg: var(--sandstone-900);
+  --primary-soft: rgba(196, 115, 63, 0.18);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 24px -8px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 24px 48px -16px rgba(0, 0, 0, 0.6);
+}

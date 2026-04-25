@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>uwyoSchedules — Build a schedule</title>
+  <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="text/babel" src="TopBar.jsx"></script>
+  <script type="text/babel" src="CourseCard.jsx"></script>
+  <script type="text/babel" src="ScheduleGrid.jsx"></script>
+  <script type="text/babel" src="FilterPanel.jsx"></script>
+  <script type="text/babel" src="Misc.jsx"></script>
+
+  <script type="text/babel">
+    const CATALOG = [
+      { code: "MATH 2200", title: "Calculus I", credits: 4, sections: 6 },
+      { code: "ENGL 1010", title: "College Composition & Rhetoric", credits: 3, sections: 8 },
+      { code: "HIST 1211", title: "U.S. to 1865", credits: 3, sections: 4 },
+      { code: "COSC 1010", title: "Intro to Computer Science", credits: 4, sections: 5 },
+      { code: "PSYC 1000", title: "General Psychology", credits: 3, sections: 7 },
+      { code: "GEOL 1100", title: "The Dynamic Earth", credits: 4, sections: 3 },
+    ];
+
+    const INITIAL_COURSES = [
+      { code: "MATH 2200", title: "Calculus I", credits: 4, openSections: 4, required: true },
+      { code: "ENGL 1010", title: "College Composition & Rhetoric", credits: 3, openSections: 6, required: true },
+      { code: "COSC 1010", title: "Intro to Computer Science", credits: 4, openSections: 3, required: false },
+    ];
+
+    // Three pre-built sample schedules (no Friday, mornings, balanced)
+    const SCHEDULES = [
+      {
+        label: "No Friday",
+        blocks: [
+          { day: "Mon", start: 9.5, end: 10.75, code: "MATH 2200", room: "Ross Hall 247", color: "var(--rust-100)", accent: "var(--rust-400)" },
+          { day: "Wed", start: 9.5, end: 10.75, code: "MATH 2200", room: "Ross Hall 247", color: "var(--rust-100)", accent: "var(--rust-400)" },
+          { day: "Tue", start: 11, end: 12.25, code: "ENGL 1010", room: "Hoyt Hall 116", color: "var(--sage-100)", accent: "var(--sage-400)" },
+          { day: "Thu", start: 11, end: 12.25, code: "ENGL 1010", room: "Hoyt Hall 116", color: "var(--sage-100)", accent: "var(--sage-400)" },
+          { day: "Mon", start: 13, end: 13.83, code: "COSC 1010", room: "EERB 248", color: "var(--ochre-100)", accent: "var(--ochre-500)" },
+          { day: "Wed", start: 13, end: 13.83, code: "COSC 1010", room: "EERB 248", color: "var(--ochre-100)", accent: "var(--ochre-500)" },
+        ],
+        stats: { hours: 11, gaps: "1.5h", earliest: "9:30a", latest: "1:50p" },
+      },
+      {
+        label: "Mornings only",
+        blocks: [
+          { day: "Mon", start: 8, end: 9.25, code: "MATH 2200", room: "Ross Hall 102", color: "var(--rust-100)", accent: "var(--rust-400)" },
+          { day: "Wed", start: 8, end: 9.25, code: "MATH 2200", room: "Ross Hall 102", color: "var(--rust-100)", accent: "var(--rust-400)" },
+          { day: "Fri", start: 8, end: 9.25, code: "MATH 2200", room: "Ross Hall 102", color: "var(--rust-100)", accent: "var(--rust-400)" },
+          { day: "Tue", start: 9.5, end: 10.75, code: "ENGL 1010", room: "Hoyt Hall 220", color: "var(--sage-100)", accent: "var(--sage-400)" },
+          { day: "Thu", start: 9.5, end: 10.75, code: "ENGL 1010", room: "Hoyt Hall 220", color: "var(--sage-100)", accent: "var(--sage-400)" },
+          { day: "Mon", start: 11, end: 11.83, code: "COSC 1010", room: "EERB 248", color: "var(--ochre-100)", accent: "var(--ochre-500)" },
+          { day: "Wed", start: 11, end: 11.83, code: "COSC 1010", room: "EERB 248", color: "var(--ochre-100)", accent: "var(--ochre-500)" },
+          { day: "Fri", start: 11, end: 11.83, code: "COSC 1010", room: "EERB 248", color: "var(--ochre-100)", accent: "var(--ochre-500)" },
+        ],
+        stats: { hours: 11, gaps: "0.25h", earliest: "8:00a", latest: "11:50a" },
+      },
+      {
+        label: "Balanced",
+        blocks: [
+          { day: "Tue", start: 10, end: 11.25, code: "MATH 2200", room: "Ross Hall 247", color: "var(--rust-100)", accent: "var(--rust-400)" },
+          { day: "Thu", start: 10, end: 11.25, code: "MATH 2200", room: "Ross Hall 247", color: "var(--rust-100)", accent: "var(--rust-400)" },
+          { day: "Mon", start: 13, end: 14.25, code: "ENGL 1010", room: "Hoyt Hall 116", color: "var(--sage-100)", accent: "var(--sage-400)" },
+          { day: "Wed", start: 13, end: 14.25, code: "ENGL 1010", room: "Hoyt Hall 116", color: "var(--sage-100)", accent: "var(--sage-400)" },
+          { day: "Tue", start: 14, end: 14.83, code: "COSC 1010", room: "EERB 248", color: "var(--ochre-100)", accent: "var(--ochre-500)" },
+          { day: "Thu", start: 14, end: 14.83, code: "COSC 1010", room: "EERB 248", color: "var(--ochre-100)", accent: "var(--ochre-500)" },
+        ],
+        stats: { hours: 11, gaps: "2.0h", earliest: "10:00a", latest: "2:50p" },
+      },
+    ];
+
+    function App() {
+      const [courses, setCourses] = React.useState(INITIAL_COURSES);
+      const [search, setSearch] = React.useState("");
+      const [scheduleIdx, setScheduleIdx] = React.useState(0);
+      const [filters, setFilters] = React.useState({
+        noFriday: true,
+        noEarly: false,
+        lunchBreak: true,
+        days: ["M", "T", "W", "R"],
+      });
+
+      const filtered = React.useMemo(() => {
+        if (!search.trim()) return [];
+        const q = search.trim().toLowerCase();
+        return CATALOG.filter(c =>
+          c.code.toLowerCase().includes(q) || c.title.toLowerCase().includes(q)
+        );
+      }, [search]);
+
+      const addCourse = (c) => {
+        if (courses.find(x => x.code === c.code)) return;
+        setCourses([...courses, { ...c, openSections: c.sections - 1, required: false }]);
+        setSearch("");
+      };
+      const removeCourse = (code) => setCourses(courses.filter(c => c.code !== code));
+
+      const schedule = SCHEDULES[scheduleIdx];
+
+      React.useEffect(() => {
+        lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
+      });
+
+      return (
+        <>
+          <TopBar />
+          <div className="hero">
+            <div className="hero-inner">
+              <div>
+                <div className="hero-greet">Good afternoon, Jordan.</div>
+                <div className="hero-sub">Fall 2025 · {courses.length} classes added · {SCHEDULES.length} schedules ready</div>
+              </div>
+              <div className="hero-actions">
+                <button className="btn btn-secondary"><i data-lucide="bookmark"></i>Save schedule</button>
+                <button className="btn btn-primary"><i data-lucide="arrow-right"></i>Send to WyoWeb</button>
+              </div>
+            </div>
+          </div>
+
+          <main className="app">
+            {/* LEFT */}
+            <section className="added-col">
+              <div className="col-title">Your classes</div>
+              <div className="col-sub">Add courses to generate working schedules.</div>
+
+              <div className="search-input-wrap">
+                <i data-lucide="search"></i>
+                <input
+                  className="search-input"
+                  placeholder="Search by code or title…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
+
+              {filtered.length > 0 && (
+                <ul className="search-results">
+                  {filtered.map(c => (
+                    <CourseSearchResult
+                      key={c.code}
+                      course={c}
+                      onAdd={addCourse}
+                      added={!!courses.find(x => x.code === c.code)}
+                    />
+                  ))}
+                </ul>
+              )}
+
+              {courses.length === 0 ? (
+                <EmptyState
+                  title="No classes yet"
+                  body="Add a class above to start. We'll find every working combination."
+                />
+              ) : (
+                courses.map(c => (
+                  <CourseCard key={c.code} course={c} onRemove={removeCourse} />
+                ))
+              )}
+            </section>
+
+            {/* MIDDLE */}
+            <section className="schedule-col">
+              <div className="schedule-header">
+                <div>
+                  <div className="col-title">{schedule.label}</div>
+                  <div className="col-sub">{schedule.blocks.length} meetings · {schedule.stats.hours} hours/week</div>
+                </div>
+                <ResultPager
+                  index={scheduleIdx}
+                  total={SCHEDULES.length}
+                  onPrev={() => setScheduleIdx(Math.max(0, scheduleIdx - 1))}
+                  onNext={() => setScheduleIdx(Math.min(SCHEDULES.length - 1, scheduleIdx + 1))}
+                />
+              </div>
+
+              <ScheduleGrid blocks={schedule.blocks} />
+            </section>
+
+            {/* RIGHT */}
+            <section className="right-col">
+              <FilterPanel filters={filters} setFilters={setFilters} />
+
+              <div className="summary-card">
+                <div className="filter-head" style={{ marginBottom: 14 }}>
+                  <i data-lucide="calendar-days"></i>
+                  <span>This schedule</span>
+                </div>
+                <div className="summary-grid">
+                  <SummaryStat label="Hours / week" value={schedule.stats.hours} />
+                  <SummaryStat label="Gap time" value={schedule.stats.gaps} />
+                  <SummaryStat label="Earliest" value={schedule.stats.earliest} />
+                  <SummaryStat label="Latest" value={schedule.stats.latest} />
+                </div>
+              </div>
+            </section>
+          </main>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('app')).render(<App />);
+  </script>
+</body>
+</html>

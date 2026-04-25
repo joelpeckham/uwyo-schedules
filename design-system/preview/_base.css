@@ -1,0 +1,52 @@
+/* Base styles for preview cards — keep cards clean and chromeless */
+@import url('../colors_and_type.css');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--cream-50);
+  padding: 24px;
+  min-height: 100vh;
+}
+
+.card-frame {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.swatch-chip {
+  width: 100%;
+  height: 56px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(0,0,0,0.04);
+}
+
+.swatch-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  line-height: 1.3;
+}
+
+.swatch-name {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg);
+  line-height: 1.3;
+}

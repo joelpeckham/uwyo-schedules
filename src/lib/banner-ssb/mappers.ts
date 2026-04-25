@@ -1,0 +1,223 @@
+import type { InferInsertModel } from "drizzle-orm";
+import type {
+  linkedBundleMembers,
+  linkedBundles,
+  sectionAttributes,
+  sectionFaculty,
+  sectionMeetings,
+  sections,
+} from "@/db/schema";
+import type {
+  BannerMeetingFaculty,
+  BannerSectionAttribute,
+  BannerSectionRow,
+  LinkedSectionsResponse,
+} from "./types";
+
+export type NewSection = InferInsertModel<typeof sections>;
+export type NewMeeting = InferInsertModel<typeof sectionMeetings>;
+export type NewFaculty = InferInsertModel<typeof sectionFaculty>;
+export type NewAttribute = InferInsertModel<typeof sectionAttributes>;
+export type NewLinkedBundle = InferInsertModel<typeof linkedBundles>;
+export type NewLinkedMember = InferInsertModel<typeof linkedBundleMembers>;
+
+export type SectionGraph = {
+  section: NewSection;
+  meetings: NewMeeting[];
+  faculty: NewFaculty[];
+  attributes: NewAttribute[];
+};
+
+function num(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  return null;
+}
+
+function bool(v: unknown): boolean | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "boolean") return v;
+  return null;
+}
+
+function str(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string") return v;
+  return String(v);
+}
+
+/** Map one Banner section row + term into Drizzle insert shapes. */
+export function mapSectionRowToGraph(
+  termCode: string,
+  row: BannerSectionRow,
+): SectionGraph | null {
+  const crn = str(row.courseReferenceNumber);
+  const subject = str(row.subject);
+  const courseNumber = str(row.courseNumber);
+  if (!crn || !subject || !courseNumber) {
+    return null;
+  }
+
+  const open =
+    bool(row.openSection) ??
+    bool(
+      row.status &&
+        typeof row.status === "object" &&
+        "sectionOpen" in row.status
+        ? (row.status as { sectionOpen?: boolean }).sectionOpen
+        : undefined,
+    );
+
+  const section: NewSection = {
+    termCode,
+    crn,
+    subject,
+    courseNumber,
+    sequenceNumber: str(row.sequenceNumber),
+    subjectDescription: str(row.subjectDescription),
+    courseTitle: str(row.courseTitle),
+    subjectCourse: str(row.subjectCourse),
+    scheduleTypeDescription: str(row.scheduleTypeDescription),
+    partOfTerm: str(row.partOfTerm),
+    campusDescription: str(row.campusDescription),
+    instructionalMethod: str(row.instructionalMethod),
+    instructionalMethodDescription: str(row.instructionalMethodDescription),
+    creditHours: num(row.creditHours),
+    creditHourHigh: num(row.creditHourHigh),
+    creditHourLow: num(row.creditHourLow),
+    creditHourIndicator: str(row.creditHourIndicator),
+    enrollment: num(row.enrollment),
+    maximumEnrollment: num(row.maximumEnrollment),
+    seatsAvailable: num(row.seatsAvailable),
+    waitCapacity: num(row.waitCapacity),
+    waitCount: num(row.waitCount),
+    waitAvailable: num(row.waitAvailable),
+    openSection: open,
+    crossList: str(row.crossList),
+    crossListCapacity: num(row.crossListCapacity),
+    crossListCount: num(row.crossListCount),
+    crossListAvailable: num(row.crossListAvailable),
+    linkIdentifier: str(row.linkIdentifier),
+    isSectionLinked: bool(row.isSectionLinked),
+    bannerRowId: typeof row.id === "number" ? row.id : null,
+    rawJson: row as object,
+  };
+
+  const meetings: NewMeeting[] = [];
+  const mf = row.meetingsFaculty;
+  if (Array.isArray(mf)) {
+    mf.forEach((block: BannerMeetingFaculty, idx: number) => {
+      const mt = block.meetingTime;
+      if (!mt || typeof mt !== "object") return;
+      meetings.push({
+        termCode,
+        sectionCrn: crn,
+        sortOrder: idx,
+        beginTime: str(mt.beginTime),
+        endTime: str(mt.endTime),
+        monday: bool(mt.monday),
+        tuesday: bool(mt.tuesday),
+        wednesday: bool(mt.wednesday),
+        thursday: bool(mt.thursday),
+        friday: bool(mt.friday),
+        saturday: bool(mt.saturday),
+        sunday: bool(mt.sunday),
+        building: str(mt.building),
+        buildingDescription: str(mt.buildingDescription),
+        room: str(mt.room),
+        campus: str(mt.campus),
+        campusDescription: str(mt.campusDescription),
+        startDate: str(mt.startDate),
+        endDate: str(mt.endDate),
+        meetingScheduleType: str(mt.meetingScheduleType),
+        meetingType: str(mt.meetingType),
+        meetingTypeDescription: str(mt.meetingTypeDescription),
+        hoursWeek: num(mt.hoursWeek),
+        creditHourSession: num(mt.creditHourSession),
+        category: str(block.category),
+        rawJson: block as object,
+      });
+    });
+  }
+
+  const faculty: NewFaculty[] = [];
+  if (Array.isArray(row.faculty)) {
+    row.faculty.forEach((f, idx) => {
+      if (!f || typeof f !== "object") return;
+      faculty.push({
+        termCode,
+        sectionCrn: crn,
+        sortOrder: idx,
+        bannerId: str(f.bannerId),
+        displayName: str(f.displayName),
+        emailAddress: str(f.emailAddress),
+        primaryIndicator: bool(f.primaryIndicator),
+        rawJson: f as object,
+      });
+    });
+  }
+
+  const attributes: NewAttribute[] = [];
+  if (Array.isArray(row.sectionAttributes)) {
+    row.sectionAttributes.forEach((a: BannerSectionAttribute) => {
+      if (!a?.code) return;
+      attributes.push({
+        termCode,
+        sectionCrn: crn,
+        code: a.code,
+        description: str(a.description),
+        isZtcAttribute: bool(a.isZTCAttribute),
+        rawJson: a as object,
+      });
+    });
+  }
+
+  return { section, meetings, faculty, attributes };
+}
+
+export function courseKey(subject: string, courseNumber: string): string {
+  return `${subject}\0${courseNumber}`;
+}
+
+/** Prefer lecture-like row as anchor for `fetchLinkedSections`; else lexicographically smallest CRN. */
+export function pickLinkedAnchorCrn(rows: BannerSectionRow[]): string | null {
+  const withCrn = rows
+    .map((r) => str(r.courseReferenceNumber))
+    .filter((c): c is string => Boolean(c));
+  if (withCrn.length === 0) return null;
+
+  const lectureish = rows.find((r) => {
+    const d = str(r.scheduleTypeDescription)?.toLowerCase() ?? "";
+    return d.includes("lecture") || d === "lec" || d.includes("lec ");
+  });
+  const anchorFromLecture = str(lectureish?.courseReferenceNumber);
+  if (anchorFromLecture) return anchorFromLecture;
+
+  return [...withCrn].sort()[0] ?? null;
+}
+
+export type ParsedLinkedBundle = {
+  anchorCrn: string;
+  bundleIndex: number;
+  memberCrns: string[];
+};
+
+/** Parse `linkedData`: outer OR, inner AND; variable inner length. */
+export function parseLinkedData(
+  anchorCrn: string,
+  payload: LinkedSectionsResponse,
+): ParsedLinkedBundle[] {
+  const raw = payload.linkedData;
+  if (!Array.isArray(raw)) return [];
+
+  const out: ParsedLinkedBundle[] = [];
+  raw.forEach((bundle, bundleIndex) => {
+    if (!Array.isArray(bundle)) return;
+    const memberCrns = bundle
+      .map((row) => str((row as BannerSectionRow).courseReferenceNumber))
+      .filter((c): c is string => Boolean(c));
+    if (memberCrns.length === 0) return;
+    out.push({ anchorCrn, bundleIndex, memberCrns });
+  });
+  return out;
+}

@@ -1,0 +1,988 @@
+{
+  "id": "851599e4-6b5f-41b5-8791-29abf89c8d5d",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.courses": {
+      "name": "courses",
+      "schema": "",
+      "columns": {
+        "term_code": {
+          "name": "term_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "course_number": {
+          "name": "course_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_course": {
+          "name": "subject_course",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "courses_term_idx": {
+          "name": "courses_term_idx",
+          "columns": [
+            {
+              "expression": "term_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "courses_term_code_terms_code_fk": {
+          "name": "courses_term_code_terms_code_fk",
+          "tableFrom": "courses",
+          "tableTo": "terms",
+          "columnsFrom": [
+            "term_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "courses_term_code_subject_course_number_pk": {
+          "name": "courses_term_code_subject_course_number_pk",
+          "columns": [
+            "term_code",
+            "subject",
+            "course_number"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.linked_bundle_members": {
+      "name": "linked_bundle_members",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "bundle_id": {
+          "name": "bundle_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "crn": {
+          "name": "crn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "linked_bundle_members_unique": {
+          "name": "linked_bundle_members_unique",
+          "columns": [
+            {
+              "expression": "bundle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linked_bundle_members_crn_unique": {
+          "name": "linked_bundle_members_crn_unique",
+          "columns": [
+            {
+              "expression": "bundle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "crn",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "linked_bundle_members_bundle_id_linked_bundles_id_fk": {
+          "name": "linked_bundle_members_bundle_id_linked_bundles_id_fk",
+          "tableFrom": "linked_bundle_members",
+          "tableTo": "linked_bundles",
+          "columnsFrom": [
+            "bundle_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.linked_bundles": {
+      "name": "linked_bundles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "term_code": {
+          "name": "term_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_crn": {
+          "name": "anchor_crn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bundle_index": {
+          "name": "bundle_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "linked_bundles_natural": {
+          "name": "linked_bundles_natural",
+          "columns": [
+            {
+              "expression": "term_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "anchor_crn",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bundle_index",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linked_bundles_term_anchor_idx": {
+          "name": "linked_bundles_term_anchor_idx",
+          "columns": [
+            {
+              "expression": "term_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "anchor_crn",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.section_attributes": {
+      "name": "section_attributes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "term_code": {
+          "name": "term_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "section_crn": {
+          "name": "section_crn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_ztc_attribute": {
+          "name": "is_ztc_attribute",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attr_raw_json": {
+          "name": "attr_raw_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "section_attributes_unique": {
+          "name": "section_attributes_unique",
+          "columns": [
+            {
+              "expression": "term_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "section_crn",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.section_faculty": {
+      "name": "section_faculty",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "term_code": {
+          "name": "term_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "section_crn": {
+          "name": "section_crn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "banner_id": {
+          "name": "banner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_address": {
+          "name": "email_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "primary_indicator": {
+          "name": "primary_indicator",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "faculty_raw_json": {
+          "name": "faculty_raw_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "section_faculty_section_idx": {
+          "name": "section_faculty_section_idx",
+          "columns": [
+            {
+              "expression": "term_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "section_crn",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.section_meetings": {
+      "name": "section_meetings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "term_code": {
+          "name": "term_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "section_crn": {
+          "name": "section_crn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "begin_time": {
+          "name": "begin_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_time": {
+          "name": "end_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "monday": {
+          "name": "monday",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tuesday": {
+          "name": "tuesday",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wednesday": {
+          "name": "wednesday",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "thursday": {
+          "name": "thursday",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "friday": {
+          "name": "friday",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "saturday": {
+          "name": "saturday",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sunday": {
+          "name": "sunday",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "building": {
+          "name": "building",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "building_description": {
+          "name": "building_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "room": {
+          "name": "room",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "campus": {
+          "name": "campus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "campus_description": {
+          "name": "campus_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "meeting_schedule_type": {
+          "name": "meeting_schedule_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "meeting_type": {
+          "name": "meeting_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "meeting_type_description": {
+          "name": "meeting_type_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hours_week": {
+          "name": "hours_week",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credit_hour_session": {
+          "name": "credit_hour_session",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "meeting_raw_json": {
+          "name": "meeting_raw_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "section_meetings_section_idx": {
+          "name": "section_meetings_section_idx",
+          "columns": [
+            {
+              "expression": "term_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "section_crn",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sections": {
+      "name": "sections",
+      "schema": "",
+      "columns": {
+        "term_code": {
+          "name": "term_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "crn": {
+          "name": "crn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "course_number": {
+          "name": "course_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence_number": {
+          "name": "sequence_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_description": {
+          "name": "subject_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "course_title": {
+          "name": "course_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_course": {
+          "name": "subject_course",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "schedule_type_description": {
+          "name": "schedule_type_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "part_of_term": {
+          "name": "part_of_term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "campus_description": {
+          "name": "campus_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "instructional_method": {
+          "name": "instructional_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "instructional_method_description": {
+          "name": "instructional_method_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credit_hours": {
+          "name": "credit_hours",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credit_hour_high": {
+          "name": "credit_hour_high",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credit_hour_low": {
+          "name": "credit_hour_low",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credit_hour_indicator": {
+          "name": "credit_hour_indicator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enrollment": {
+          "name": "enrollment",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "maximum_enrollment": {
+          "name": "maximum_enrollment",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seats_available": {
+          "name": "seats_available",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wait_capacity": {
+          "name": "wait_capacity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wait_count": {
+          "name": "wait_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wait_available": {
+          "name": "wait_available",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "open_section": {
+          "name": "open_section",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cross_list": {
+          "name": "cross_list",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cross_list_capacity": {
+          "name": "cross_list_capacity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cross_list_count": {
+          "name": "cross_list_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cross_list_available": {
+          "name": "cross_list_available",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "link_identifier": {
+          "name": "link_identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_section_linked": {
+          "name": "is_section_linked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "banner_row_id": {
+          "name": "banner_row_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raw_json": {
+          "name": "raw_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sections_term_subject_idx": {
+          "name": "sections_term_subject_idx",
+          "columns": [
+            {
+              "expression": "term_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "subject",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sections_term_linked_idx": {
+          "name": "sections_term_linked_idx",
+          "columns": [
+            {
+              "expression": "term_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "is_section_linked",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sections_term_link_id_idx": {
+          "name": "sections_term_link_id_idx",
+          "columns": [
+            {
+              "expression": "term_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "link_identifier",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sections_term_code_terms_code_fk": {
+          "name": "sections_term_code_terms_code_fk",
+          "tableFrom": "sections",
+          "tableTo": "terms",
+          "columnsFrom": [
+            "term_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "sections_term_code_crn_pk": {
+          "name": "sections_term_code_crn_pk",
+          "columns": [
+            "term_code",
+            "crn"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.terms": {
+      "name": "terms",
+      "schema": "",
+      "columns": {
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_full_scrape_at": {
+          "name": "last_full_scrape_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_hot_scrape_at": {
+          "name": "last_hot_scrape_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
