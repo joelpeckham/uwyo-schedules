@@ -2,7 +2,7 @@
 
 import { createDb } from "@/db/index";
 import * as schema from "@/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import {
@@ -10,24 +10,18 @@ import {
   PLANNER_SESSION_COOKIE,
   UUID_RE,
 } from "@/lib/planner/constants";
+import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
+import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import {
-  buildCalendarBlocks,
-  buildSwapGhostsPrefetchMap,
   getSectionDetail,
-  getSectionMeetingContextForSwap,
   listLinkedBundleOptions,
   listPlannerItems,
-  listSameTypeSwapGhostMeetings,
   listSectionsForCourse,
-  resolvePlannerSwapCommit,
   searchCourses,
-  type CalendarBlock,
   type CourseSearchRow,
   type PlannerItemRow,
-  type SwapGhostMeeting,
 } from "@/lib/planner/data";
 import type { SelectionKind } from "@/lib/planner/resolve-display-crns";
-import { normalizeScheduleTypeKey } from "@/lib/planner/swap-helpers";
 
 function revalidateHome() {
   revalidatePath("/");
@@ -95,7 +89,9 @@ export async function addPlannerItemAction(input: {
   selectionKind: SelectionKind;
   linkedBundleId: number | null;
   displayColor?: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<
+  { ok: true; item: PlannerItemRow } | { ok: false; error: string }
+> {
   try {
     const sessionId = await requireSessionId();
     const db = createDb();
@@ -135,20 +131,23 @@ export async function addPlannerItemAction(input: {
       );
     const nextOrder = (maxRow?.m ?? -1) + 1;
 
-    await db.insert(schema.plannerItems).values({
-      sessionId,
-      termCode: input.termCode,
-      subject: input.subject,
-      courseNumber: input.courseNumber,
-      displayColor: input.displayColor ?? DEFAULT_DISPLAY_COLOR,
-      sortOrder: nextOrder,
-      selectionKind: input.selectionKind,
-      anchorCrn: input.anchorCrn,
-      linkedBundleId:
-        input.selectionKind === "linked_bundle" ? input.linkedBundleId : null,
-    });
-    revalidateHome();
-    return { ok: true };
+    const [inserted] = await db
+      .insert(schema.plannerItems)
+      .values({
+        sessionId,
+        termCode: input.termCode,
+        subject: input.subject,
+        courseNumber: input.courseNumber,
+        displayColor: input.displayColor ?? DEFAULT_DISPLAY_COLOR,
+        sortOrder: nextOrder,
+        selectionKind: input.selectionKind,
+        anchorCrn: input.anchorCrn,
+        linkedBundleId:
+          input.selectionKind === "linked_bundle" ? input.linkedBundleId : null,
+      })
+      .returning();
+    if (!inserted) return { ok: false, error: "Could not add course." };
+    return { ok: true, item: inserted };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
     return { ok: false, error: msg };
@@ -171,7 +170,6 @@ export async function removePlannerItemAction(
       )
       .returning({ id: schema.plannerItems.id });
     if (res.length === 0) return { ok: false, error: "Item not found." };
-    revalidateHome();
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
@@ -200,7 +198,6 @@ export async function updatePlannerItemColorAction(
       )
       .returning({ id: schema.plannerItems.id });
     if (res.length === 0) return { ok: false, error: "Item not found." };
-    revalidateHome();
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
@@ -245,7 +242,6 @@ export async function reorderPlannerItemAction(
         .set({ sortOrder: a.sortOrder })
         .where(eq(schema.plannerItems.id, b.id));
     });
-    revalidateHome();
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
@@ -305,7 +301,6 @@ export async function updatePlannerItemSelectionAction(input: {
       )
       .returning({ id: schema.plannerItems.id });
     if (res.length === 0) return { ok: false, error: "Item not found." };
-    revalidateHome();
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
@@ -359,128 +354,127 @@ export async function getSectionDetailAction(
   return { rawJson: r.rawJson, title };
 }
 
-export async function getSameTypeSectionMeetingsForSwapAction(input: {
-  termCode: string;
-  plannerItemId: number;
-  sourceSectionCrn: string;
-  sourceMeetingId: number;
-}): Promise<
-  { ok: true; ghosts: SwapGhostMeeting[] } | { ok: false; error: string }
-> {
-  try {
-    const sessionId = await requireSessionId();
-    const db = createDb();
-    const [item] = await db
-      .select()
-      .from(schema.plannerItems)
-      .where(
-        and(
-          eq(schema.plannerItems.id, input.plannerItemId),
-          eq(schema.plannerItems.sessionId, sessionId),
-          eq(schema.plannerItems.termCode, input.termCode),
-        ),
-      )
-      .limit(1);
-    if (!item) return { ok: false, error: "Item not found." };
-
-    const ctx = await getSectionMeetingContextForSwap(
-      db,
-      input.termCode,
-      input.sourceSectionCrn,
-      input.sourceMeetingId,
-    );
-    if (!ctx) return { ok: false, error: "Meeting not found." };
-    if (
-      ctx.subject !== item.subject ||
-      ctx.courseNumber !== item.courseNumber
-    ) {
-      return { ok: false, error: "Meeting does not match this planner course." };
-    }
-
-    const ghosts = await listSameTypeSwapGhostMeetings(db, {
-      termCode: input.termCode,
-      subject: item.subject,
-      courseNumber: item.courseNumber,
-      excludeSectionCrn: input.sourceSectionCrn,
-      sourceScheduleTypeDescription: null,
-      sourceScheduleTypeKey: normalizeScheduleTypeKey(
-        ctx.scheduleTypeDescription,
-      ),
-      sourceMeetingScheduleType: ctx.meetingScheduleType,
-    });
-    return { ok: true, ghosts };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Something went wrong.";
-    return { ok: false, error: msg };
-  }
-}
-
-export async function commitPlannerSwapFromCalendarAction(input: {
-  termCode: string;
-  plannerItemId: number;
-  targetCrn: string;
-  sourceSectionCrn: string;
-  sourceMeetingId: number;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    const sessionId = await requireSessionId();
-    const db = createDb();
-    const resolved = await resolvePlannerSwapCommit(db, sessionId, {
-      termCode: input.termCode,
-      plannerItemId: input.plannerItemId,
-      targetCrn: input.targetCrn,
-      sourceSectionCrn: input.sourceSectionCrn,
-      sourceMeetingId: input.sourceMeetingId,
-    });
-    if (!resolved.ok) return resolved;
-
-    return updatePlannerItemSelectionAction({
-      itemId: input.plannerItemId,
-      termCode: input.termCode,
-      anchorCrn: resolved.anchorCrn,
-      selectionKind: resolved.selectionKind,
-      linkedBundleId: resolved.linkedBundleId,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Something went wrong.";
-    return { ok: false, error: msg };
-  }
-}
-
-/**
- * Slim payload for client refresh after a calendar edit — avoids a full RSC
- * `router.refresh()` round trip (terms, layout, large prefetch re-serialize).
- */
-export async function loadPlannerCalendarStateAction(termCode: string): Promise<
-  | {
-      ok: true;
-      plannerItems: PlannerItemRow[];
-      calendarBlocks: CalendarBlock[];
-      swapGhostsPrefetch: Record<string, SwapGhostMeeting[]>;
-    }
+/** Full planner rows + catalog for client-side derivation (calendar, swap). */
+export async function loadPlannerCatalogBootstrapAction(
+  termCode: string,
+): Promise<
+  | { ok: true; plannerItems: PlannerItemRow[]; catalog: PlannerCatalogJson }
   | { ok: false; error: string }
 > {
   try {
     const sessionId = await requireSessionId();
     if (!termCode) return { ok: false, error: "Missing term." };
     const db = createDb();
-    const plannerItems = await listPlannerItems(db, sessionId, termCode);
-    const calendarBlocks = await buildCalendarBlocks(
+    const { plannerItems, catalog } = await loadPlannerCatalogBootstrap(
       db,
       sessionId,
       termCode,
-      plannerItems,
     );
-    const swapGhostsPrefetch =
-      calendarBlocks.length > 0
-        ? await buildSwapGhostsPrefetchMap(db, termCode, calendarBlocks)
-        : {};
-    return {
-      ok: true,
-      plannerItems,
-      calendarBlocks,
-      swapGhostsPrefetch,
-    };
+    return { ok: true, plannerItems, catalog };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
+async function assertPlannerRowPersistable(
+  db: ReturnType<typeof createDb>,
+  termCode: string,
+  row: PlannerItemRow,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const bundles = await listLinkedBundleOptions(db, termCode, row.anchorCrn);
+  if (bundles.length > 0) {
+    if (row.selectionKind !== "linked_bundle" || row.linkedBundleId == null) {
+      return {
+        ok: false,
+        error: "Linked registration required for one or more rows.",
+      };
+    }
+    const ok = await validateLinkedBundle(
+      db,
+      termCode,
+      row.anchorCrn,
+      row.linkedBundleId,
+    );
+    if (!ok) return { ok: false, error: "Invalid linked bundle in planner data." };
+  } else if (row.selectionKind !== "single_crn") {
+    return { ok: false, error: "Invalid selection in planner data." };
+  }
+  return { ok: true };
+}
+
+/**
+ * Replaces the session's planner list for this term with the given rows
+ * (delete missing ids, update the rest). Used by the client store debounced sync.
+ */
+export async function syncPlannerStateAction(
+  termCode: string,
+  items: PlannerItemRow[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const sessionId = await requireSessionId();
+    if (!termCode) return { ok: false, error: "Missing term." };
+    const db = createDb();
+
+    for (const row of items) {
+      const v = await assertPlannerRowPersistable(db, termCode, row);
+      if (!v.ok) return v;
+    }
+
+    await db.transaction(async (tx) => {
+      if (items.length === 0) {
+        await tx
+          .delete(schema.plannerItems)
+          .where(
+            and(
+              eq(schema.plannerItems.sessionId, sessionId),
+              eq(schema.plannerItems.termCode, termCode),
+            ),
+          );
+        return;
+      }
+
+      const keepIds = items.map((i) => i.id);
+      await tx
+        .delete(schema.plannerItems)
+        .where(
+          and(
+            eq(schema.plannerItems.sessionId, sessionId),
+            eq(schema.plannerItems.termCode, termCode),
+            notInArray(schema.plannerItems.id, keepIds),
+          ),
+        );
+
+      for (const row of items) {
+        const res = await tx
+          .update(schema.plannerItems)
+          .set({
+            subject: row.subject,
+            courseNumber: row.courseNumber,
+            displayColor: row.displayColor,
+            sortOrder: row.sortOrder,
+            selectionKind: row.selectionKind,
+            anchorCrn: row.anchorCrn,
+            linkedBundleId:
+              row.selectionKind === "linked_bundle"
+                ? row.linkedBundleId
+                : null,
+          })
+          .where(
+            and(
+              eq(schema.plannerItems.id, row.id),
+              eq(schema.plannerItems.sessionId, sessionId),
+              eq(schema.plannerItems.termCode, termCode),
+            ),
+          )
+          .returning({ id: schema.plannerItems.id });
+        if (res.length === 0) {
+          throw new Error(`Planner item ${row.id} is not in this session.`);
+        }
+      }
+    });
+
+    return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
     return { ok: false, error: msg };

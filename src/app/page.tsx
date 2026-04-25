@@ -1,13 +1,16 @@
 import { HomePlanner } from "@/components/planner/HomePlanner";
 import { createDb } from "@/db/index";
-import {
-  buildCalendarBlocks,
-  buildSwapGhostsPrefetchMap,
-  getLatestTermCode,
-  listPlannerItems,
-  listTerms,
-} from "@/lib/planner/data";
+import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
+import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
+import { getLatestTermCode, listTerms } from "@/lib/planner/data";
 import { readPlannerSessionIdFromCookies } from "@/lib/planner/session";
+
+const emptyCatalog: PlannerCatalogJson = {
+  sections: [],
+  meetings: [],
+  linkedBundles: [],
+  linkedBundleMembers: [],
+};
 
 export default async function Page({
   searchParams,
@@ -24,26 +27,17 @@ export default async function Page({
     termFromQuery ?? latest ?? (terms.length > 0 ? terms[0]!.code : "");
 
   const sessionId = await readPlannerSessionIdFromCookies();
-  const plannerItems =
+  const { plannerItems, catalog } =
     sessionId && termCode
-      ? await listPlannerItems(db, sessionId, termCode)
-      : [];
-  const calendarBlocks =
-    sessionId && termCode
-      ? await buildCalendarBlocks(db, sessionId, termCode)
-      : [];
-  const swapGhostsPrefetch =
-    sessionId && termCode && calendarBlocks.length > 0
-      ? await buildSwapGhostsPrefetchMap(db, termCode, calendarBlocks)
-      : {};
+      ? await loadPlannerCatalogBootstrap(db, sessionId, termCode)
+      : { plannerItems: [], catalog: emptyCatalog };
 
   return (
     <HomePlanner
       terms={terms}
       termCode={termCode}
       plannerItems={plannerItems}
-      calendarBlocks={calendarBlocks}
-      swapGhostsPrefetch={swapGhostsPrefetch}
+      catalog={catalog}
       hasSessionCookie={!!sessionId}
     />
   );

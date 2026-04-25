@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -14,11 +13,7 @@ import {
   addPlannerItemAction,
   listLinkedBundleOptionsAction,
   listSectionsForCourseAction,
-  removePlannerItemAction,
-  reorderPlannerItemAction,
   searchCoursesAction,
-  updatePlannerItemColorAction,
-  updatePlannerItemSelectionAction,
 } from "@/app/planner/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +35,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { usePlanner } from "./PlannerContext";
 
 type SectionRow = Awaited<
   ReturnType<typeof listSectionsForCourseAction>
@@ -49,14 +45,39 @@ type CourseRow = CourseSearchRow;
 
 type Props = {
   termCode: string;
-  plannerItems: PlannerItemRow[];
 };
+
+function reorderPlannerItemsLocal(
+  items: PlannerItemRow[],
+  itemId: number,
+  direction: "up" | "down",
+): PlannerItemRow[] {
+  const sorted = [...items].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.id - b.id,
+  );
+  const idx = sorted.findIndex((i) => i.id === itemId);
+  const j = direction === "up" ? idx - 1 : idx + 1;
+  if (idx < 0 || j < 0 || j >= sorted.length) return items;
+  const copy = [...sorted];
+  const tmp = copy[idx]!;
+  copy[idx] = copy[j]!;
+  copy[j] = tmp;
+  return copy.map((row, i) => ({ ...row, sortOrder: i }));
+}
 
 const SEARCH_DEBOUNCE_MS = 300;
 const BLUR_CLOSE_MS = 200;
 
-export function CourseManager({ termCode, plannerItems }: Props) {
-  const router = useRouter();
+export function CourseManager({ termCode }: Props) {
+  const {
+    plannerItems,
+    setPlannerItems,
+    removePlannerItem,
+    updatePlannerItem,
+    refreshCatalogFromServer,
+    syncError,
+    clearSyncError,
+  } = usePlanner();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -83,10 +104,6 @@ export function CourseManager({ termCode, plannerItems }: Props) {
   const [editAnchor, setEditAnchor] = useState<string | null>(null);
   const [editBundles, setEditBundles] = useState<LinkedBundleOption[]>([]);
   const [editBundleId, setEditBundleId] = useState<number | null>(null);
-
-  const refresh = useCallback(() => {
-    router.refresh();
-  }, [router]);
 
   const resetAddFlow = useCallback(() => {
     setPicked(null);
@@ -203,10 +220,13 @@ export function CourseManager({ termCode, plannerItems }: Props) {
         setError(res.error);
         return;
       }
+      const ok = await refreshCatalogFromServer();
+      if (!ok) {
+        setError("Added course but could not reload schedule data. Reload the page.");
+      }
       resetAddFlow();
       setHits([]);
       setSearchQ("");
-      refresh();
     });
   }, [
     picked,
@@ -216,7 +236,7 @@ export function CourseManager({ termCode, plannerItems }: Props) {
     termCode,
     color,
     resetAddFlow,
-    refresh,
+    refreshCatalogFromServer,
   ]);
 
   const openEdit = useCallback(
@@ -252,22 +272,13 @@ export function CourseManager({ termCode, plannerItems }: Props) {
       setError("Choose a linked registration option.");
       return;
     }
-    startTransition(async () => {
-      const res = await updatePlannerItemSelectionAction({
-        itemId: editItem.id,
-        termCode,
-        anchorCrn: editAnchor,
-        selectionKind: kind,
-        linkedBundleId: linkedId,
-      });
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      setEditItem(null);
-      refresh();
+    updatePlannerItem(editItem.id, {
+      anchorCrn: editAnchor,
+      selectionKind: kind,
+      linkedBundleId: linkedId,
     });
-  }, [editItem, editAnchor, editBundles.length, editBundleId, termCode, refresh]);
+    setEditItem(null);
+  }, [editItem, editAnchor, editBundles.length, editBundleId, updatePlannerItem]);
 
   const onEditAnchorChange = useCallback(
     (crn: string) => {
@@ -327,6 +338,20 @@ export function CourseManager({ termCode, plannerItems }: Props) {
       {error ? (
         <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
+        </p>
+      ) : null}
+      {syncError ? (
+        <p className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <span>Could not save planner: {syncError}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-9"
+            onClick={() => clearSyncError()}
+          >
+            Dismiss
+          </Button>
         </p>
       ) : null}
 
@@ -617,10 +642,7 @@ export function CourseManager({ termCode, plannerItems }: Props) {
                         className="touch-manipulation size-9 rounded border border-border active:scale-95"
                         style={{ backgroundColor: p.hex }}
                         onClick={() => {
-                          startTransition(async () => {
-                            await updatePlannerItemColorAction(item.id, p.hex);
-                            refresh();
-                          });
+                          updatePlannerItem(item.id, { displayColor: p.hex });
                         }}
                       />
                     ))}
@@ -633,10 +655,9 @@ export function CourseManager({ termCode, plannerItems }: Props) {
                     size="sm"
                     className="min-h-10 touch-manipulation"
                     onClick={() =>
-                      startTransition(async () => {
-                        await reorderPlannerItemAction(item.id, "up");
-                        refresh();
-                      })
+                      setPlannerItems(
+                        reorderPlannerItemsLocal(plannerItems, item.id, "up"),
+                      )
                     }
                   >
                     Move up
@@ -647,10 +668,9 @@ export function CourseManager({ termCode, plannerItems }: Props) {
                     size="sm"
                     className="min-h-10 touch-manipulation"
                     onClick={() =>
-                      startTransition(async () => {
-                        await reorderPlannerItemAction(item.id, "down");
-                        refresh();
-                      })
+                      setPlannerItems(
+                        reorderPlannerItemsLocal(plannerItems, item.id, "down"),
+                      )
                     }
                   >
                     Move down
@@ -669,12 +689,7 @@ export function CourseManager({ termCode, plannerItems }: Props) {
                     variant="destructive"
                     size="sm"
                     className="min-h-10 touch-manipulation"
-                    onClick={() =>
-                      startTransition(async () => {
-                        await removePlannerItemAction(item.id);
-                        refresh();
-                      })
-                    }
+                    onClick={() => removePlannerItem(item.id)}
                   >
                     Remove
                   </Button>

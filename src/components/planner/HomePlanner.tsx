@@ -2,12 +2,10 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState, useTransition } from "react";
-import {
-  ensurePlannerSessionAction,
-  loadPlannerCalendarStateAction,
-} from "@/app/planner/actions";
-import type { CalendarBlock, SwapGhostMeeting } from "@/lib/planner/data";
+import { useEffect, useState } from "react";
+import { ensurePlannerSessionAction } from "@/app/planner/actions";
+import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
+import type { CalendarBlock } from "@/lib/planner/data";
 import type { PlannerItemRow } from "@/lib/planner/data";
 import type { TermOption } from "@/lib/planner/data";
 import {
@@ -18,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CourseManager } from "./CourseManager";
+import { PlannerProvider } from "./PlannerContext";
 import { SectionJsonModal } from "./SectionJsonModal";
 import { WeekCalendar } from "./WeekCalendar";
 
@@ -25,8 +24,7 @@ type Props = {
   terms: TermOption[];
   termCode: string;
   plannerItems: PlannerItemRow[];
-  calendarBlocks: CalendarBlock[];
-  swapGhostsPrefetch: Record<string, SwapGhostMeeting[]>;
+  catalog: PlannerCatalogJson;
   hasSessionCookie: boolean;
 };
 
@@ -34,34 +32,12 @@ export function HomePlanner({
   terms,
   termCode,
   plannerItems,
-  calendarBlocks,
-  swapGhostsPrefetch,
+  catalog,
   hasSessionCookie,
 }: Props) {
   const router = useRouter();
-  const [, startPropSync] = useTransition();
-  const [livePlannerItems, setLivePlannerItems] = useState(plannerItems);
-  const [liveCalendarBlocks, setLiveCalendarBlocks] = useState(calendarBlocks);
-  const [liveSwapPrefetch, setLiveSwapPrefetch] = useState(swapGhostsPrefetch);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCrn, setModalCrn] = useState<string | null>(null);
-
-  useEffect(() => {
-    startPropSync(() => {
-      setLivePlannerItems(plannerItems);
-      setLiveCalendarBlocks(calendarBlocks);
-      setLiveSwapPrefetch(swapGhostsPrefetch);
-    });
-  }, [plannerItems, calendarBlocks, swapGhostsPrefetch, startPropSync]);
-
-  const refreshPlannerVisuals = useCallback(async (): Promise<boolean> => {
-    const res = await loadPlannerCalendarStateAction(termCode);
-    if (!res.ok) return false;
-    setLivePlannerItems(res.plannerItems);
-    setLiveCalendarBlocks(res.calendarBlocks);
-    setLiveSwapPrefetch(res.swapGhostsPrefetch);
-    return true;
-  }, [termCode]);
 
   useEffect(() => {
     if (hasSessionCookie) return;
@@ -137,29 +113,23 @@ export function HomePlanner({
             this page.
           </p>
         ) : (
-          <>
-            <CourseManager
-              key={termCode}
+          <PlannerProvider
+            key={termCode}
+            termCode={termCode}
+            initialPlannerItems={plannerItems}
+            initialCatalog={catalog}
+          >
+            <CourseManager key={termCode} termCode={termCode} />
+            <WeekCalendar onBlockActivate={onBlockActivate} />
+            <SectionJsonModal
+              open={modalOpen}
+              onOpenChange={setModalOpen}
               termCode={termCode}
-              plannerItems={livePlannerItems}
+              crn={modalCrn}
             />
-            <WeekCalendar
-              termCode={termCode}
-              blocks={liveCalendarBlocks}
-              swapGhostsPrefetch={liveSwapPrefetch}
-              onPlannerCalendarUpdated={refreshPlannerVisuals}
-              onBlockActivate={onBlockActivate}
-            />
-          </>
+          </PlannerProvider>
         )}
       </main>
-
-      <SectionJsonModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        termCode={termCode}
-        crn={modalCrn}
-      />
     </div>
   );
 }

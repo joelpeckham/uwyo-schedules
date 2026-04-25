@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  commitPlannerSwapFromCalendarAction,
-  getSameTypeSectionMeetingsForSwapAction,
-} from "@/app/planner/actions";
+import { listSameTypeSwapGhostsFromCatalog } from "@/lib/planner/client/derive";
 import {
   swapPrefetchKey,
   type CalendarBlock,
@@ -15,15 +12,61 @@ import {
   CALENDAR_START_HOUR,
 } from "@/lib/planner/constants";
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
-  useTransition,
 } from "react";
+import {
+  CircleHelp,
+  HandGrab,
+  Move,
+  MousePointerClick,
+  ZoomIn,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { usePlanner } from "./PlannerContext";
+
+const HOUR_RANGE_HELP =
+  "Zoom stops when 4 a.m. through 11 p.m. fill this view.";
+
+const SCHEDULE_HELP: readonly {
+  readonly Icon: typeof Move;
+  readonly label: string;
+  readonly body: string;
+}[] = [
+  {
+    Icon: Move,
+    label: "Pan the week",
+    body: "On touch, use two fingers to pan: up, down, and side to side.",
+  },
+  {
+    Icon: ZoomIn,
+    label: "Zoom the day",
+    body: `Pinch with two fingers, or use Ctrl+scroll, to show more or less of the day. ${HOUR_RANGE_HELP}`,
+  },
+  {
+    Icon: HandGrab,
+    label: "Drag a section to swap",
+    body:
+      "Drag a course block to preview other same-type meeting times, then release on a highlighted slot to switch sections.",
+  },
+  {
+    Icon: MousePointerClick,
+    label: "Open details",
+    body: "Tap or click a block without dragging to read section details from Banner.",
+  },
+] as const;
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
@@ -48,12 +91,6 @@ const TWO_FINGER_PAN_CENTROID_MIN_PX = 5;
 const PINCH_ZOOM_RESPONSE = 0.42;
 
 type Props = {
-  termCode: string;
-  blocks: CalendarBlock[];
-  /** Server-prefetched ghosts so drag starts without a server round trip. */
-  swapGhostsPrefetch?: Record<string, SwapGhostMeeting[]>;
-  /** After a successful swap, reload planner UI without a full RSC refresh. */
-  onPlannerCalendarUpdated: () => Promise<boolean>;
   onBlockActivate: (block: CalendarBlock) => void;
 };
 
@@ -159,15 +196,30 @@ function dampedPinchRowRatio(
   return clamp(startRowPx * t);
 }
 
-export function WeekCalendar({
-  termCode,
-  blocks,
-  swapGhostsPrefetch = {},
-  onPlannerCalendarUpdated,
-  onBlockActivate,
-}: Props) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+export function WeekCalendar({ onBlockActivate }: Props) {
+  const { calendarBlocks: blocks, swapGhostsPrefetch, catalog, applyCalendarSwap } =
+    usePlanner();
+
+  const ghostsForBlock = useCallback(
+    (block: CalendarBlock): SwapGhostMeeting[] => {
+      const k = swapPrefetchKey(
+        block.plannerItemId,
+        block.sectionCrn,
+        block.meetingId,
+      );
+      const pre = swapGhostsPrefetch[k];
+      if (pre !== undefined) return pre;
+      if (!block.sectionScheduleTypeKey) return [];
+      return listSameTypeSwapGhostsFromCatalog(catalog, {
+        subject: block.subject,
+        courseNumber: block.courseNumber,
+        excludeSectionCrn: block.sectionCrn,
+        sourceScheduleTypeKey: block.sectionScheduleTypeKey,
+        sourceMeetingScheduleType: block.meetingScheduleType,
+      });
+    },
+    [swapGhostsPrefetch, catalog],
+  );
   const hScrollRef = useRef<HTMLDivElement | null>(null);
   /** Day labels row: same two-finger handlers as the viewport (not the overflow-x scroller: non-passive touch on that ancestor breaks iOS). */
   const weekHeaderRef = useRef<HTMLDivElement | null>(null);
@@ -200,8 +252,6 @@ export function WeekCalendar({
   const grabOffsetRef = useRef({ dx: 0, dy: 0 });
   /** `setPointerCapture` target for block; cleared on pointer up / cancellation / 2+ touches. */
   const capturedBlockElRef = useRef<HTMLElement | null>(null);
-  const warmCacheRef = useRef(new Map<string, SwapGhostMeeting[]>());
-  const warmInflightRef = useRef(new Set<string>());
 
   const [dragSession, setDragSession] = useState<DragSessionState | null>(
     null,
@@ -211,47 +261,6 @@ export function WeekCalendar({
   useEffect(() => {
     dragSessionRef.current = dragSession;
   }, [dragSession]);
-
-  useLayoutEffect(() => {
-    for (const [k, v] of Object.entries(swapGhostsPrefetch)) {
-      warmCacheRef.current.set(k, v);
-    }
-  }, [swapGhostsPrefetch]);
-
-  const peekGhostCache = useCallback((block: CalendarBlock) => {
-    const k = swapPrefetchKey(
-      block.plannerItemId,
-      block.sectionCrn,
-      block.meetingId,
-    );
-    if (warmCacheRef.current.has(k)) {
-      return warmCacheRef.current.get(k)!;
-    }
-    return undefined;
-  }, []);
-
-  const scheduleGhostWarm = useCallback(
-    (block: CalendarBlock) => {
-      const k = swapPrefetchKey(
-        block.plannerItemId,
-        block.sectionCrn,
-        block.meetingId,
-      );
-      if (warmInflightRef.current.has(k)) return;
-      if (warmCacheRef.current.has(k)) return;
-      warmInflightRef.current.add(k);
-      void getSameTypeSectionMeetingsForSwapAction({
-        termCode,
-        plannerItemId: block.plannerItemId,
-        sourceSectionCrn: block.sectionCrn,
-        sourceMeetingId: block.meetingId,
-      }).then((res) => {
-        warmInflightRef.current.delete(k);
-        if (res.ok) warmCacheRef.current.set(k, res.ghosts);
-      });
-    },
-    [termCode],
-  );
 
   const startMin = CALENDAR_START_HOUR * 60;
   const totalMin = CALENDAR_HOUR_COUNT * 60;
@@ -487,7 +496,6 @@ export function WeekCalendar({
     (e: React.PointerEvent, block: CalendarBlock) => {
       if (e.button !== 0) return;
       setPostSwapError(null);
-      scheduleGhostWarm(block);
       const el = e.currentTarget as HTMLElement;
       const br = el.getBoundingClientRect();
       grabOffsetRef.current = {
@@ -503,7 +511,7 @@ export function WeekCalendar({
       el.setPointerCapture(e.pointerId);
       capturedBlockElRef.current = el;
     },
-    [scheduleGhostWarm],
+    [],
   );
 
   const onBlockPointerMove = useCallback(
@@ -520,92 +528,26 @@ export function WeekCalendar({
       if (!dragActiveRef.current && dist >= DRAG_THRESHOLD_PX) {
         e.preventDefault();
         dragActiveRef.current = true;
-        const gen = ++dragGenRef.current;
         const b = down.block;
-        const cached = peekGhostCache(b);
-        if (cached !== undefined) {
-          const snapped = pickSnap(
-            lastPointerRef.current.x,
-            lastPointerRef.current.y,
-            cached,
-          );
-          const next = finalizeDragSession({
-            block: b,
-            pointerId: e.pointerId,
-            clientX: e.clientX,
-            clientY: e.clientY,
-            grabDx: grabOffsetRef.current.dx,
-            grabDy: grabOffsetRef.current.dy,
-            ghosts: cached,
-            snapped,
-            swapError: null,
-          });
-          dragSessionRef.current = next;
-          setDragSession(next);
-          return;
-        }
-        const initial = finalizeDragSession({
+        const ghosts = ghostsForBlock(b);
+        const snapped = pickSnap(
+          lastPointerRef.current.x,
+          lastPointerRef.current.y,
+          ghosts,
+        );
+        const next = finalizeDragSession({
           block: b,
           pointerId: e.pointerId,
           clientX: e.clientX,
           clientY: e.clientY,
           grabDx: grabOffsetRef.current.dx,
           grabDy: grabOffsetRef.current.dy,
-          ghosts: [],
-          snapped: null,
+          ghosts,
+          snapped,
           swapError: null,
         });
-        dragSessionRef.current = initial;
-        setDragSession(initial);
-        startTransition(async () => {
-          const res = await getSameTypeSectionMeetingsForSwapAction({
-            termCode,
-            plannerItemId: b.plannerItemId,
-            sourceSectionCrn: b.sectionCrn,
-            sourceMeetingId: b.meetingId,
-          });
-          if (dragGenRef.current !== gen) return;
-          if (!res.ok) {
-            const errSess = finalizeDragSession({
-              block: b,
-              pointerId: down.pointerId,
-              clientX: lastPointerRef.current.x,
-              clientY: lastPointerRef.current.y,
-              grabDx: grabOffsetRef.current.dx,
-              grabDy: grabOffsetRef.current.dy,
-              ghosts: [],
-              snapped: null,
-              swapError: res.error,
-            });
-            dragSessionRef.current = errSess;
-            setDragSession(errSess);
-            return;
-          }
-          const k = swapPrefetchKey(
-            b.plannerItemId,
-            b.sectionCrn,
-            b.meetingId,
-          );
-          warmCacheRef.current.set(k, res.ghosts);
-          const snapped = pickSnap(
-            lastPointerRef.current.x,
-            lastPointerRef.current.y,
-            res.ghosts,
-          );
-          const next = finalizeDragSession({
-            block: b,
-            pointerId: down.pointerId,
-            clientX: lastPointerRef.current.x,
-            clientY: lastPointerRef.current.y,
-            grabDx: grabOffsetRef.current.dx,
-            grabDy: grabOffsetRef.current.dy,
-            ghosts: res.ghosts,
-            snapped,
-            swapError: null,
-          });
-          dragSessionRef.current = next;
-          setDragSession(next);
-        });
+        dragSessionRef.current = next;
+        setDragSession(next);
         return;
       }
 
@@ -629,7 +571,7 @@ export function WeekCalendar({
         setDragSession(next);
       }
     },
-    [finalizeDragSession, peekGhostCache, pickSnap, startTransition, termCode],
+    [finalizeDragSession, ghostsForBlock, pickSnap],
   );
 
   const onBlockPointerUp = useCallback(
@@ -657,21 +599,13 @@ export function WeekCalendar({
         const { snapped, block } = session;
         if (snapped && snapped.crn !== block.sectionCrn) {
           endDrag();
-          startTransition(async () => {
-            const res = await commitPlannerSwapFromCalendarAction({
-              termCode,
-              plannerItemId: block.plannerItemId,
-              targetCrn: snapped.crn,
-              sourceSectionCrn: block.sectionCrn,
-              sourceMeetingId: block.meetingId,
-            });
-            if (!res.ok) {
-              setPostSwapError(res.error);
-              return;
-            }
-            const refreshed = await onPlannerCalendarUpdated();
-            if (!refreshed) router.refresh();
+          const res = applyCalendarSwap({
+            plannerItemId: block.plannerItemId,
+            targetCrn: snapped.crn,
+            sourceSectionCrn: block.sectionCrn,
+            sourceMeetingId: block.meetingId,
           });
+          if (!res.ok) setPostSwapError(res.error);
           return;
         }
         endDrag();
@@ -682,14 +616,7 @@ export function WeekCalendar({
         onBlockActivate(down.block);
       }
     },
-    [
-      endDrag,
-      onBlockActivate,
-      onPlannerCalendarUpdated,
-      router,
-      startTransition,
-      termCode,
-    ],
+    [endDrag, onBlockActivate, applyCalendarSwap],
   );
 
   const onBlockPointerCancel = useCallback(
@@ -712,28 +639,68 @@ export function WeekCalendar({
   return (
     <section
       className={cn(
-        "rounded-xl border border-border bg-card text-card-foreground shadow-sm",
+        "overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm",
         dragSession && "select-none",
       )}
       aria-labelledby="planner-week-calendar-heading"
     >
       <div className="border-b border-border p-3 sm:p-4">
-        <h2
-          id="planner-week-calendar-heading"
-          className="font-heading text-lg font-medium text-foreground"
-        >
-          Weekly schedule
-        </h2>
-        <p className="mt-1 max-w-prose text-pretty text-xs text-muted-foreground sm:text-sm">
-          On touch, use two fingers to pan the week (up, down, and side to side).
-          Pinch with two fingers or use Ctrl-scroll to show more or less of the
-          day. Zoom stops when 4 a.m. through 11 p.m. fill this view.
-        </p>
-        <p className="mt-2 max-w-prose text-pretty text-xs text-muted-foreground sm:text-sm">
-          Drag a section with one finger to preview other same-type meeting
-          times; release on a highlighted slot to switch sections. Tap without
-          dragging for details.
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <h2
+            id="planner-week-calendar-heading"
+            className="font-heading min-w-0 text-lg font-medium text-foreground"
+          >
+            Weekly schedule
+          </h2>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:text-foreground -mt-0.5 shrink-0"
+                aria-label="How to use the weekly schedule"
+              >
+                <CircleHelp className="size-5" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[min(32rem,85vh)] overflow-y-auto sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>How to use the weekly schedule</DialogTitle>
+                <DialogDescription>
+                  Gestures and shortcuts for moving, zooming, and editing your
+                  week.
+                </DialogDescription>
+              </DialogHeader>
+              <ul className="list-none space-y-4">
+                {SCHEDULE_HELP.map((item) => {
+                  const I = item.Icon;
+                  return (
+                    <li
+                      key={item.label}
+                      className="flex gap-3 border-b border-border pb-4 last:border-b-0 last:pb-0"
+                    >
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/40 text-muted-foreground"
+                        aria-hidden
+                      >
+                        <I className="size-4" strokeWidth={2} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          {item.label}
+                        </p>
+                        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                          {item.body}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </DialogContent>
+          </Dialog>
+        </div>
         {dragSession?.swapError ? (
           <p className="mt-2 text-xs text-destructive" role="alert">
             {dragSession.swapError}
@@ -904,14 +871,6 @@ export function WeekCalendar({
                     {dragSession.block.sublabel}
                   </span>
                 ) : null}
-              </div>
-            ) : null}
-            {pending && dragSession ? (
-              <div
-                className="pointer-events-none absolute right-2 bottom-2 rounded-md bg-muted/90 px-2 py-1 font-mono text-[10px] text-muted-foreground"
-                aria-live="polite"
-              >
-                Loading alternatives…
               </div>
             ) : null}
           </div>
