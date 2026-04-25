@@ -1,0 +1,403 @@
+
+[
+  {
+    "code": "ACCT",
+    "description": "Accounting"
+  },
+  {
+    "code": "ACES",
+    "description": "Advising, Career, and Explorat"
+  },
+  {
+    "code": "AAST",
+    "description": "African American Studies"
+  },
+  {
+    "code": "AGCM",
+    "description": "Agricultural Communications"
+  },
+  {
+    "code": "AGEC",
+    "description": "Agricultural Economics"
+  },
+  {
+    "code": "AGRI",
+    "description": "Agriculture"
+  },
+  {
+    "code": "EDAG",
+    "description": "Agriculture Education"
+  },
+  {
+    "code": "AIR",
+    "description": "Air Force ROTC"
+  },
+  {
+    "code": "AMST",
+    "description": "American Studies"
+  },
+  {
+    "code": "ANSC",
+    "description": "Animal Science"
+  },
+  {
+    "code": "ANTH",
+    "description": "Anthropology"
+  },
+  {
+    "code": "ARBC",
+    "description": "Arabic"
+  },
+  {
+    "code": "ARE",
+    "description": "Architectural Engineering"
+  },
+  {
+    "code": "ARMY",
+    "description": "Army ROTC"
+  },
+  {
+    "code": "ART",
+    "description": "Art and Art History"
+  },
+  {
+    "code": "AS",
+    "description": "Arts and Sciences"
+  },
+  {
+    "code": "ASTR",
+    "description": "Astronomy"
+  },
+  {
+    "code": "ATSC",
+    "description": "Atmospheric Science"
+  },
+  {
+    "code": "BMS",
+    "description": "Biomedical Sciences"
+  },
+  {
+    "code": "BKCH",
+    "description": "Blockchain"
+  },
+  {
+    "code": "BOT",
+    "description": "Botany"
+  },
+  {
+    "code": "BUSN",
+    "description": "Business"
+  },
+  {
+    "code": "CHE",
+    "description": "Chemical Engineering"
+  },
+  {
+    "code": "CHEM",
+    "description": "Chemistry"
+  },
+  {
+    "code": "CHIN",
+    "description": "Chinese"
+  },
+  {
+    "code": "CE",
+    "description": "Civil Engineering"
+  },
+  {
+    "code": "CLAS",
+    "description": "Classics"
+  },
+  {
+    "code": "COMM",
+    "description": "Comm &amp; Jrnlsm (lower division)"
+  },
+  {
+    "code": "COJO",
+    "description": "Comm &amp; Jrnlsm (upper division)"
+  },
+  {
+    "code": "COSC",
+    "description": "Computer Science"
+  },
+  {
+    "code": "COMP",
+    "description": "Computing"
+  },
+  {
+    "code": "CM",
+    "description": "Construction Management"
+  },
+  {
+    "code": "CNSL",
+    "description": "Counseling"
+  },
+  {
+    "code": "CW",
+    "description": "Creative Writing"
+  },
+  {
+    "code": "CRMJ",
+    "description": "Criminal Justice"
+  },
+  {
+    "code": "EDCI",
+    "description": "Curriculum and Instruction"
+  },
+  {
+    "code": "DSCI",
+    "description": "Decision Science"
+  },
+  {
+    "code": "DHYG",
+    "description": "Dental Hygiene"
+  },
+  {
+    "code": "EDEC",
+    "description": "Early Childhood"
+  },
+  {
+    "code": "ESS",
+    "description": "Earth System Science"
+  },
+  {
+    "code": "ECOL",
+    "description": "Ecology"
+  },
+  {
+    "code": "ECON",
+    "description": "Economics"
+  },
+  {
+    "code": "EDAD",
+    "description": "Educational Administration"
+  },
+  {
+    "code": "EDRE",
+    "description": "Educational Research"
+  },
+  {
+    "code": "EDST",
+    "description": "Educational Studies"
+  },
+  {
+    "code": "EE",
+    "description": "Electrical Engineering"
+  },
+  {
+    "code": "EDEL",
+    "description": "Elementary Education"
+  },
+  {
+    "code": "EPE",
+    "description": "Energy &amp; Petroleum Engineering"
+  },
+  {
+    "code": "ERS",
+    "description": "Energy Resource Mgmt/Dev"
+  },
+  {
+    "code": "ES",
+    "description": "Engineering Science"
+  },
+  {
+    "code": "ENGL",
+    "description": "English"
+  },
+  {
+    "code": "EAP",
+    "description": "English for Academic Purposes"
+  },
+  {
+    "code": "ENTO",
+    "description": "Entomology"
+  },
+  {
+    "code": "ENTR",
+    "description": "Entrepreneurship"
+  },
+  {
+    "code": "ENR",
+    "description": "Environment &amp; Natural Resource"
+  },
+  {
+    "code": "ENVE",
+    "description": "Environmental Engineering"
+  },
+  {
+    "code": "EDEX",
+    "description": "Exceptional Children"
+  },
+  {
+    "code": "FCSC",
+    "description": "Family &amp; Consumer Science"
+  },
+  {
+    "code": "FIN",
+    "description": "Finance"
+  },
+  {
+    "code": "FDSC",
+    "description": "Food Science"
+  },
+  {
+    "code": "FREN",
+    "description": "French"
+  },
+  {
+    "code": "GWST",
+    "description": "Gender/Women&#39;s Studies"
+  },
+  {
+    "code": "GEOG",
+    "description": "Geography"
+  },
+  {
+    "code": "GEOL",
+    "description": "Geology"
+  },
+  {
+    "code": "GIST",
+    "description": "Geospatial Info Science Tech"
+  },
+  {
+    "code": "GERM",
+    "description": "German"
+  },
+  {
+    "code": "HLED",
+    "description": "Health Education"
+  },
+  {
+    "code": "HIED",
+    "description": "Higher Ed Administration"
+  },
+  {
+    "code": "HIST",
+    "description": "History"
+  },
+  {
+    "code": "HOSP",
+    "description": "Hospitality"
+  },
+  {
+    "code": "HM",
+    "description": "Human Medicine"
+  },
+  {
+    "code": "HYDR",
+    "description": "Hydrology"
+  },
+  {
+    "code": "IMGT",
+    "description": "Information Management"
+  },
+  {
+    "code": "ITEC",
+    "description": "Instructional Technology"
+  },
+  {
+    "code": "IEP",
+    "description": "Intensive English Program"
+  },
+  {
+    "code": "INST",
+    "description": "International Studies"
+  },
+  {
+    "code": "JAPN",
+    "description": "Japanese"
+  },
+  {
+    "code": "KIN",
+    "description": "Kinesiology"
+  },
+  {
+    "code": "LS",
+    "description": "Land Surveying"
+  },
+  {
+    "code": "LANG",
+    "description": "Language"
+  },
+  {
+    "code": "LATN",
+    "description": "Latin"
+  },
+  {
+    "code": "LTST",
+    "description": "Latina/o Studies"
+  },
+  {
+    "code": "LAW",
+    "description": "Law"
+  },
+  {
+    "code": "LEAD",
+    "description": "Leadership"
+  },
+  {
+    "code": "LDTE",
+    "description": "Learning, Design, &amp; Technology"
+  },
+  {
+    "code": "LIFE",
+    "description": "Life Sciences"
+  },
+  {
+    "code": "LTED",
+    "description": "Literacy Education"
+  },
+  {
+    "code": "MGT",
+    "description": "Management"
+  },
+  {
+    "code": "MKT",
+    "description": "Marketing"
+  },
+  {
+    "code": "MBAM",
+    "description": "Master of Business Administrat"
+  },
+  {
+    "code": "MBAX",
+    "description": "Master of Business Administrat"
+  },
+  {
+    "code": "MATH",
+    "description": "Mathematics"
+  },
+  {
+    "code": "EMAT",
+    "description": "Mathematics Education"
+  },
+  {
+    "code": "ME",
+    "description": "Mechanical Engineering"
+  },
+  {
+    "code": "MLSK",
+    "description": "Medical Laboratory Science"
+  },
+  {
+    "code": "MICR",
+    "description": "Microbiology"
+  },
+  {
+    "code": "MOLB",
+    "description": "Molecular Biology"
+  },
+  {
+    "code": "MUSC",
+    "description": "Music"
+  },
+  {
+    "code": "NAIS",
+    "description": "Native Amer/Indigenous Studies"
+  },
+  {
+    "code": "NASC",
+    "description": "Natural Science"
+  }
+]
