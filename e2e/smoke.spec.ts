@@ -4,7 +4,7 @@ test("home page loads", async ({ page }) => {
   await page.goto("/");
   await expect(
     page.getByRole("heading", {
-      name: /To get started, edit the page.tsx file/i,
+      name: /From course list to class schedule/i,
     }),
   ).toBeVisible();
 });
