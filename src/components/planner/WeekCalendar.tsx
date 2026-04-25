@@ -32,6 +32,20 @@ const MAX_HOUR_ROW_PX = 140;
 
 const DRAG_THRESHOLD_PX = 6;
 const SNAP_MAX_DIST_PX = 72;
+/** If inter-finger distance *ratio* is above this, treat as pinch (not two-finger pan). */
+const TWO_FINGER_PINCH_ZOOM_MIN_RATIO = 0.12;
+/**
+ * Two-finger *pan* needs finger spread to stay under this ratio; a vertical slide
+ * often wiggles spread by 5–15% while pinch-zoom crosses this quickly.
+ */
+const TWO_FINGER_PAN_STABLE_MAX_RATIO = 0.2;
+/** Centroid must move this far (px) before two-finger pan (scroll) is chosen. */
+const TWO_FINGER_PAN_CENTROID_MIN_PX = 5;
+/**
+ * Dampen pinch: raw inter-finger ratio r → 1 + (r - 1) * PINCH_ZOOM_RESPONSE
+ * (small pinches change row height more gently than 1:1 with finger spread).
+ */
+const PINCH_ZOOM_RESPONSE = 0.42;
 
 type Props = {
   termCode: string;
@@ -96,6 +110,14 @@ function touchDistance(t: TouchList): number {
   return Math.hypot(dx, dy);
 }
 
+function touchCentroidY(t: TouchList): number {
+  return (t[0]!.clientY + t[1]!.clientY) / 2;
+}
+
+function touchCentroidX(t: TouchList): number {
+  return (t[0]!.clientX + t[1]!.clientX) / 2;
+}
+
 function distPointToRect(
   px: number,
   py: number,
@@ -127,6 +149,16 @@ function ghostViewportRect(
   };
 }
 
+/** Map inter-finger distance ratio to a gentler zoom (see PINCH_ZOOM_RESPONSE). */
+function dampedPinchRowRatio(
+  startRowPx: number,
+  rawRatio: number,
+  clamp: (n: number) => number,
+): number {
+  const t = 1 + (rawRatio - 1) * PINCH_ZOOM_RESPONSE;
+  return clamp(startRowPx * t);
+}
+
 export function WeekCalendar({
   termCode,
   blocks,
@@ -136,14 +168,22 @@ export function WeekCalendar({
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const hScrollRef = useRef<HTMLDivElement | null>(null);
+  /** Day labels row: same two-finger handlers as the viewport (not the overflow-x scroller: non-passive touch on that ancestor breaks iOS). */
+  const weekHeaderRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const dayStripRef = useRef<HTMLDivElement | null>(null);
   const [viewportH, setViewportH] = useState(0);
   const [hourRowPx, setHourRowPx] = useState<number | null>(null);
 
-  const pinchRef = useRef<{
+  const twoFingerRef = useRef<{
     startDist: number;
     startRowPx: number;
+    startCentroidX: number;
+    startCentroidY: number;
+    startScrollTop: number;
+    startScrollLeft: number;
+    mode: "undecided" | "pinch" | "pan";
   } | null>(null);
   const hourRowPxRef = useRef(44);
 
@@ -158,6 +198,8 @@ export function WeekCalendar({
     pointerId: number;
   } | null>(null);
   const grabOffsetRef = useRef({ dx: 0, dy: 0 });
+  /** `setPointerCapture` target for block; cleared on pointer up / cancellation / 2+ touches. */
+  const capturedBlockElRef = useRef<HTMLElement | null>(null);
   const warmCacheRef = useRef(new Map<string, SwapGhostMeeting[]>());
   const warmInflightRef = useRef(new Set<string>());
 
@@ -247,70 +289,148 @@ export function WeekCalendar({
     hourRowPxRef.current = hourRowPx ?? Math.max(44, minRowPx);
   }, [hourRowPx, minRowPx]);
 
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (dragSession) return;
-      if (e.touches.length === 2) {
-        pinchRef.current = {
-          startDist: touchDistance(e.touches),
-          startRowPx: hourRowPxRef.current,
-        };
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (dragSession) return;
-      if (e.touches.length !== 2 || !pinchRef.current) return;
-      e.preventDefault();
-      const d = touchDistance(e.touches);
-      if (pinchRef.current.startDist <= 0) return;
-      const ratio = d / pinchRef.current.startDist;
-      const next = pinchRef.current.startRowPx * ratio;
-      setHourRowPx(clampRowPx(next));
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) pinchRef.current = null;
-    };
-
-    const onWheel = (e: WheelEvent) => {
-      if (dragSession) return;
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      setHourRowPx((prev) => {
-        const base = prev ?? hourRowPxRef.current;
-        const factor = e.deltaY > 0 ? 0.94 : 1.06;
-        return clampRowPx(base * factor);
-      });
-    };
-
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd);
-    el.addEventListener("touchcancel", onTouchEnd);
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-      el.removeEventListener("touchcancel", onTouchEnd);
-      el.removeEventListener("wheel", onWheel);
-    };
-  }, [clampRowPx, dragSession]);
-
-  const rowPx = hourRowPx ?? Math.max(44, minRowPx);
-  const gridHeightPx = hourCount * rowPx;
-
   const endDrag = useCallback(() => {
     dragGenRef.current += 1;
     dragActiveRef.current = false;
     dragSessionRef.current = null;
     pointerDownRef.current = null;
+    capturedBlockElRef.current = null;
     setDragSession(null);
   }, []);
+
+  useLayoutEffect(() => {
+    const vEl = viewportRef.current;
+    const headerEl = weekHeaderRef.current;
+    if (!vEl) return;
+    const getHScroll = () => hScrollRef.current;
+
+    const beginTwoFinger = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const startDist = touchDistance(e.touches);
+      if (startDist <= 0) {
+        twoFingerRef.current = null;
+        return;
+      }
+      const hS = getHScroll();
+      twoFingerRef.current = {
+        startDist,
+        startRowPx: hourRowPxRef.current,
+        startCentroidX: touchCentroidX(e.touches),
+        startCentroidY: touchCentroidY(e.touches),
+        startScrollTop: vEl.scrollTop,
+        startScrollLeft: hS?.scrollLeft ?? 0,
+        mode: "undecided",
+      };
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        const down = pointerDownRef.current;
+        const cap = capturedBlockElRef.current;
+        if (cap && down) {
+          try {
+            cap.releasePointerCapture(down.pointerId);
+          } catch {
+            /* ignore */
+          }
+        }
+        capturedBlockElRef.current = null;
+        if (down) endDrag();
+      }
+      if (dragSessionRef.current) return;
+      if (e.touches.length === 2) beginTwoFinger(e);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (dragSessionRef.current) return;
+      if (e.touches.length !== 2) return;
+      if (!twoFingerRef.current) beginTwoFinger(e);
+
+      const sess = twoFingerRef.current;
+      if (!sess) return;
+
+      const d = touchDistance(e.touches);
+      const cx = touchCentroidX(e.touches);
+      const cy = touchCentroidY(e.touches);
+      const d0 = sess.startDist;
+      if (d0 <= 0) return;
+
+      if (sess.mode === "undecided") {
+        const relDist = Math.abs(d - d0) / d0;
+        const dPos = Math.hypot(
+          cx - sess.startCentroidX,
+          cy - sess.startCentroidY,
+        );
+        // Use 2D centroid travel so pure horizontal (week strip) and vertical
+        // (time grid) two-finger pan both commit to *pan* instead of pinch.
+        const longSlide = dPos > 14 && relDist < 0.38;
+        if (
+          (dPos > TWO_FINGER_PAN_CENTROID_MIN_PX &&
+            relDist < TWO_FINGER_PAN_STABLE_MAX_RATIO) ||
+          longSlide
+        ) {
+          sess.mode = "pan";
+        } else if (relDist > TWO_FINGER_PINCH_ZOOM_MIN_RATIO) {
+          sess.mode = "pinch";
+        } else {
+          return;
+        }
+      }
+
+      e.preventDefault();
+      if (sess.mode === "pinch") {
+        setHourRowPx(
+          dampedPinchRowRatio(sess.startRowPx, d / d0, clampRowPx),
+        );
+      } else {
+        const hS = getHScroll();
+        vEl.scrollTop = sess.startScrollTop - (cy - sess.startCentroidY);
+        if (hS) {
+          hS.scrollLeft = sess.startScrollLeft - (cx - sess.startCentroidX);
+        }
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) twoFingerRef.current = null;
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (dragSessionRef.current) return;
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setHourRowPx((prev) => {
+        const base = prev ?? hourRowPxRef.current;
+        const factor = e.deltaY > 0 ? 0.95 : 1.05;
+        return clampRowPx(base * factor);
+      });
+    };
+
+    const addTouch = (n: HTMLDivElement) => {
+      n.addEventListener("touchstart", onTouchStart, { passive: true });
+      n.addEventListener("touchmove", onTouchMove, { passive: false });
+      n.addEventListener("touchend", onTouchEnd);
+      n.addEventListener("touchcancel", onTouchEnd);
+    };
+    const removeTouch = (n: HTMLDivElement) => {
+      n.removeEventListener("touchstart", onTouchStart);
+      n.removeEventListener("touchmove", onTouchMove);
+      n.removeEventListener("touchend", onTouchEnd);
+      n.removeEventListener("touchcancel", onTouchEnd);
+    };
+
+    addTouch(vEl);
+    if (headerEl) addTouch(headerEl);
+    vEl.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      removeTouch(vEl);
+      if (headerEl) removeTouch(headerEl);
+      vEl.removeEventListener("wheel", onWheel);
+    };
+  }, [clampRowPx, endDrag]);
+
+  const rowPx = hourRowPx ?? Math.max(44, minRowPx);
+  const gridHeightPx = hourCount * rowPx;
 
   const finalizeDragSession = useCallback(
     (
@@ -381,6 +501,7 @@ export function WeekCalendar({
         pointerId: e.pointerId,
       };
       el.setPointerCapture(e.pointerId);
+      capturedBlockElRef.current = el;
     },
     [scheduleGhostWarm],
   );
@@ -530,6 +651,7 @@ export function WeekCalendar({
       const wasDrag = dragActiveRef.current;
 
       pointerDownRef.current = null;
+      capturedBlockElRef.current = null;
 
       if (wasDrag && session && e.pointerId === session.pointerId) {
         const { snapped, block } = session;
@@ -603,14 +725,14 @@ export function WeekCalendar({
           Weekly schedule
         </h2>
         <p className="mt-1 max-w-prose text-pretty text-xs text-muted-foreground sm:text-sm">
-          Pinch with two fingers or Ctrl-scroll on the calendar to show more or
-          less of the day. Zoom stops when 4 a.m. through 11 p.m. fill this
-          view.
+          On touch, use two fingers to pan the week (up, down, and side to side).
+          Pinch with two fingers or use Ctrl-scroll to show more or less of the
+          day. Zoom stops when 4 a.m. through 11 p.m. fill this view.
         </p>
         <p className="mt-2 max-w-prose text-pretty text-xs text-muted-foreground sm:text-sm">
-          Drag a section block to preview other same-type meeting times; release
-          on a highlighted slot to switch sections. Tap without dragging for
-          details.
+          Drag a section with one finger to preview other same-type meeting
+          times; release on a highlighted slot to switch sections. Tap without
+          dragging for details.
         </p>
         {dragSession?.swapError ? (
           <p className="mt-2 text-xs text-destructive" role="alert">
@@ -624,9 +746,15 @@ export function WeekCalendar({
         ) : null}
       </div>
 
-      <div className="overflow-x-auto">
+      <div
+        ref={hScrollRef}
+        className="overflow-x-auto"
+      >
         <div className="flex min-w-[40rem] flex-col">
-          <div className="flex shrink-0 border-b border-border bg-muted/30">
+          <div
+            ref={weekHeaderRef}
+            className="flex shrink-0 border-b border-border bg-muted/30"
+          >
             <div className="w-12 shrink-0" aria-hidden />
             {DAY_LABELS.map((d) => (
               <div
@@ -640,7 +768,7 @@ export function WeekCalendar({
 
           <div
             ref={viewportRef}
-            className="relative min-h-0 touch-manipulation overflow-y-auto overscroll-y-contain"
+            className="relative min-h-0 touch-none overflow-y-auto overscroll-y-contain"
             style={{ height: "min(70vh, 32rem)" }}
           >
             <div className="flex min-w-[40rem]">
@@ -725,7 +853,7 @@ export function WeekCalendar({
                             key={b.key}
                             type="button"
                             className={cn(
-                              "touch-manipulation absolute left-0.5 right-0.5 overflow-hidden rounded-md border border-border bg-card py-1.5 pr-1 pl-2 text-left shadow-sm active:scale-[0.99]",
+                              "touch-none absolute left-0.5 right-0.5 overflow-hidden rounded-md border border-border bg-card py-1.5 pr-1 pl-2 text-left shadow-sm active:scale-[0.99]",
                               "flex flex-col gap-0.5 border-l-[4px]",
                               dimSource && "opacity-35",
                             )}
