@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  linkedFetchAnchorCrns,
   mapSectionRowToGraph,
   parseLinkedData,
   pickLinkedAnchorCrn,
@@ -79,5 +80,66 @@ describe("linkedData OR/AND semantics (fixture 08)", () => {
       },
     ];
     expect(pickLinkedAnchorCrn(rows)).toBe("10224");
+  });
+
+  it("linkedFetchAnchorCrns returns all lecture CRNs sorted", () => {
+    const rows: BannerSectionRow[] = [
+      {
+        courseReferenceNumber: "10225",
+        scheduleTypeDescription: "Lecture",
+        subject: "PHYS",
+        courseNumber: "1110",
+      },
+      {
+        courseReferenceNumber: "20000",
+        scheduleTypeDescription: "Lab",
+        subject: "PHYS",
+        courseNumber: "1110",
+      },
+      {
+        courseReferenceNumber: "10224",
+        scheduleTypeDescription: "Lecture",
+        subject: "PHYS",
+        courseNumber: "1110",
+      },
+    ];
+    expect(linkedFetchAnchorCrns(rows)).toEqual(["10224", "10225"]);
+  });
+
+  it("linkedFetchAnchorCrns single lecture returns one CRN", () => {
+    const rows: BannerSectionRow[] = [
+      {
+        courseReferenceNumber: "20000",
+        scheduleTypeDescription: "Lab",
+        subject: "PHYS",
+        courseNumber: "1110",
+      },
+      {
+        courseReferenceNumber: "10224",
+        scheduleTypeDescription: "Lecture",
+        subject: "PHYS",
+        courseNumber: "1110",
+      },
+    ];
+    expect(linkedFetchAnchorCrns(rows)).toEqual(["10224"]);
+  });
+
+  it("linkedFetchAnchorCrns lab-only group falls back to pickLinkedAnchorCrn", () => {
+    const rows: BannerSectionRow[] = [
+      {
+        courseReferenceNumber: "30000",
+        scheduleTypeDescription: "Lab",
+        subject: "CHEM",
+        courseNumber: "1000",
+      },
+      {
+        courseReferenceNumber: "20000",
+        scheduleTypeDescription: "Discussion",
+        subject: "CHEM",
+        courseNumber: "1000",
+      },
+    ];
+    expect(linkedFetchAnchorCrns(rows)).toEqual(["20000"]);
+    expect(pickLinkedAnchorCrn(rows)).toBe("20000");
   });
 });

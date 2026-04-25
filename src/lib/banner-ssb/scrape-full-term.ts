@@ -7,9 +7,9 @@ import { replaceTermData } from "./ingest-term";
 import type { Database } from "@/db/index";
 import {
   courseKey,
+  linkedFetchAnchorCrns,
   mapSectionRowToGraph,
   parseLinkedData,
-  pickLinkedAnchorCrn,
   type ParsedLinkedBundle,
 } from "./mappers";
 import type { BannerSectionRow } from "./types";
@@ -102,8 +102,6 @@ export async function scrapeFullTermToDatabase(
 
     const seenCourseFetch = new Set<string>();
     for (const groupRows of courseGroups.values()) {
-      const anchor = pickLinkedAnchorCrn(groupRows);
-      if (!anchor) continue;
       const sub0 = groupRows[0]?.subject;
       const num0 = groupRows[0]?.courseNumber;
       if (typeof sub0 !== "string" || typeof num0 !== "string") continue;
@@ -111,16 +109,19 @@ export async function scrapeFullTermToDatabase(
       if (seenCourseFetch.has(dedupeKey)) continue;
       seenCourseFetch.add(dedupeKey);
 
-      const payload = await client.fetchLinkedSections(termCode, anchor);
-      const bundles = parseLinkedData(anchor, payload);
-      linkedParsed.push(...bundles);
+      const anchors = linkedFetchAnchorCrns(groupRows);
+      for (const anchor of anchors) {
+        const payload = await client.fetchLinkedSections(termCode, anchor);
+        const bundles = parseLinkedData(anchor, payload);
+        linkedParsed.push(...bundles);
 
-      for (const bundle of payload.linkedData ?? []) {
-        if (!Array.isArray(bundle)) continue;
-        for (const member of bundle) {
-          const c = member.courseReferenceNumber;
-          if (typeof c === "string" && c && !byCrn.has(c)) {
-            byCrn.set(c, member as BannerSectionRow);
+        for (const bundle of payload.linkedData ?? []) {
+          if (!Array.isArray(bundle)) continue;
+          for (const member of bundle) {
+            const c = member.courseReferenceNumber;
+            if (typeof c === "string" && c && !byCrn.has(c)) {
+              byCrn.set(c, member as BannerSectionRow);
+            }
           }
         }
       }

@@ -179,6 +179,11 @@ export function courseKey(subject: string, courseNumber: string): string {
   return `${subject}\0${courseNumber}`;
 }
 
+function isLectureLikeScheduleRow(r: BannerSectionRow): boolean {
+  const d = str(r.scheduleTypeDescription)?.toLowerCase() ?? "";
+  return d.includes("lecture") || d === "lec" || d.includes("lec ");
+}
+
 /** Prefer lecture-like row as anchor for `fetchLinkedSections`; else lexicographically smallest CRN. */
 export function pickLinkedAnchorCrn(rows: BannerSectionRow[]): string | null {
   const withCrn = rows
@@ -186,14 +191,29 @@ export function pickLinkedAnchorCrn(rows: BannerSectionRow[]): string | null {
     .filter((c): c is string => Boolean(c));
   if (withCrn.length === 0) return null;
 
-  const lectureish = rows.find((r) => {
-    const d = str(r.scheduleTypeDescription)?.toLowerCase() ?? "";
-    return d.includes("lecture") || d === "lec" || d.includes("lec ");
-  });
+  const lectureish = rows.find((r) => isLectureLikeScheduleRow(r));
   const anchorFromLecture = str(lectureish?.courseReferenceNumber);
   if (anchorFromLecture) return anchorFromLecture;
 
   return [...withCrn].sort()[0] ?? null;
+}
+
+/**
+ * Every CRN that should receive its own `fetchLinkedSections` call for this course group.
+ * Banner returns linked options keyed by the lecture (or primary) anchor the student picks.
+ */
+export function linkedFetchAnchorCrns(rows: BannerSectionRow[]): string[] {
+  const lectureCrns = new Set<string>();
+  for (const r of rows) {
+    if (!isLectureLikeScheduleRow(r)) continue;
+    const c = str(r.courseReferenceNumber);
+    if (c) lectureCrns.add(c);
+  }
+  if (lectureCrns.size > 0) {
+    return [...lectureCrns].sort();
+  }
+  const single = pickLinkedAnchorCrn(rows);
+  return single ? [single] : [];
 }
 
 export type ParsedLinkedBundle = {

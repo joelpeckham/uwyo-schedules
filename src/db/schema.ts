@@ -10,6 +10,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
 } from "drizzle-orm/pg-core";
 
 /** Banner term code, e.g. 202710 */
@@ -204,5 +205,44 @@ export const linkedBundleMembers = pgTable(
   (t) => [
     uniqueIndex("linked_bundle_members_unique").on(t.bundleId, t.position),
     uniqueIndex("linked_bundle_members_crn_unique").on(t.bundleId, t.crn),
+  ],
+);
+
+/** Anonymous browser planner session (HTTP-only cookie). */
+export const plannerSessions = pgTable("planner_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * One row per course on the user's list for a term.
+ * `selection_kind` + `anchor_crn` + optional `linked_bundle_id` resolve which CRNs appear on the calendar.
+ */
+export const plannerItems = pgTable(
+  "planner_items",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => plannerSessions.id, { onDelete: "cascade" }),
+    termCode: text("term_code")
+      .notNull()
+      .references(() => terms.code, { onDelete: "cascade" }),
+    subject: text("subject").notNull(),
+    courseNumber: text("course_number").notNull(),
+    displayColor: text("display_color").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    /** `single_crn` | `linked_bundle` */
+    selectionKind: text("selection_kind").notNull(),
+    anchorCrn: text("anchor_crn").notNull(),
+    linkedBundleId: integer("linked_bundle_id").references(
+      () => linkedBundles.id,
+      { onDelete: "set null" },
+    ),
+  },
+  (t) => [
+    index("planner_items_session_term_idx").on(t.sessionId, t.termCode),
   ],
 );
