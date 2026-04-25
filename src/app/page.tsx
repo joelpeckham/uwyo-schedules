@@ -27,10 +27,10 @@ export default async function Page({
     termFromQuery ?? latest ?? (terms.length > 0 ? terms[0]!.code : "");
 
   const sessionId = await readPlannerSessionIdFromCookies();
-  const { plannerItems, catalog } =
+  const { plannerItems, catalog, termUiState } =
     sessionId && termCode
       ? await loadPlannerCatalogBootstrap(db, sessionId, termCode)
-      : { plannerItems: [], catalog: emptyCatalog };
+      : { plannerItems: [], catalog: emptyCatalog, termUiState: null };
 
   return (
     <HomePlanner
@@ -38,6 +38,7 @@ export default async function Page({
       termCode={termCode}
       plannerItems={plannerItems}
       catalog={catalog}
+      termUiState={termUiState}
       hasSessionCookie={!!sessionId}
     />
   );

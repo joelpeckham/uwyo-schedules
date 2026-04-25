@@ -1,14 +1,14 @@
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { asc, eq, inArray } from "drizzle-orm";
+import type { PlannerItemSelection } from "./resolve-display-crns-shared";
 
-export type SelectionKind = "single_crn" | "linked_bundle";
-
-export type PlannerItemSelection = {
-  selectionKind: SelectionKind;
-  anchorCrn: string;
-  linkedBundleId: number | null;
-};
+export type {
+  PlannerItemSelection,
+  ResolvedPlannerSelection,
+  SelectionKind,
+} from "./resolve-display-crns-shared";
+export { resolveDisplayCrnsSync, resolveDisplayCrnsWithMemberMap } from "./resolve-display-crns-shared";
 
 /**
  * CRNs whose meetings should appear on the calendar for one planner row.
@@ -17,6 +17,9 @@ export async function resolveDisplayCrns(
   db: Database,
   item: PlannerItemSelection,
 ): Promise<string[]> {
+  if (item.selectionKind === "unresolved" || item.anchorCrn == null) {
+    return [];
+  }
   if (item.selectionKind === "single_crn") {
     return [item.anchorCrn];
   }
@@ -31,17 +34,6 @@ export async function resolveDisplayCrns(
   const memberCrns = members.map((m) => m.crn);
   const set = new Set<string>([item.anchorCrn, ...memberCrns]);
   return [...set];
-}
-
-/** Pure helper for tests: same logic without DB. */
-export function resolveDisplayCrnsSync(
-  item: PlannerItemSelection,
-  memberCrnsOrdered: string[],
-): string[] {
-  if (item.selectionKind === "single_crn" || item.linkedBundleId == null) {
-    return [item.anchorCrn];
-  }
-  return [...new Set([item.anchorCrn, ...memberCrnsOrdered])];
 }
 
 /** One query for all linked-bundle member lists (ordered by position). */
@@ -69,15 +61,4 @@ export async function loadOrderedMembersForBundleIds(
     out.set(r.bundleId, list);
   }
   return out;
-}
-
-export function resolveDisplayCrnsWithMemberMap(
-  item: PlannerItemSelection,
-  membersByBundleId: Map<number, string[]>,
-): string[] {
-  if (item.selectionKind === "single_crn" || item.linkedBundleId == null) {
-    return [item.anchorCrn];
-  }
-  const members = membersByBundleId.get(item.linkedBundleId) ?? [];
-  return resolveDisplayCrnsSync(item, members);
 }

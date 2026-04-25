@@ -2,15 +2,20 @@
 
 import {
   loadPlannerCatalogBootstrapAction,
+  solveSchedulesAction,
   syncPlannerStateAction,
+  updatePlannerTermUiStateAction,
 } from "@/app/planner/actions";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
+import { buildCalendarBlocksFromCatalog } from "@/lib/planner/client/derive";
+import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
+import type { ResolvedPlannerSelection } from "@/lib/planner/resolve-display-crns-shared";
 import {
-  buildCalendarBlocksFromCatalog,
-  buildSwapGhostsPrefetchMapFromCatalog,
-  resolvePlannerSwapClient,
-} from "@/lib/planner/client/derive";
-import type { CalendarBlock, PlannerItemRow, SwapGhostMeeting } from "@/lib/planner/data";
+  everyPlannerItemHasSolvePack,
+  solveSchedulesFromPacks,
+  type CourseSolvePack,
+  type ScheduleSolution,
+} from "@/lib/planner/solve-schedules-core";
 import {
   createContext,
   useCallback,
@@ -22,32 +27,53 @@ import {
 } from "react";
 
 const PERSIST_DEBOUNCE_MS = 2500;
+const UI_STATE_DEBOUNCE_MS = 800;
+
+function applySolutionToPlannerItems(
+  items: PlannerItemRow[],
+  solution: ScheduleSolution | null,
+): PlannerItemRow[] {
+  if (!solution) return items;
+  return items.map((row) => {
+    const sel: ResolvedPlannerSelection | undefined =
+      solution.selections[row.id];
+    if (!sel) return row;
+    return {
+      ...row,
+      selectionKind: sel.selectionKind,
+      anchorCrn: sel.anchorCrn,
+      linkedBundleId: sel.linkedBundleId,
+    };
+  });
+}
 
 type PlannerContextValue = {
   termCode: string;
   plannerItems: PlannerItemRow[];
   catalog: PlannerCatalogJson;
+  /** Calendar reflects the current paged solution preview (merged in memory). */
+  effectivePlannerItems: PlannerItemRow[];
   calendarBlocks: CalendarBlock[];
-  swapGhostsPrefetch: Record<string, SwapGhostMeeting[]>;
   syncError: string | null;
   clearSyncError: () => void;
-  /** Replace planner + catalog (e.g. after add course or full bootstrap). */
-  replacePlannerAndCatalog: (
-    items: PlannerItemRow[],
-    catalog: PlannerCatalogJson,
-  ) => void;
-  /** Refresh catalog from server; optionally replace items with server order. */
   refreshCatalogFromServer: () => Promise<boolean>;
   setPlannerItems: (items: PlannerItemRow[]) => void;
   removePlannerItem: (id: number) => void;
   updatePlannerItem: (id: number, patch: Partial<PlannerItemRow>) => void;
-  applyCalendarSwap: (input: {
-    plannerItemId: number;
-    targetCrn: string;
-    sourceSectionCrn: string;
-    sourceMeetingId: number;
-  }) => { ok: true } | { ok: false; error: string };
   schedulePersist: () => void;
+  solutions: ScheduleSolution[];
+  solutionsCapped: boolean;
+  solutionsTimedOut: boolean;
+  solutionIndex: number;
+  setSolutionIndex: (n: number) => void;
+  favoriteSolutionIndex: number | null;
+  setFavoriteSolutionIndex: (n: number | null) => void;
+  requireOpenSections: boolean;
+  setRequireOpenSections: (v: boolean) => void;
+  recalculateSolutions: (requireOpenOverride?: boolean) => Promise<void>;
+  /** Prefetched per-course solve payloads (client-side DFS when complete). */
+  solvePacks: Record<string, CourseSolvePack>;
+  mergeSolvePack: (pack: CourseSolvePack) => void;
 };
 
 const PlannerContext = createContext<PlannerContextValue | null>(null);
@@ -56,6 +82,10 @@ type ProviderProps = {
   termCode: string;
   initialPlannerItems: PlannerItemRow[];
   initialCatalog: PlannerCatalogJson;
+  initialTermUiState: {
+    lastSolutionIndex: number;
+    favoriteSolutionIndex: number | null;
+  } | null;
   children: React.ReactNode;
 };
 
@@ -63,6 +93,7 @@ export function PlannerProvider({
   termCode,
   initialPlannerItems,
   initialCatalog,
+  initialTermUiState,
   children,
 }: ProviderProps) {
   const [plannerItems, setPlannerItems] =
@@ -70,10 +101,51 @@ export function PlannerProvider({
   const [catalog, setCatalog] = useState<PlannerCatalogJson>(initialCatalog);
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  const [solutions, setSolutions] = useState<ScheduleSolution[]>([]);
+  const [solutionsCapped, setSolutionsCapped] = useState(false);
+  const [solutionsTimedOut, setSolutionsTimedOut] = useState(false);
+  const [solutionIndex, setSolutionIndexState] = useState(() =>
+    Math.max(0, initialTermUiState?.lastSolutionIndex ?? 0),
+  );
+  const [favoriteSolutionIndex, setFavoriteSolutionIndex] = useState<
+    number | null
+  >(initialTermUiState?.favoriteSolutionIndex ?? null);
+  const [requireOpenSections, setRequireOpenSections] = useState(false);
+  const [solvePacks, setSolvePacks] = useState<Record<string, CourseSolvePack>>(
+    {},
+  );
+  const solvePacksRef = useRef(solvePacks);
+  solvePacksRef.current = solvePacks;
+
+  const mergeSolvePack = useCallback((pack: CourseSolvePack) => {
+    solvePacksRef.current = { ...solvePacksRef.current, [pack.courseKey]: pack };
+    setSolvePacks(solvePacksRef.current);
+  }, []);
+
+  const solutionsRef = useRef(solutions);
+  useEffect(() => {
+    solutionsRef.current = solutions;
+  }, [solutions]);
+
+  useEffect(() => {
+    setPlannerItems(initialPlannerItems);
+  }, [initialPlannerItems]);
+
+  useEffect(() => {
+    setCatalog(initialCatalog);
+  }, [initialCatalog]);
+
+  useEffect(() => {
+    solvePacksRef.current = {};
+    setSolvePacks({});
+  }, [termCode]);
+
   const itemsRef = useRef(plannerItems);
   const termRef = useRef(termCode);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistInFlightRef = useRef(false);
+  const uiPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requireOpenRef = useRef(requireOpenSections);
 
   useEffect(() => {
     itemsRef.current = plannerItems;
@@ -81,15 +153,35 @@ export function PlannerProvider({
   useEffect(() => {
     termRef.current = termCode;
   }, [termCode]);
+  useEffect(() => {
+    requireOpenRef.current = requireOpenSections;
+  }, [requireOpenSections]);
+
+  const setSolutionIndex = useCallback((n: number) => {
+    const sols = solutionsRef.current;
+    if (sols.length === 0) {
+      setSolutionIndexState(0);
+      return;
+    }
+    setSolutionIndexState(Math.min(Math.max(0, n), sols.length - 1));
+  }, []);
+
+  useEffect(() => {
+    if (solutions.length === 0) {
+      setSolutionIndexState(0);
+      return;
+    }
+    setSolutionIndexState((prev) => Math.min(prev, solutions.length - 1));
+  }, [solutions.length]);
+
+  const effectivePlannerItems = useMemo(() => {
+    const sol = solutions[solutionIndex] ?? null;
+    return applySolutionToPlannerItems(plannerItems, sol);
+  }, [plannerItems, solutions, solutionIndex]);
 
   const calendarBlocks = useMemo(
-    () => buildCalendarBlocksFromCatalog(plannerItems, catalog),
-    [plannerItems, catalog],
-  );
-
-  const swapGhostsPrefetch = useMemo(
-    () => buildSwapGhostsPrefetchMapFromCatalog(calendarBlocks, catalog),
-    [calendarBlocks, catalog],
+    () => buildCalendarBlocksFromCatalog(effectivePlannerItems, catalog),
+    [effectivePlannerItems, catalog],
   );
 
   const flushPersist = useCallback(async () => {
@@ -140,14 +232,23 @@ export function PlannerProvider({
     return () => window.removeEventListener("pagehide", onLeave);
   }, [flushPersist]);
 
-  const replacePlannerAndCatalog = useCallback(
-    (items: PlannerItemRow[], nextCatalog: PlannerCatalogJson) => {
-      setPlannerItems(items);
-      setCatalog(nextCatalog);
-      schedulePersist();
-    },
-    [schedulePersist],
-  );
+  useEffect(() => {
+    if (uiPersistTimerRef.current) clearTimeout(uiPersistTimerRef.current);
+    uiPersistTimerRef.current = setTimeout(() => {
+      uiPersistTimerRef.current = null;
+      void updatePlannerTermUiStateAction({
+        termCode: termRef.current,
+        lastSolutionIndex: solutionIndex,
+        favoriteSolutionIndex: favoriteSolutionIndex,
+      });
+    }, UI_STATE_DEBOUNCE_MS);
+    return () => {
+      if (uiPersistTimerRef.current) {
+        clearTimeout(uiPersistTimerRef.current);
+        uiPersistTimerRef.current = null;
+      }
+    };
+  }, [solutionIndex, favoriteSolutionIndex, termCode]);
 
   const refreshCatalogFromServer = useCallback(async (): Promise<boolean> => {
     const res = await loadPlannerCatalogBootstrapAction(termCode);
@@ -157,16 +258,33 @@ export function PlannerProvider({
     }
     setPlannerItems(res.plannerItems);
     setCatalog(res.catalog);
+    setSolutions([]);
+    setSolutionIndexState(
+      Math.max(0, res.termUiState?.lastSolutionIndex ?? 0),
+    );
+    setFavoriteSolutionIndex(res.termUiState?.favoriteSolutionIndex ?? null);
     setSyncError(null);
     return true;
   }, [termCode]);
 
   const removePlannerItem = useCallback(
     (id: number) => {
-      setPlannerItems((prev) => prev.filter((r) => r.id !== id));
-      schedulePersist();
+      setPlannerItems((prev) => {
+        const next = prev.filter((r) => r.id !== id);
+        itemsRef.current = next;
+        if (persistTimerRef.current) {
+          clearTimeout(persistTimerRef.current);
+          persistTimerRef.current = null;
+        }
+        void (async () => {
+          const res = await syncPlannerStateAction(termRef.current, next);
+          if (!res.ok) setSyncError(res.error);
+          else setSyncError(null);
+        })();
+        return next;
+      });
     },
-    [schedulePersist],
+    [],
   );
 
   const updatePlannerItem = useCallback(
@@ -179,54 +297,63 @@ export function PlannerProvider({
     [schedulePersist],
   );
 
-  const catalogRef = useRef(catalog);
-  useEffect(() => {
-    catalogRef.current = catalog;
-  }, [catalog]);
+  const recalculateSolutions = useCallback(async (requireOpenOverride?: boolean) => {
+    const requireOpen =
+      requireOpenOverride !== undefined
+        ? requireOpenOverride
+        : requireOpenRef.current;
+    const rows = itemsRef.current;
+    const packs = solvePacksRef.current;
 
-  const applyCalendarSwap = useCallback(
-    (input: {
-      plannerItemId: number;
-      targetCrn: string;
-      sourceSectionCrn: string;
-      sourceMeetingId: number;
-    }): { ok: true } | { ok: false; error: string } => {
-      const item = itemsRef.current.find((i) => i.id === input.plannerItemId);
-      if (!item) return { ok: false, error: "Item not found." };
-      const resolved = resolvePlannerSwapClient(
-        item,
-        input,
-        catalogRef.current,
-      );
-      if (!resolved.ok) return resolved;
-      setPlannerItems((prev) =>
-        prev.map((r) =>
-          r.id === input.plannerItemId
-            ? {
-                ...r,
-                selectionKind: resolved.selectionKind,
-                anchorCrn: resolved.anchorCrn,
-                linkedBundleId: resolved.linkedBundleId,
-              }
-            : r,
-        ),
-      );
-      schedulePersist();
-      return { ok: true };
-    },
-    [schedulePersist],
-  );
+    if (rows.length === 0) {
+      setSyncError(null);
+      setSolutions([]);
+      setSolutionsCapped(false);
+      setSolutionsTimedOut(false);
+      setSolutionIndexState(0);
+      return;
+    }
+
+    if (everyPlannerItemHasSolvePack(rows, packs)) {
+      const result = solveSchedulesFromPacks(rows, packs, {
+        requireOpenSections: requireOpen,
+      });
+      setSyncError(null);
+      setSolutions(result.solutions);
+      setSolutionsCapped(result.capped);
+      setSolutionsTimedOut(result.timedOut);
+      setSolutionIndexState((prev) => {
+        if (result.solutions.length === 0) return 0;
+        return Math.min(Math.max(0, prev), result.solutions.length - 1);
+      });
+      return;
+    }
+
+    const res = await solveSchedulesAction(termRef.current, requireOpen);
+    if (!res.ok) {
+      setSyncError(res.error);
+      return;
+    }
+    setSyncError(null);
+    const sols = res.result.solutions;
+    setSolutions(sols);
+    setSolutionsCapped(res.result.capped);
+    setSolutionsTimedOut(res.result.timedOut);
+    setSolutionIndexState((prev) => {
+      if (sols.length === 0) return 0;
+      return Math.min(Math.max(0, prev), sols.length - 1);
+    });
+  }, []);
 
   const value = useMemo<PlannerContextValue>(
     () => ({
       termCode,
       plannerItems,
       catalog,
+      effectivePlannerItems,
       calendarBlocks,
-      swapGhostsPrefetch,
       syncError,
       clearSyncError: () => setSyncError(null),
-      replacePlannerAndCatalog,
       refreshCatalogFromServer,
       setPlannerItems: (items) => {
         setPlannerItems(items);
@@ -234,22 +361,41 @@ export function PlannerProvider({
       },
       removePlannerItem,
       updatePlannerItem,
-      applyCalendarSwap,
       schedulePersist,
+      solutions,
+      solutionsCapped,
+      solutionsTimedOut,
+      solutionIndex,
+      setSolutionIndex,
+      favoriteSolutionIndex,
+      setFavoriteSolutionIndex,
+      requireOpenSections,
+      setRequireOpenSections,
+      recalculateSolutions,
+      solvePacks,
+      mergeSolvePack,
     }),
     [
       termCode,
       plannerItems,
       catalog,
+      effectivePlannerItems,
       calendarBlocks,
-      swapGhostsPrefetch,
       syncError,
-      replacePlannerAndCatalog,
       refreshCatalogFromServer,
       removePlannerItem,
       updatePlannerItem,
-      applyCalendarSwap,
       schedulePersist,
+      solutions,
+      solutionsCapped,
+      solutionsTimedOut,
+      solutionIndex,
+      setSolutionIndex,
+      favoriteSolutionIndex,
+      requireOpenSections,
+      recalculateSolutions,
+      solvePacks,
+      mergeSolvePack,
     ],
   );
 

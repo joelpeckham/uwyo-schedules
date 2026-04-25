@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { CourseManager } from "./CourseManager";
 import { PlannerProvider } from "./PlannerContext";
+import { SchedulePager } from "./SchedulePager";
 import { SectionJsonModal } from "./SectionJsonModal";
 import { WeekCalendar } from "./WeekCalendar";
 
@@ -25,6 +26,10 @@ type Props = {
   termCode: string;
   plannerItems: PlannerItemRow[];
   catalog: PlannerCatalogJson;
+  termUiState: {
+    lastSolutionIndex: number;
+    favoriteSolutionIndex: number | null;
+  } | null;
   hasSessionCookie: boolean;
 };
 
@@ -33,6 +38,7 @@ export function HomePlanner({
   termCode,
   plannerItems,
   catalog,
+  termUiState,
   hasSessionCookie,
 }: Props) {
   const router = useRouter();
@@ -102,8 +108,8 @@ export function HomePlanner({
             Your week
           </h1>
           <p className="mt-2 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Add courses, pick sections or linked combinations, and tap a block
-            to see structured section details from Banner.
+            Add courses, set optional instructor preferences, and page through
+            valid weekly schedules. Tap a block for Banner section details.
           </p>
         </div>
 
@@ -118,8 +124,10 @@ export function HomePlanner({
             termCode={termCode}
             initialPlannerItems={plannerItems}
             initialCatalog={catalog}
+            initialTermUiState={termUiState}
           >
             <CourseManager key={termCode} termCode={termCode} />
+            <SchedulePager />
             <WeekCalendar onBlockActivate={onBlockActivate} />
             <SectionJsonModal
               open={modalOpen}

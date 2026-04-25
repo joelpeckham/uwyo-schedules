@@ -1,219 +1,176 @@
 "use client";
 
 import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
-import {
-  addPlannerItemAction,
-  listLinkedBundleOptionsAction,
-  listSectionsForCourseAction,
+  addPlannerCourseWishAction,
+  prefetchCourseSolvePackAction,
+  reorderPlannerItemAction,
   searchCoursesAction,
+  updatePlannerItemColorAction,
 } from "@/app/planner/actions";
+import type { CourseSearchRow } from "@/lib/planner/data";
+import type { PlannerItemRow } from "@/lib/planner/data";
+import {
+  parseInstructorPrefs,
+  serializeInstructorPrefs,
+  type InstructorPrefsV1,
+} from "@/lib/planner/instructor-prefs";
+import { courseSolvePackCourseKey } from "@/lib/planner/solve-schedules-core";
+import { normalizeScheduleTypeKey } from "@/lib/planner/swap-helpers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  COLOR_PRESETS,
-  DEFAULT_DISPLAY_COLOR,
-} from "@/lib/planner/constants";
-import type {
-  CourseSearchRow,
-  LinkedBundleOption,
-  PlannerItemRow,
-} from "@/lib/planner/data";
-import type { SelectionKind } from "@/lib/planner/resolve-display-crns";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { usePlanner } from "./PlannerContext";
 
-type SectionRow = Awaited<
-  ReturnType<typeof listSectionsForCourseAction>
->[number];
+const COLOR_OPTIONS = [
+  "#8B4513",
+  "#2F4F4F",
+  "#556B2F",
+  "#4A3728",
+  "#5C4033",
+  "#355E3B",
+  "#654321",
+  "#3D4F3D",
+] as const;
 
-type CourseRow = CourseSearchRow;
+type Props = { termCode: string };
 
-type Props = {
-  termCode: string;
-};
+type AdvancedRow = { id: string; scheduleTypeLabel: string; names: string };
 
-function reorderPlannerItemsLocal(
-  items: PlannerItemRow[],
+function advancedRowsFromPrefs(
   itemId: number,
-  direction: "up" | "down",
-): PlannerItemRow[] {
-  const sorted = [...items].sort(
-    (a, b) => a.sortOrder - b.sortOrder || a.id - b.id,
-  );
-  const idx = sorted.findIndex((i) => i.id === itemId);
-  const j = direction === "up" ? idx - 1 : idx + 1;
-  if (idx < 0 || j < 0 || j >= sorted.length) return items;
-  const copy = [...sorted];
-  const tmp = copy[idx]!;
-  copy[idx] = copy[j]!;
-  copy[j] = tmp;
-  return copy.map((row, i) => ({ ...row, sortOrder: i }));
+  p: InstructorPrefsV1,
+): AdvancedRow[] {
+  if (!p.byScheduleType) return [];
+  return Object.entries(p.byScheduleType).map(([key, names]) => ({
+    id: `${itemId}-${key}`,
+    scheduleTypeLabel: key,
+    names: names.join(", "),
+  }));
 }
 
-const SEARCH_DEBOUNCE_MS = 300;
-const BLUR_CLOSE_MS = 200;
+function prefsFromRows(
+  primary: string[],
+  advancedRows: AdvancedRow[],
+): InstructorPrefsV1 {
+  const byScheduleType: Record<string, string[]> = {};
+  for (const row of advancedRows) {
+    const key = normalizeScheduleTypeKey(row.scheduleTypeLabel);
+    if (!key) continue;
+    const parts = row.names
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length) byScheduleType[key] = parts;
+  }
+  return serializeInstructorPrefs({
+    v: 1,
+    primary,
+    byScheduleType:
+      Object.keys(byScheduleType).length > 0 ? byScheduleType : undefined,
+  });
+}
 
 export function CourseManager({ termCode }: Props) {
   const {
     plannerItems,
-    setPlannerItems,
+    refreshCatalogFromServer,
     removePlannerItem,
     updatePlannerItem,
-    refreshCatalogFromServer,
+    recalculateSolutions,
     syncError,
     clearSyncError,
+    solvePacks,
+    mergeSolvePack,
   } = usePlanner();
+
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-
-  const listId = useId();
-  const inputId = useId();
-  const blurCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const [searchQ, setSearchQ] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
-  const [hits, setHits] = useState<CourseRow[]>([]);
-  const [listOpen, setListOpen] = useState(false);
-  const [highlight, setHighlight] = useState(-1);
+  const [hits, setHits] = useState<CourseSearchRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<CourseSearchRow | null>(null);
+  const [prefetchPackPending, setPrefetchPackPending] = useState(false);
+  const [prefetchPackError, setPrefetchPackError] = useState<string | null>(null);
+  const [color, setColor] = useState<string>(COLOR_OPTIONS[0]!);
 
-  const [picked, setPicked] = useState<CourseRow | null>(null);
-  const [sections, setSections] = useState<SectionRow[]>([]);
-  const [anchorCrn, setAnchorCrn] = useState<string | null>(null);
-  const [bundles, setBundles] = useState<LinkedBundleOption[]>([]);
-  const [bundleId, setBundleId] = useState<number | null>(null);
-  const [color, setColor] = useState<string>(DEFAULT_DISPLAY_COLOR);
-  const [hexDraft, setHexDraft] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
+  const [advancedDraft, setAdvancedDraft] = useState<
+    Record<number, AdvancedRow[]>
+  >({});
 
-  const [editItem, setEditItem] = useState<PlannerItemRow | null>(null);
-  const [editSections, setEditSections] = useState<SectionRow[]>([]);
-  const [editAnchor, setEditAnchor] = useState<string | null>(null);
-  const [editBundles, setEditBundles] = useState<LinkedBundleOption[]>([]);
-  const [editBundleId, setEditBundleId] = useState<number | null>(null);
-
-  const resetAddFlow = useCallback(() => {
-    setPicked(null);
-    setSections([]);
-    setAnchorCrn(null);
-    setBundles([]);
-    setBundleId(null);
-    setColor(DEFAULT_DISPLAY_COLOR);
-    setHexDraft("");
-    setError(null);
-    setListOpen(false);
-    setHighlight(-1);
-  }, []);
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setDebouncedQ(searchQ.trim());
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [searchQ]);
-
-  useEffect(() => {
-    if (termCode.length === 0 || debouncedQ.length < 2) {
-      void Promise.resolve().then(() => {
-        setHits([]);
-      });
+  const runSearch = useCallback(() => {
+    const q = searchQ.trim();
+    if (q.length < 2) {
+      setHits([]);
       return;
     }
-    let cancelled = false;
     startTransition(async () => {
-      setError(null);
-      const rows = await searchCoursesAction(termCode, debouncedQ);
-      if (!cancelled) setHits(rows);
+      const rows = await searchCoursesAction(termCode, q);
+      setHits(rows);
     });
+  }, [searchQ, termCode]);
+
+  useEffect(() => {
+    const t = setTimeout(runSearch, 200);
+    return () => clearTimeout(t);
+  }, [runSearch]);
+
+  useEffect(() => {
+    void recalculateSolutions();
+  }, [recalculateSolutions, termCode]);
+
+  useEffect(() => {
+    if (!picked) {
+      setPrefetchPackPending(false);
+      setPrefetchPackError(null);
+      return;
+    }
+    setPrefetchPackPending(true);
+    setPrefetchPackError(null);
+    let cancelled = false;
+    void (async () => {
+      const res = await prefetchCourseSolvePackAction(
+        termCode,
+        picked.subject,
+        picked.courseNumber,
+      );
+      if (cancelled) return;
+      setPrefetchPackPending(false);
+      if (!res.ok) {
+        setPrefetchPackError(res.error);
+        return;
+      }
+      mergeSolvePack(res.pack);
+    })();
     return () => {
       cancelled = true;
     };
-  }, [termCode, debouncedQ, startTransition]);
+  }, [picked, termCode, mergeSolvePack]);
 
-  const pickCourse = useCallback(
-    (row: CourseRow) => {
-      setError(null);
-      setListOpen(false);
-      setHighlight(-1);
-      if (blurCloseRef.current) {
-        clearTimeout(blurCloseRef.current);
-        blurCloseRef.current = null;
-      }
-      setPicked(row);
-      setAnchorCrn(null);
-      setBundles([]);
-      setBundleId(null);
-      startTransition(async () => {
-        const sec = await listSectionsForCourseAction(
-          termCode,
-          row.subject,
-          row.courseNumber,
-        );
-        setSections(sec);
-      });
-    },
-    [termCode],
-  );
-
-  const scheduleCloseList = useCallback(() => {
-    if (blurCloseRef.current) clearTimeout(blurCloseRef.current);
-    blurCloseRef.current = setTimeout(() => {
-      setListOpen(false);
-      blurCloseRef.current = null;
-    }, BLUR_CLOSE_MS);
-  }, []);
-
-  const cancelCloseList = useCallback(() => {
-    if (blurCloseRef.current) {
-      clearTimeout(blurCloseRef.current);
-      blurCloseRef.current = null;
-    }
-  }, []);
-
-  const pickAnchor = useCallback(
-    (crn: string) => {
-      setAnchorCrn(crn);
-      setBundleId(null);
-      setError(null);
-      startTransition(async () => {
-        const b = await listLinkedBundleOptionsAction(termCode, crn);
-        setBundles(b);
-      });
-    },
-    [termCode],
+  const pickedPackKey = picked
+    ? courseSolvePackCourseKey(picked.subject, picked.courseNumber)
+    : "";
+  const hasPackForPicked = Boolean(
+    picked && solvePacks[pickedPackKey],
   );
 
   const submitAdd = useCallback(() => {
-    if (!picked || !anchorCrn) return;
+    if (!picked) return;
     setError(null);
-    const kind: SelectionKind =
-      bundles.length > 0 ? "linked_bundle" : "single_crn";
-    const linkedId = kind === "linked_bundle" ? bundleId : null;
-    if (kind === "linked_bundle" && linkedId == null) {
-      setError("Choose a linked registration option.");
-      return;
-    }
     startTransition(async () => {
-      const res = await addPlannerItemAction({
+      const res = await addPlannerCourseWishAction({
         termCode,
         subject: picked.subject,
         courseNumber: picked.courseNumber,
-        anchorCrn,
-        selectionKind: kind,
-        linkedBundleId: linkedId,
         displayColor: color,
       });
       if (!res.ok) {
@@ -222,563 +179,421 @@ export function CourseManager({ termCode }: Props) {
       }
       const ok = await refreshCatalogFromServer();
       if (!ok) {
-        setError("Added course but could not reload schedule data. Reload the page.");
+        setError("Added course but could not reload data. Reload the page.");
+        return;
       }
-      resetAddFlow();
+      await recalculateSolutions();
+      setPicked(null);
       setHits([]);
       setSearchQ("");
     });
-  }, [
-    picked,
-    anchorCrn,
-    bundles.length,
-    bundleId,
-    termCode,
-    color,
-    resetAddFlow,
-    refreshCatalogFromServer,
-  ]);
+  }, [picked, termCode, color, refreshCatalogFromServer, recalculateSolutions]);
 
-  const openEdit = useCallback(
-    (item: PlannerItemRow) => {
-      setEditItem(item);
-      setEditAnchor(item.anchorCrn);
-      setEditBundleId(item.linkedBundleId);
-      setError(null);
-      startTransition(async () => {
-        const sec = await listSectionsForCourseAction(
-          termCode,
-          item.subject,
-          item.courseNumber,
-        );
-        setEditSections(sec);
-        const b = await listLinkedBundleOptionsAction(
-          termCode,
-          item.anchorCrn,
-        );
-        setEditBundles(b);
-      });
+  const persistPrefs = useCallback(
+    (itemId: number, prefs: InstructorPrefsV1) => {
+      updatePlannerItem(itemId, { instructorPrefs: prefs });
+      void recalculateSolutions();
     },
-    [termCode],
+    [updatePlannerItem, recalculateSolutions],
   );
 
-  const submitEdit = useCallback(() => {
-    if (!editItem || !editAnchor) return;
-    setError(null);
-    const kind: SelectionKind =
-      editBundles.length > 0 ? "linked_bundle" : "single_crn";
-    const linkedId = kind === "linked_bundle" ? editBundleId : null;
-    if (kind === "linked_bundle" && linkedId == null) {
-      setError("Choose a linked registration option.");
-      return;
-    }
-    updatePlannerItem(editItem.id, {
-      anchorCrn: editAnchor,
-      selectionKind: kind,
-      linkedBundleId: linkedId,
-    });
-    setEditItem(null);
-  }, [editItem, editAnchor, editBundles.length, editBundleId, updatePlannerItem]);
-
-  const onEditAnchorChange = useCallback(
-    (crn: string) => {
-      setEditAnchor(crn);
-      setEditBundleId(null);
-      startTransition(async () => {
-        const b = await listLinkedBundleOptionsAction(termCode, crn);
-        setEditBundles(b);
-      });
+  const onPrimaryBlur = useCallback(
+    (item: PlannerItemRow, value: string) => {
+      const primary = value
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const p = parseInstructorPrefs(item.instructorPrefs);
+      const rows =
+        advancedDraft[item.id] ?? advancedRowsFromPrefs(item.id, p);
+      persistPrefs(item.id, prefsFromRows(primary, rows));
     },
-    [termCode],
+    [advancedDraft, persistPrefs],
   );
 
-  const applyHex = useCallback(() => {
-    const v = hexDraft.trim();
-    if (!/^#[0-9A-Fa-f]{6}$/.test(v)) {
-      setError("Enter a color like #a65d3a.");
-      return;
-    }
-    setColor(v);
-    setError(null);
-  }, [hexDraft]);
+  const getAdvancedRows = (item: PlannerItemRow): AdvancedRow[] => {
+    if (advancedDraft[item.id]) return advancedDraft[item.id]!;
+    return advancedRowsFromPrefs(
+      item.id,
+      parseInstructorPrefs(item.instructorPrefs),
+    );
+  };
 
-  const sortedItems = useMemo(
-    () => [...plannerItems].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
-    [plannerItems],
-  );
+  const setAdvancedRowsForItem = (
+    item: PlannerItemRow,
+    rows: AdvancedRow[],
+  ) => {
+    setAdvancedDraft((d) => ({ ...d, [item.id]: rows }));
+  };
 
-  const searchSynced = searchQ.trim() === debouncedQ;
-  const showListSearching =
-    (searchQ.trim().length >= 2 && !searchSynced) ||
-    (searchSynced && pending && hits.length === 0 && debouncedQ.length >= 2);
-
-  const rowHighlight = useMemo(() => {
-    if (!listOpen || hits.length === 0) return -1;
-    const h = highlight < 0 ? 0 : highlight;
-    return Math.min(h, hits.length - 1);
-  }, [listOpen, hits, highlight]);
+  const flushAdvanced = (item: PlannerItemRow) => {
+    const p = parseInstructorPrefs(item.instructorPrefs);
+    const rows = advancedDraft[item.id] ?? getAdvancedRows(item);
+    persistPrefs(item.id, prefsFromRows(p.primary, rows));
+  };
 
   return (
-    <section
-      className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm"
-      aria-labelledby="course-manager-heading"
-    >
-      <h2
-        id="course-manager-heading"
-        className="font-heading text-lg font-medium text-foreground"
-      >
+    <section className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+      <h2 className="font-heading text-lg font-medium text-foreground">
         Your courses
       </h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Type a subject, number, title, CRN, or keyword. Results appear as you
-        type. Pick a section or linked combination, then choose a color for the
-        calendar stripe.
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+        Add each class and optional instructor preferences. We find full schedules
+        that fit together.
       </p>
 
-      {error ? (
-        <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-      {syncError ? (
-        <p className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <span>Could not save planner: {syncError}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="min-h-9"
-            onClick={() => clearSyncError()}
-          >
-            Dismiss
-          </Button>
-        </p>
-      ) : null}
-
-      <div className="mt-4 space-y-3">
-        <Label htmlFor={inputId} className="text-muted-foreground">
-          Search courses
-        </Label>
-        <div className="relative">
-          <Input
-            id={inputId}
-            role="combobox"
-            aria-expanded={listOpen}
-            aria-controls={listId}
-            aria-autocomplete="list"
-            aria-activedescendant={
-              listOpen && rowHighlight >= 0 && hits[rowHighlight]
-                ? `${listId}-opt-${rowHighlight}`
-                : undefined
-            }
-            value={searchQ}
-            onChange={(e) => {
-              const v = e.target.value;
-              setSearchQ(v);
-              if (v.trim().length >= 2) setListOpen(true);
-              else {
-                setListOpen(false);
-                setHighlight(-1);
-              }
-            }}
-            onFocus={() => {
-              cancelCloseList();
-              if (searchQ.trim().length >= 2) setListOpen(true);
-            }}
-            onBlur={scheduleCloseList}
-            placeholder="Subject, number, title, CRN…"
-            className="min-h-11 w-full"
-            autoComplete="off"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setListOpen(false);
-                setHighlight(-1);
-                return;
-              }
-              if (!listOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                if (hits.length > 0) {
-                  e.preventDefault();
-                  setListOpen(true);
-                  setHighlight(e.key === "ArrowDown" ? 0 : hits.length - 1);
-                }
-                return;
-              }
-              if (!listOpen) return;
-              if (e.key === "ArrowDown") {
-                e.preventDefault();
-                setHighlight((h) =>
-                  h < hits.length - 1 ? h + 1 : hits.length - 1,
-                );
-              } else if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setHighlight((h) => (h > 0 ? h - 1 : 0));
-              } else if (e.key === "Enter") {
-                if (rowHighlight >= 0 && hits[rowHighlight]) {
-                  e.preventDefault();
-                  pickCourse(hits[rowHighlight]!);
-                }
-              }
-            }}
-          />
-          {listOpen && searchQ.trim().length >= 2 && termCode.length > 0 ? (
-            <div
-              id={listId}
-              role="listbox"
-              aria-label="Matching courses"
-              className="absolute top-full right-0 left-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+      {(error || syncError) && (
+        <div
+          className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          {error ?? syncError}
+          {syncError ? (
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => clearSyncError()}
             >
-              {showListSearching ? (
-                <p className="px-3 py-3 text-sm text-muted-foreground">
-                  Searching…
-                </p>
-              ) : hits.length === 0 ? (
-                <p className="px-3 py-3 text-sm text-muted-foreground">
-                  No matches. Try another word or CRN.
-                </p>
-              ) : (
-                hits.map((h, i) => (
+              Dismiss
+            </button>
+          ) : null}
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="min-w-0 flex-1">
+          <Label htmlFor="course-search" className="text-muted-foreground">
+            Search courses
+          </Label>
+          <Input
+            id="course-search"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            placeholder="Subject or number"
+            className="mt-1 min-h-11"
+            autoComplete="off"
+          />
+          {hits.length > 0 ? (
+            <ul
+              className="mt-1 max-h-48 overflow-auto rounded-md border border-border bg-background"
+              role="listbox"
+            >
+              {hits.map((h) => (
+                <li key={`${h.subject}-${h.courseNumber}`} role="option">
                   <button
-                    key={`${h.subject}-${h.courseNumber}`}
-                    id={`${listId}-opt-${i}`}
                     type="button"
-                    role="option"
-                    aria-selected={rowHighlight === i}
-                    className={[
-                      "touch-manipulation w-full px-3 py-3 text-left text-sm sm:py-2.5",
-                      rowHighlight === i ? "bg-muted" : "active:bg-muted/80",
-                    ].join(" ")}
-                    onMouseDown={(ev) => {
-                      ev.preventDefault();
-                      pickCourse(h);
-                    }}
+                    className={cn(
+                      "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/60",
+                      picked?.subject === h.subject &&
+                        picked?.courseNumber === h.courseNumber &&
+                        "bg-muted",
+                    )}
+                    onClick={() => setPicked(h)}
                   >
-                    <span className="font-mono font-medium text-foreground">
+                    <span className="font-mono text-foreground">
                       {h.subjectCourse ?? `${h.subject} ${h.courseNumber}`}
                     </span>
                     {h.previewTitle ? (
-                      <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">
-                        {h.previewTitle}
-                      </span>
-                    ) : null}
-                  </button>
-                ))
-              )}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      {picked ? (
-        <div className="mt-6 space-y-3 border-t border-border pt-4">
-          <p className="font-mono text-sm font-medium">
-            Adding {picked.subject} {picked.courseNumber}
-          </p>
-          <p className="text-sm text-muted-foreground">Pick one section row.</p>
-          <ul className="max-h-56 space-y-1 overflow-y-auto rounded-md border border-border p-2">
-            {sections.map((s) => (
-              <li key={s.crn}>
-                <button
-                  type="button"
-                  className={[
-                    "touch-manipulation w-full rounded-md px-3 py-3 text-left text-sm sm:py-2",
-                    anchorCrn === s.crn ? "bg-muted" : "active:bg-muted/80",
-                  ].join(" ")}
-                  onClick={() => pickAnchor(s.crn)}
-                >
-                  <span className="block font-mono text-xs text-foreground">
-                    CRN {s.crn}
-                    {s.scheduleTypeDescription
-                      ? ` · ${s.scheduleTypeDescription}`
-                      : ""}
-                  </span>
-                  {s.courseTitle ? (
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
-                      {s.courseTitle}
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          {anchorCrn && bundles.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">
-                Linked registration options
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Pick one valid combination. Outer options are alternatives.
-              </p>
-              <ul className="space-y-1">
-                {bundles.map((b) => (
-                  <li key={b.id}>
-                    <button
-                      type="button"
-                      className={[
-                        "touch-manipulation w-full rounded-md border border-border px-3 py-3 text-left text-sm sm:py-2",
-                        bundleId === b.id ? "border-primary bg-muted" : "active:bg-muted/60",
-                      ].join(" ")}
-                      onClick={() => setBundleId(b.id)}
-                    >
-                      <span className="font-mono text-xs">Option {b.bundleIndex + 1}</span>
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        {b.summary}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {anchorCrn ? (
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-foreground">Stripe color</p>
-              <div className="flex flex-wrap gap-2">
-                {COLOR_PRESETS.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    title={p.hex}
-                    aria-pressed={color === p.hex}
-                    className="touch-manipulation size-11 rounded-md border-2 border-border shadow-sm active:scale-95 sm:size-9"
-                    style={{
-                      backgroundColor: p.hex,
-                      outlineColor: color === p.hex ? "var(--ring)" : undefined,
-                      outlineWidth: color === p.hex ? 2 : 0,
-                      outlineStyle: "solid",
-                    }}
-                    onClick={() => {
-                      setColor(p.hex);
-                      setError(null);
-                    }}
-                  />
-                ))}
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                <div className="flex-1 space-y-1">
-                  <Label htmlFor="hex-color" className="text-muted-foreground">
-                    Custom hex
-                  </Label>
-                  <Input
-                    id="hex-color"
-                    className="min-h-11 font-mono"
-                    placeholder="#a65d3a"
-                    value={hexDraft}
-                    onChange={(e) => setHexDraft(e.target.value)}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="min-h-11 touch-manipulation"
-                  onClick={applyHex}
-                >
-                  Apply hex
-                </Button>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button
-                  type="button"
-                  className="min-h-11 touch-manipulation"
-                  disabled={
-                    pending ||
-                    (bundles.length > 0 && bundleId == null)
-                  }
-                  onClick={submitAdd}
-                >
-                  Add to planner
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-11 touch-manipulation"
-                  onClick={resetAddFlow}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="mt-8 border-t border-border pt-4">
-        <h3 className="text-sm font-medium text-foreground">On your list</h3>
-        {sortedItems.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">
-            No courses yet. Search and add one above.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {sortedItems.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-col gap-2 rounded-lg border border-border bg-background/60 p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-block size-3 shrink-0 rounded-sm border border-border"
-                      style={{ backgroundColor: item.displayColor }}
-                      aria-hidden
-                    />
-                    <span className="truncate font-mono text-sm font-medium">
-                      {item.subject} {item.courseNumber}
-                    </span>
-                  </div>
-                  <p className="mt-1 font-mono text-xs text-muted-foreground">
-                    CRN {item.anchorCrn}
-                    {item.linkedBundleId != null ? " · linked bundle" : ""}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {COLOR_PRESETS.map((p) => (
-                      <button
-                        key={`${item.id}-${p.id}`}
-                        type="button"
-                        aria-label={`Color ${p.id}`}
-                        aria-pressed={item.displayColor === p.hex}
-                        className="touch-manipulation size-9 rounded border border-border active:scale-95"
-                        style={{ backgroundColor: p.hex }}
-                        onClick={() => {
-                          updatePlannerItem(item.id, { displayColor: p.hex });
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="min-h-10 touch-manipulation"
-                    onClick={() =>
-                      setPlannerItems(
-                        reorderPlannerItemsLocal(plannerItems, item.id, "up"),
-                      )
-                    }
-                  >
-                    Move up
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="min-h-10 touch-manipulation"
-                    onClick={() =>
-                      setPlannerItems(
-                        reorderPlannerItemsLocal(plannerItems, item.id, "down"),
-                      )
-                    }
-                  >
-                    Move down
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="min-h-10 touch-manipulation"
-                    onClick={() => openEdit(item)}
-                  >
-                    Change sections
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    className="min-h-10 touch-manipulation"
-                    onClick={() => removePlannerItem(item.id)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <Dialog open={!!editItem} onOpenChange={(o) => !o && setEditItem(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {editItem
-                ? `Sections · ${editItem.subject} ${editItem.courseNumber}`
-                : ""}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="max-h-[60vh] space-y-3 overflow-y-auto">
-            <p className="text-sm text-muted-foreground">
-              Pick the anchor section, then a linked option if required.
-            </p>
-            <ul className="space-y-1 rounded-md border border-border p-2">
-              {editSections.map((s) => (
-                <li key={s.crn}>
-                  <button
-                    type="button"
-                    className={[
-                      "touch-manipulation w-full rounded-md px-3 py-3 text-left text-sm sm:py-2",
-                      editAnchor === s.crn ? "bg-muted" : "active:bg-muted/80",
-                    ].join(" ")}
-                    onClick={() => onEditAnchorChange(s.crn)}
-                  >
-                    <span className="font-mono text-xs">CRN {s.crn}</span>
-                    {s.scheduleTypeDescription ? (
-                      <span className="ml-1 text-xs text-muted-foreground">
-                        · {s.scheduleTypeDescription}
-                      </span>
+                      <span className="text-muted-foreground">{h.previewTitle}</span>
                     ) : null}
                   </button>
                 </li>
               ))}
             </ul>
-            {editBundles.length > 0 ? (
-              <ul className="space-y-1">
-                {editBundles.map((b) => (
-                  <li key={b.id}>
-                    <button
-                      type="button"
-                      className={[
-                        "touch-manipulation w-full rounded-md border border-border px-3 py-3 text-left text-sm sm:py-2",
-                        editBundleId === b.id
-                          ? "border-primary bg-muted"
-                          : "active:bg-muted/60",
-                      ].join(" ")}
-                      onClick={() => setEditBundleId(b.id)}
-                    >
-                      <span className="font-mono text-xs">
-                        Option {b.bundleIndex + 1}
-                      </span>
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        {b.summary}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="min-h-11 touch-manipulation"
-              onClick={() => setEditItem(null)}
+          ) : null}
+          {picked && prefetchPackPending ? (
+            <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
+              Loading section data for this course…
+            </p>
+          ) : null}
+          {picked && prefetchPackError ? (
+            <p
+              className="mt-1 text-xs text-destructive"
+              role="alert"
+              aria-live="polite"
             >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              className="min-h-11 touch-manipulation"
-              onClick={submitEdit}
-            >
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {prefetchPackError}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-col gap-2 sm:w-44">
+          <Label className="text-muted-foreground">Color</Label>
+          <Select value={color} onValueChange={setColor}>
+            <SelectTrigger className="min-h-11 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {COLOR_OPTIONS.map((c) => (
+                <SelectItem key={c} value={c}>
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="inline-block size-3.5 rounded-sm border border-border"
+                      style={{ backgroundColor: c }}
+                    />
+                    {c}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          type="button"
+          className="min-h-11 touch-manipulation"
+          disabled={
+            !picked ||
+            pending ||
+            prefetchPackPending ||
+            Boolean(prefetchPackError) ||
+            !hasPackForPicked
+          }
+          onClick={submitAdd}
+        >
+          {pending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Plus className="size-4" />
+          )}
+          <span className="ml-2">Add</span>
+        </Button>
+      </div>
+
+      <ul className="mt-6 space-y-3">
+        {plannerItems.map((item, idx) => (
+          <li
+            key={item.id}
+            className="rounded-lg border border-border bg-muted/20 p-3 sm:p-4"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="font-mono text-sm font-medium text-foreground">
+                  {item.subject} {item.courseNumber}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {item.selectionKind === "unresolved"
+                    ? "Sections chosen automatically from valid schedules"
+                    : "Resolved from an earlier version"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={idx === 0 || pending}
+                  onClick={() =>
+                    startTransition(() =>
+                      reorderPlannerItemAction(item.id, "up").then(() =>
+                        refreshCatalogFromServer().then((ok) => {
+                          if (ok) void recalculateSolutions();
+                        }),
+                      ),
+                    )
+                  }
+                >
+                  Up
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={idx >= plannerItems.length - 1 || pending}
+                  onClick={() =>
+                    startTransition(() =>
+                      reorderPlannerItemAction(item.id, "down").then(() =>
+                        refreshCatalogFromServer().then((ok) => {
+                          if (ok) void recalculateSolutions();
+                        }),
+                      ),
+                    )
+                  }
+                >
+                  Down
+                </Button>
+                <Select
+                  value={item.displayColor}
+                  onValueChange={(v) => {
+                    startTransition(async () => {
+                      await updatePlannerItemColorAction(item.id, v);
+                      await refreshCatalogFromServer();
+                      void recalculateSolutions();
+                    });
+                  }}
+                >
+                  <SelectTrigger size="sm" className="w-[7.5rem]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COLOR_OPTIONS.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        <span
+                          className="inline-block size-3 rounded-sm border border-border"
+                          style={{ backgroundColor: c }}
+                        />
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:text-destructive"
+                  disabled={pending}
+                  onClick={() => {
+                    removePlannerItem(item.id);
+                    void recalculateSolutions();
+                  }}
+                  aria-label={`Remove ${item.subject} ${item.courseNumber}`}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <Label
+                htmlFor={`primary-${item.id}`}
+                className="text-muted-foreground"
+              >
+                Preferred instructors (lecture)
+              </Label>
+              <Input
+                id={`primary-${item.id}`}
+                className="mt-1 font-mono text-sm"
+                placeholder="Last name or partial, comma-separated"
+                defaultValue={parseInstructorPrefs(item.instructorPrefs).primary.join(
+                  ", ",
+                )}
+                key={`${item.id}-${JSON.stringify(item.instructorPrefs)}`}
+                onBlur={(e) => onPrimaryBlur(item, e.target.value)}
+              />
+            </div>
+
+            <div className="mt-2">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                onClick={() =>
+                  setAdvancedOpen((o) => ({
+                    ...o,
+                    [item.id]: !o[item.id],
+                  }))
+                }
+              >
+                {advancedOpen[item.id] ? (
+                  <ChevronUp className="size-4" />
+                ) : (
+                  <ChevronDown className="size-4" />
+                )}
+                Advanced (labs, discussions by type)
+              </button>
+              {advancedOpen[item.id] ? (
+                <div className="mt-2 space-y-2 rounded-md border border-border bg-background p-3">
+                  {(advancedDraft[item.id] ?? getAdvancedRows(item)).map(
+                    (row) => (
+                      <div
+                        key={row.id}
+                        className="flex flex-col gap-2 sm:flex-row sm:items-end"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <Label className="text-xs text-muted-foreground">
+                            Schedule type (e.g. Laboratory, Lecture)
+                          </Label>
+                          <Input
+                            className="mt-0.5 font-mono text-sm"
+                            value={row.scheduleTypeLabel}
+                            onChange={(e) => {
+                              const list =
+                                advancedDraft[item.id] ?? getAdvancedRows(item);
+                              setAdvancedRowsForItem(
+                                item,
+                                list.map((r) =>
+                                  r.id === row.id
+                                    ? { ...r, scheduleTypeLabel: e.target.value }
+                                    : r,
+                                ),
+                              );
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-[2]">
+                          <Label className="text-xs text-muted-foreground">
+                            Preferred names (comma-separated)
+                          </Label>
+                          <Input
+                            className="mt-0.5 font-mono text-sm"
+                            value={row.names}
+                            onChange={(e) => {
+                              const list =
+                                advancedDraft[item.id] ?? getAdvancedRows(item);
+                              setAdvancedRowsForItem(
+                                item,
+                                list.map((r) =>
+                                  r.id === row.id
+                                    ? { ...r, names: e.target.value }
+                                    : r,
+                                ),
+                              );
+                            }}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const list = (
+                              advancedDraft[item.id] ?? getAdvancedRows(item)
+                            ).filter((r) => r.id !== row.id);
+                            setAdvancedRowsForItem(item, list);
+                            const p = parseInstructorPrefs(item.instructorPrefs);
+                            persistPrefs(item.id, prefsFromRows(p.primary, list));
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ),
+                  )}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      const list =
+                        advancedDraft[item.id] ?? getAdvancedRows(item);
+                      setAdvancedRowsForItem(item, [
+                        ...list,
+                        {
+                          id: `${item.id}-${Date.now()}`,
+                          scheduleTypeLabel: "",
+                          names: "",
+                        },
+                      ]);
+                    }}
+                  >
+                    Add row
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => flushAdvanced(item)}
+                  >
+                    Apply advanced preferences
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {plannerItems.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          No courses yet. Search and add at least one.
+        </p>
+      ) : null}
     </section>
   );
 }

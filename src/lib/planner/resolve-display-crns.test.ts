@@ -5,6 +5,15 @@ import {
 } from "./resolve-display-crns";
 
 describe("resolveDisplayCrnsSync", () => {
+  it("unresolved returns empty", () => {
+    const item: PlannerItemSelection = {
+      selectionKind: "unresolved",
+      anchorCrn: null,
+      linkedBundleId: null,
+    };
+    expect(resolveDisplayCrnsSync(item, [])).toEqual([]);
+  });
+
   it("single_crn returns anchor only", () => {
     const item: PlannerItemSelection = {
       selectionKind: "single_crn",

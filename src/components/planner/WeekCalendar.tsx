@@ -1,31 +1,14 @@
 "use client";
 
-import { listSameTypeSwapGhostsFromCatalog } from "@/lib/planner/client/derive";
-import {
-  swapPrefetchKey,
-  type CalendarBlock,
-  type SwapGhostMeeting,
-} from "@/lib/planner/data";
+import type { CalendarBlock } from "@/lib/planner/data";
 import {
   CALENDAR_END_HOUR,
   CALENDAR_HOUR_COUNT,
   CALENDAR_START_HOUR,
 } from "@/lib/planner/constants";
 import { cn } from "@/lib/utils";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import {
-  CircleHelp,
-  HandGrab,
-  Move,
-  MousePointerClick,
-  ZoomIn,
-} from "lucide-react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { CircleHelp, Move, MousePointerClick, ZoomIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -56,88 +39,23 @@ const SCHEDULE_HELP: readonly {
     body: `Pinch with two fingers, or use Ctrl+scroll, to show more or less of the day. ${HOUR_RANGE_HELP}`,
   },
   {
-    Icon: HandGrab,
-    label: "Drag a section to swap",
-    body:
-      "Drag a course block to preview other same-type meeting times, then release on a highlighted slot to switch sections.",
-  },
-  {
     Icon: MousePointerClick,
     label: "Open details",
-    body: "Tap or click a block without dragging to read section details from Banner.",
+    body: "Tap a block to read section details from Banner.",
   },
 ] as const;
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
-/** Maximum row height when zoomed in (px). */
 const MAX_HOUR_ROW_PX = 140;
-
-const DRAG_THRESHOLD_PX = 6;
-const SNAP_MAX_DIST_PX = 72;
-/** If inter-finger distance *ratio* is above this, treat as pinch (not two-finger pan). */
 const TWO_FINGER_PINCH_ZOOM_MIN_RATIO = 0.12;
-/**
- * Two-finger *pan* needs finger spread to stay under this ratio; a vertical slide
- * often wiggles spread by 5–15% while pinch-zoom crosses this quickly.
- */
 const TWO_FINGER_PAN_STABLE_MAX_RATIO = 0.2;
-/** Centroid must move this far (px) before two-finger pan (scroll) is chosen. */
 const TWO_FINGER_PAN_CENTROID_MIN_PX = 5;
-/**
- * Dampen pinch: raw inter-finger ratio r → 1 + (r - 1) * PINCH_ZOOM_RESPONSE
- * (small pinches change row height more gently than 1:1 with finger spread).
- */
 const PINCH_ZOOM_RESPONSE = 0.42;
 
 type Props = {
   onBlockActivate: (block: CalendarBlock) => void;
 };
-
-type DragSessionState = {
-  block: CalendarBlock;
-  pointerId: number;
-  clientX: number;
-  clientY: number;
-  grabDx: number;
-  grabDy: number;
-  ghosts: SwapGhostMeeting[];
-  snapped: SwapGhostMeeting | null;
-  swapError: string | null;
-  floatStyle: { left: number; top: number; width: number; height: number };
-};
-
-function buildFloatStyle(
-  strip: HTMLDivElement | null,
-  sess: {
-    snapped: SwapGhostMeeting | null;
-    ghosts: SwapGhostMeeting[];
-    clientX: number;
-    clientY: number;
-    grabDx: number;
-    grabDy: number;
-  },
-  gridHeightPx: number,
-  startMin: number,
-  totalMin: number,
-): { left: number; top: number; width: number; height: number } {
-  if (strip && sess.snapped && sess.ghosts.length > 0) {
-    const r = ghostViewportRect(
-      sess.snapped,
-      strip,
-      gridHeightPx,
-      startMin,
-      totalMin,
-    );
-    if (r && r.width > 0) return r;
-  }
-  return {
-    left: sess.clientX - sess.grabDx,
-    top: sess.clientY - sess.grabDy,
-    width: 120,
-    height: 48,
-  };
-}
 
 function touchDistance(t: TouchList): number {
   const a = t[0];
@@ -155,38 +73,6 @@ function touchCentroidX(t: TouchList): number {
   return (t[0]!.clientX + t[1]!.clientX) / 2;
 }
 
-function distPointToRect(
-  px: number,
-  py: number,
-  r: { left: number; top: number; width: number; height: number },
-): number {
-  const cx = Math.max(r.left, Math.min(px, r.left + r.width));
-  const cy = Math.max(r.top, Math.min(py, r.top + r.height));
-  return Math.hypot(px - cx, py - cy);
-}
-
-function ghostViewportRect(
-  g: SwapGhostMeeting,
-  dayStrip: HTMLDivElement,
-  gridHeightPx: number,
-  startMin: number,
-  totalMin: number,
-): { left: number; top: number; width: number; height: number } | null {
-  const col = dayStrip.children[g.dayIndex] as HTMLElement | undefined;
-  if (!col) return null;
-  const cr = col.getBoundingClientRect();
-  const topPx = ((g.startMinutes - startMin) / totalMin) * gridHeightPx;
-  const rawH = ((g.endMinutes - g.startMinutes) / totalMin) * gridHeightPx;
-  const heightPx = Math.max(8, rawH);
-  return {
-    left: cr.left + 2,
-    top: cr.top + topPx,
-    width: Math.max(0, cr.width - 4),
-    height: heightPx,
-  };
-}
-
-/** Map inter-finger distance ratio to a gentler zoom (see PINCH_ZOOM_RESPONSE). */
 function dampedPinchRowRatio(
   startRowPx: number,
   rawRatio: number,
@@ -197,34 +83,11 @@ function dampedPinchRowRatio(
 }
 
 export function WeekCalendar({ onBlockActivate }: Props) {
-  const { calendarBlocks: blocks, swapGhostsPrefetch, catalog, applyCalendarSwap } =
-    usePlanner();
+  const { calendarBlocks: blocks } = usePlanner();
 
-  const ghostsForBlock = useCallback(
-    (block: CalendarBlock): SwapGhostMeeting[] => {
-      const k = swapPrefetchKey(
-        block.plannerItemId,
-        block.sectionCrn,
-        block.meetingId,
-      );
-      const pre = swapGhostsPrefetch[k];
-      if (pre !== undefined) return pre;
-      if (!block.sectionScheduleTypeKey) return [];
-      return listSameTypeSwapGhostsFromCatalog(catalog, {
-        subject: block.subject,
-        courseNumber: block.courseNumber,
-        excludeSectionCrn: block.sectionCrn,
-        sourceScheduleTypeKey: block.sectionScheduleTypeKey,
-        sourceMeetingScheduleType: block.meetingScheduleType,
-      });
-    },
-    [swapGhostsPrefetch, catalog],
-  );
   const hScrollRef = useRef<HTMLDivElement | null>(null);
-  /** Day labels row: same two-finger handlers as the viewport (not the overflow-x scroller: non-passive touch on that ancestor breaks iOS). */
   const weekHeaderRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const dayStripRef = useRef<HTMLDivElement | null>(null);
   const [viewportH, setViewportH] = useState(0);
   const [hourRowPx, setHourRowPx] = useState<number | null>(null);
 
@@ -238,29 +101,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     mode: "undecided" | "pinch" | "pan";
   } | null>(null);
   const hourRowPxRef = useRef(44);
-
-  const dragGenRef = useRef(0);
-  const dragActiveRef = useRef(false);
-  const dragSessionRef = useRef<DragSessionState | null>(null);
-  const lastPointerRef = useRef({ x: 0, y: 0 });
-  const pointerDownRef = useRef<{
-    block: CalendarBlock;
-    clientX: number;
-    clientY: number;
-    pointerId: number;
-  } | null>(null);
-  const grabOffsetRef = useRef({ dx: 0, dy: 0 });
-  /** `setPointerCapture` target for block; cleared on pointer up / cancellation / 2+ touches. */
-  const capturedBlockElRef = useRef<HTMLElement | null>(null);
-
-  const [dragSession, setDragSession] = useState<DragSessionState | null>(
-    null,
-  );
-  const [postSwapError, setPostSwapError] = useState<string | null>(null);
-
-  useEffect(() => {
-    dragSessionRef.current = dragSession;
-  }, [dragSession]);
 
   const startMin = CALENDAR_START_HOUR * 60;
   const totalMin = CALENDAR_HOUR_COUNT * 60;
@@ -298,15 +138,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     hourRowPxRef.current = hourRowPx ?? Math.max(44, minRowPx);
   }, [hourRowPx, minRowPx]);
 
-  const endDrag = useCallback(() => {
-    dragGenRef.current += 1;
-    dragActiveRef.current = false;
-    dragSessionRef.current = null;
-    pointerDownRef.current = null;
-    capturedBlockElRef.current = null;
-    setDragSession(null);
-  }, []);
-
   useLayoutEffect(() => {
     const vEl = viewportRef.current;
     const headerEl = weekHeaderRef.current;
@@ -333,25 +164,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     };
 
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length >= 2) {
-        const down = pointerDownRef.current;
-        const cap = capturedBlockElRef.current;
-        if (cap && down) {
-          try {
-            cap.releasePointerCapture(down.pointerId);
-          } catch {
-            /* ignore */
-          }
-        }
-        capturedBlockElRef.current = null;
-        if (down) endDrag();
-      }
-      if (dragSessionRef.current) return;
       if (e.touches.length === 2) beginTwoFinger(e);
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (dragSessionRef.current) return;
       if (e.touches.length !== 2) return;
       if (!twoFingerRef.current) beginTwoFinger(e);
 
@@ -370,8 +186,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           cx - sess.startCentroidX,
           cy - sess.startCentroidY,
         );
-        // Use 2D centroid travel so pure horizontal (week strip) and vertical
-        // (time grid) two-finger pan both commit to *pan* instead of pinch.
         const longSlide = dPos > 14 && relDist < 0.38;
         if (
           (dPos > TWO_FINGER_PAN_CENTROID_MIN_PX &&
@@ -405,7 +219,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     };
 
     const onWheel = (e: WheelEvent) => {
-      if (dragSessionRef.current) return;
       if (!e.ctrlKey) return;
       e.preventDefault();
       setHourRowPx((prev) => {
@@ -436,212 +249,17 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       if (headerEl) removeTouch(headerEl);
       vEl.removeEventListener("wheel", onWheel);
     };
-  }, [clampRowPx, endDrag]);
+  }, [clampRowPx]);
 
   const rowPx = hourRowPx ?? Math.max(44, minRowPx);
   const gridHeightPx = hourCount * rowPx;
-
-  const finalizeDragSession = useCallback(
-    (
-      s: Omit<DragSessionState, "floatStyle">,
-    ): DragSessionState => ({
-      ...s,
-      floatStyle: buildFloatStyle(
-        dayStripRef.current,
-        s,
-        gridHeightPx,
-        startMin,
-        totalMin,
-      ),
-    }),
-    [gridHeightPx, startMin, totalMin],
-  );
-
-  const pickSnap = useCallback(
-    (clientX: number, clientY: number, ghosts: SwapGhostMeeting[]) => {
-      const strip = dayStripRef.current;
-      if (!strip || ghosts.length === 0) return null;
-      let best: SwapGhostMeeting | null = null;
-      let bestD = SNAP_MAX_DIST_PX + 1;
-      for (const g of ghosts) {
-        const r = ghostViewportRect(
-          g,
-          strip,
-          gridHeightPx,
-          startMin,
-          totalMin,
-        );
-        if (!r || r.width <= 0) continue;
-        const d = distPointToRect(clientX, clientY, r);
-        if (d < bestD) {
-          bestD = d;
-          best = g;
-        }
-      }
-      return bestD <= SNAP_MAX_DIST_PX ? best : null;
-    },
-    [gridHeightPx, startMin, totalMin],
-  );
-
-  useEffect(() => {
-    if (!dragSession) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") endDrag();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [dragSession, endDrag]);
-
-  const onBlockPointerDown = useCallback(
-    (e: React.PointerEvent, block: CalendarBlock) => {
-      if (e.button !== 0) return;
-      setPostSwapError(null);
-      const el = e.currentTarget as HTMLElement;
-      const br = el.getBoundingClientRect();
-      grabOffsetRef.current = {
-        dx: e.clientX - br.left,
-        dy: e.clientY - br.top,
-      };
-      pointerDownRef.current = {
-        block,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        pointerId: e.pointerId,
-      };
-      el.setPointerCapture(e.pointerId);
-      capturedBlockElRef.current = el;
-    },
-    [],
-  );
-
-  const onBlockPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      const down = pointerDownRef.current;
-      if (!down || e.pointerId !== down.pointerId) return;
-
-      lastPointerRef.current = { x: e.clientX, y: e.clientY };
-
-      const dx = e.clientX - down.clientX;
-      const dy = e.clientY - down.clientY;
-      const dist = Math.hypot(dx, dy);
-
-      if (!dragActiveRef.current && dist >= DRAG_THRESHOLD_PX) {
-        e.preventDefault();
-        dragActiveRef.current = true;
-        const b = down.block;
-        const ghosts = ghostsForBlock(b);
-        const snapped = pickSnap(
-          lastPointerRef.current.x,
-          lastPointerRef.current.y,
-          ghosts,
-        );
-        const next = finalizeDragSession({
-          block: b,
-          pointerId: e.pointerId,
-          clientX: e.clientX,
-          clientY: e.clientY,
-          grabDx: grabOffsetRef.current.dx,
-          grabDy: grabOffsetRef.current.dy,
-          ghosts,
-          snapped,
-          swapError: null,
-        });
-        dragSessionRef.current = next;
-        setDragSession(next);
-        return;
-      }
-
-      if (dragActiveRef.current && e.pointerId === down.pointerId) {
-        e.preventDefault();
-        const sess = dragSessionRef.current;
-        if (!sess) return;
-        const snapped = pickSnap(e.clientX, e.clientY, sess.ghosts);
-        const next = finalizeDragSession({
-          block: sess.block,
-          pointerId: sess.pointerId,
-          clientX: e.clientX,
-          clientY: e.clientY,
-          grabDx: sess.grabDx,
-          grabDy: sess.grabDy,
-          ghosts: sess.ghosts,
-          snapped,
-          swapError: sess.swapError,
-        });
-        dragSessionRef.current = next;
-        setDragSession(next);
-      }
-    },
-    [finalizeDragSession, ghostsForBlock, pickSnap],
-  );
-
-  const onBlockPointerUp = useCallback(
-    (e: React.PointerEvent) => {
-      const down = pointerDownRef.current;
-      if (!down || e.pointerId !== down.pointerId) return;
-
-      const dx = e.clientX - down.clientX;
-      const dy = e.clientY - down.clientY;
-      const dist = Math.hypot(dx, dy);
-
-      try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-
-      const session = dragSessionRef.current;
-      const wasDrag = dragActiveRef.current;
-
-      pointerDownRef.current = null;
-      capturedBlockElRef.current = null;
-
-      if (wasDrag && session && e.pointerId === session.pointerId) {
-        const { snapped, block } = session;
-        if (snapped && snapped.crn !== block.sectionCrn) {
-          endDrag();
-          const res = applyCalendarSwap({
-            plannerItemId: block.plannerItemId,
-            targetCrn: snapped.crn,
-            sourceSectionCrn: block.sectionCrn,
-            sourceMeetingId: block.meetingId,
-          });
-          if (!res.ok) setPostSwapError(res.error);
-          return;
-        }
-        endDrag();
-        return;
-      }
-
-      if (dist < DRAG_THRESHOLD_PX) {
-        onBlockActivate(down.block);
-      }
-    },
-    [endDrag, onBlockActivate, applyCalendarSwap],
-  );
-
-  const onBlockPointerCancel = useCallback(
-    (e: React.PointerEvent) => {
-      if (pointerDownRef.current?.pointerId !== e.pointerId) return;
-      try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-      pointerDownRef.current = null;
-      endDrag();
-    },
-    [endDrag],
-  );
 
   const hours: number[] = [];
   for (let h = CALENDAR_START_HOUR; h <= CALENDAR_END_HOUR; h++) hours.push(h);
 
   return (
     <section
-      className={cn(
-        "overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm",
-        dragSession && "select-none",
-      )}
+      className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm"
       aria-labelledby="planner-week-calendar-heading"
     >
       <div className="border-b border-border p-3 sm:p-4">
@@ -668,8 +286,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               <DialogHeader>
                 <DialogTitle>How to use the weekly schedule</DialogTitle>
                 <DialogDescription>
-                  Gestures and shortcuts for moving, zooming, and editing your
-                  week.
+                  Gestures for moving and zooming your week preview.
                 </DialogDescription>
               </DialogHeader>
               <ul className="list-none space-y-4">
@@ -701,22 +318,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
             </DialogContent>
           </Dialog>
         </div>
-        {dragSession?.swapError ? (
-          <p className="mt-2 text-xs text-destructive" role="alert">
-            {dragSession.swapError}
-          </p>
-        ) : null}
-        {postSwapError ? (
-          <p className="mt-2 text-xs text-destructive" role="alert">
-            {postSwapError}
-          </p>
-        ) : null}
       </div>
 
-      <div
-        ref={hScrollRef}
-        className="overflow-x-auto"
-      >
+      <div ref={hScrollRef} className="overflow-x-auto">
         <div className="flex min-w-[40rem] flex-col">
           <div
             ref={weekHeaderRef}
@@ -751,7 +355,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 ))}
               </div>
 
-              <div className="flex min-w-0 flex-1" ref={dayStripRef}>
+              <div className="flex min-w-0 flex-1">
                 {DAY_LABELS.map((label, dayIndex) => (
                   <div
                     key={label}
@@ -767,39 +371,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                         />
                       ))}
                     </div>
-                    {dragSession
-                      ? dragSession.ghosts
-                          .filter((g) => g.dayIndex === dayIndex)
-                          .map((g) => {
-                            const topPx =
-                              ((g.startMinutes - startMin) / totalMin) *
-                              gridHeightPx;
-                            const rawH =
-                              ((g.endMinutes - g.startMinutes) / totalMin) *
-                              gridHeightPx;
-                            const heightPx = Math.max(8, rawH);
-                            const sn = dragSession.snapped;
-                            const isSnap =
-                              !!sn &&
-                              sn.crn === g.crn &&
-                              sn.meetingId === g.meetingId &&
-                              sn.dayIndex === g.dayIndex &&
-                              sn.startMinutes === g.startMinutes &&
-                              sn.endMinutes === g.endMinutes;
-                            return (
-                              <div
-                                key={`ghost-${g.crn}-${g.meetingId}-${g.dayIndex}-${g.startMinutes}`}
-                                className={cn(
-                                  "pointer-events-none absolute left-0.5 right-0.5 rounded-md border border-dashed border-muted-foreground/50 bg-muted/25",
-                                  isSnap &&
-                                    "border-primary/70 bg-primary/10 ring-1 ring-primary/40",
-                                )}
-                                style={{ top: topPx, height: heightPx }}
-                                aria-hidden
-                              />
-                            );
-                          })
-                      : null}
                     {blocks
                       .filter((b) => b.dayIndex === dayIndex)
                       .map((b) => {
@@ -810,11 +381,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                           ((b.endMinutes - b.startMinutes) / totalMin) *
                           gridHeightPx;
                         const heightPx = Math.max(8, rawH);
-                        const dimSource =
-                          !!dragSession &&
-                          dragSession.block.key === b.key &&
-                          (dragSession.ghosts.length > 0 ||
-                            !!dragSession.swapError);
                         return (
                           <button
                             key={b.key}
@@ -822,17 +388,13 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                             className={cn(
                               "touch-none absolute left-0.5 right-0.5 overflow-hidden rounded-md border border-border bg-card py-1.5 pr-1 pl-2 text-left shadow-sm active:scale-[0.99]",
                               "flex flex-col gap-0.5 border-l-[4px]",
-                              dimSource && "opacity-35",
                             )}
                             style={{
                               top: topPx,
                               height: heightPx,
                               borderLeftColor: b.color,
                             }}
-                            onPointerDown={(e) => onBlockPointerDown(e, b)}
-                            onPointerMove={onBlockPointerMove}
-                            onPointerUp={onBlockPointerUp}
-                            onPointerCancel={onBlockPointerCancel}
+                            onClick={() => onBlockActivate(b)}
                           >
                             <span className="line-clamp-3 font-mono text-[10px] font-medium leading-tight text-foreground">
                               {b.label}
@@ -849,30 +411,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 ))}
               </div>
             </div>
-
-            {dragSession ? (
-              <div
-                className="pointer-events-none fixed z-60 overflow-hidden rounded-md border border-border bg-card/95 py-1.5 pr-1 pl-2 shadow-lg backdrop-blur-sm"
-                style={{
-                  left: dragSession.floatStyle.left,
-                  top: dragSession.floatStyle.top,
-                  width: dragSession.floatStyle.width,
-                  height: dragSession.floatStyle.height,
-                  borderLeftWidth: 4,
-                  borderLeftColor: dragSession.block.color,
-                }}
-                aria-hidden
-              >
-                <span className="line-clamp-3 font-mono text-[10px] font-medium leading-tight text-foreground">
-                  {dragSession.block.label}
-                </span>
-                {dragSession.block.sublabel ? (
-                  <span className="line-clamp-2 font-mono text-[9px] text-muted-foreground">
-                    {dragSession.block.sublabel}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </div>
       </div>

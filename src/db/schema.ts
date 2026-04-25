@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -219,6 +220,7 @@ export const plannerSessions = pgTable("planner_sessions", {
 /**
  * One row per course on the user's list for a term.
  * `selection_kind` + `anchor_crn` + optional `linked_bundle_id` resolve which CRNs appear on the calendar.
+ * `unresolved`: wish-list row before automation picks a section; `anchor_crn` / `linked_bundle_id` are null.
  */
 export const plannerItems = pgTable(
   "planner_items",
@@ -234,15 +236,39 @@ export const plannerItems = pgTable(
     courseNumber: text("course_number").notNull(),
     displayColor: text("display_color").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
-    /** `single_crn` | `linked_bundle` */
+    /** `unresolved` | `single_crn` | `linked_bundle` */
     selectionKind: text("selection_kind").notNull(),
-    anchorCrn: text("anchor_crn").notNull(),
+    anchorCrn: text("anchor_crn"),
     linkedBundleId: integer("linked_bundle_id").references(
       () => linkedBundles.id,
       { onDelete: "set null" },
     ),
+    instructorPrefs: jsonb("instructor_prefs")
+      .notNull()
+      .default(sql`'{"v":1,"primary":[]}'::jsonb`),
   },
   (t) => [
     index("planner_items_session_term_idx").on(t.sessionId, t.termCode),
+  ],
+);
+
+/** Last-viewed / favorite schedule indices for paging valid combinations (per session + term). */
+export const plannerTermUiState = pgTable(
+  "planner_term_ui_state",
+  {
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => plannerSessions.id, { onDelete: "cascade" }),
+    termCode: text("term_code")
+      .notNull()
+      .references(() => terms.code, { onDelete: "cascade" }),
+    lastSolutionIndex: integer("last_solution_index").notNull().default(0),
+    favoriteSolutionIndex: integer("favorite_solution_index"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.sessionId, t.termCode] }),
   ],
 );

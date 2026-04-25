@@ -1,6 +1,26 @@
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
+
+export type PlannerTermUiStateRow = typeof schema.plannerTermUiState.$inferSelect;
+
+async function loadPlannerTermUiState(
+  db: Database,
+  sessionId: string,
+  termCode: string,
+): Promise<PlannerTermUiStateRow | null> {
+  const [row] = await db
+    .select()
+    .from(schema.plannerTermUiState)
+    .where(
+      and(
+        eq(schema.plannerTermUiState.sessionId, sessionId),
+        eq(schema.plannerTermUiState.termCode, termCode),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
 import type { PlannerCatalogJson } from "./client/catalog-types";
 import type { PlannerItemRow } from "./data";
 import { listPlannerItems } from "./data";
@@ -18,8 +38,13 @@ export async function loadPlannerCatalogBootstrap(
   db: Database,
   sessionId: string,
   termCode: string,
-): Promise<{ plannerItems: PlannerItemRow[]; catalog: PlannerCatalogJson }> {
+): Promise<{
+  plannerItems: PlannerItemRow[];
+  catalog: PlannerCatalogJson;
+  termUiState: PlannerTermUiStateRow | null;
+}> {
   const plannerItems = await listPlannerItems(db, sessionId, termCode);
+  const termUiState = await loadPlannerTermUiState(db, sessionId, termCode);
   if (plannerItems.length === 0) {
     return {
       plannerItems,
@@ -29,6 +54,7 @@ export async function loadPlannerCatalogBootstrap(
         linkedBundles: [],
         linkedBundleMembers: [],
       },
+      termUiState,
     };
   }
 
@@ -224,5 +250,6 @@ export async function loadPlannerCatalogBootstrap(
       linkedBundles,
       linkedBundleMembers,
     },
+    termUiState,
   };
 }

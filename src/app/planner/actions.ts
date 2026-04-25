@@ -3,6 +3,18 @@
 import { createDb } from "@/db/index";
 import * as schema from "@/db/schema";
 import { and, eq, notInArray, sql } from "drizzle-orm";
+import {
+  defaultInstructorPrefs,
+  parseInstructorPrefs,
+  serializeInstructorPrefs,
+  type InstructorPrefsV1,
+} from "@/lib/planner/instructor-prefs";
+import type { CourseSolvePack } from "@/lib/planner/solve-schedules-core";
+import type { SolveSchedulesResult } from "@/lib/planner/solve-schedules";
+import {
+  loadCourseSolvePack,
+  solveSchedulesForTerm,
+} from "@/lib/planner/solve-schedules";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import {
@@ -21,7 +33,35 @@ import {
   type CourseSearchRow,
   type PlannerItemRow,
 } from "@/lib/planner/data";
-import type { SelectionKind } from "@/lib/planner/resolve-display-crns";
+const MAX_PRIMARY_PREFS = 12;
+const MAX_SCHEDULE_TYPE_KEYS = 8;
+const MAX_PREFS_PER_TYPE = 8;
+
+function validateInstructorPrefsPayload(raw: unknown): {
+  ok: true;
+  value: InstructorPrefsV1;
+} | { ok: false; error: string } {
+  const parsed = parseInstructorPrefs(raw);
+  const p = serializeInstructorPrefs(parsed);
+  if (p.primary.length > MAX_PRIMARY_PREFS) {
+    return { ok: false, error: "Too many primary instructor preferences." };
+  }
+  if (p.byScheduleType) {
+    const keys = Object.keys(p.byScheduleType);
+    if (keys.length > MAX_SCHEDULE_TYPE_KEYS) {
+      return { ok: false, error: "Too many schedule-type preference groups." };
+    }
+    for (const arr of Object.values(p.byScheduleType) as string[][]) {
+      if (arr.length > MAX_PREFS_PER_TYPE) {
+        return {
+          ok: false,
+          error: "Too many instructor preferences for one schedule type.",
+        };
+      }
+    }
+  }
+  return { ok: true, value: p };
+}
 
 function revalidateHome() {
   revalidatePath("/");
@@ -81,13 +121,11 @@ async function validateLinkedBundle(
   return !!b;
 }
 
-export async function addPlannerItemAction(input: {
+/** Add a course to the wish list (sections chosen automatically later). */
+export async function addPlannerCourseWishAction(input: {
   termCode: string;
   subject: string;
   courseNumber: string;
-  anchorCrn: string;
-  selectionKind: SelectionKind;
-  linkedBundleId: number | null;
   displayColor?: string;
 }): Promise<
   { ok: true; item: PlannerItemRow } | { ok: false; error: string }
@@ -95,30 +133,6 @@ export async function addPlannerItemAction(input: {
   try {
     const sessionId = await requireSessionId();
     const db = createDb();
-    const bundles = await listLinkedBundleOptions(
-      db,
-      input.termCode,
-      input.anchorCrn,
-    );
-    if (bundles.length > 0) {
-      if (input.selectionKind !== "linked_bundle" || input.linkedBundleId == null) {
-        return {
-          ok: false,
-          error: "Pick a linked registration option for this section.",
-        };
-      }
-      const ok = await validateLinkedBundle(
-        db,
-        input.termCode,
-        input.anchorCrn,
-        input.linkedBundleId,
-      );
-      if (!ok) return { ok: false, error: "Invalid linked option." };
-    } else {
-      if (input.selectionKind !== "single_crn") {
-        return { ok: false, error: "Invalid selection for this section." };
-      }
-    }
 
     const [maxRow] = await db
       .select({ m: sql<number>`max(${schema.plannerItems.sortOrder})` })
@@ -140,14 +154,102 @@ export async function addPlannerItemAction(input: {
         courseNumber: input.courseNumber,
         displayColor: input.displayColor ?? DEFAULT_DISPLAY_COLOR,
         sortOrder: nextOrder,
-        selectionKind: input.selectionKind,
-        anchorCrn: input.anchorCrn,
-        linkedBundleId:
-          input.selectionKind === "linked_bundle" ? input.linkedBundleId : null,
+        selectionKind: "unresolved",
+        anchorCrn: null,
+        linkedBundleId: null,
+        instructorPrefs: defaultInstructorPrefs(),
       })
       .returning();
     if (!inserted) return { ok: false, error: "Could not add course." };
     return { ok: true, item: inserted };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function solveSchedulesAction(
+  termCode: string,
+  requireOpenSections: boolean,
+): Promise<
+  | { ok: true; result: SolveSchedulesResult }
+  | { ok: false; error: string }
+> {
+  try {
+    const sessionId = await requireSessionId();
+    if (!termCode) return { ok: false, error: "Missing term." };
+    const db = createDb();
+    const items = await listPlannerItems(db, sessionId, termCode);
+    const result = await solveSchedulesForTerm(db, termCode, items, {
+      requireOpenSections,
+    });
+    return { ok: true, result };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
+/** Public catalog data for client-side schedule solving (no session required). */
+export async function prefetchCourseSolvePackAction(
+  termCode: string,
+  subject: string,
+  courseNumber: string,
+): Promise<
+  { ok: true; pack: CourseSolvePack } | { ok: false; error: string }
+> {
+  try {
+    if (!termCode.trim()) return { ok: false, error: "Missing term." };
+    if (!subject.trim() || !courseNumber.trim()) {
+      return { ok: false, error: "Missing course." };
+    }
+    const db = createDb();
+    const pack = await loadCourseSolvePack(
+      db,
+      termCode,
+      subject.trim(),
+      courseNumber.trim(),
+    );
+    return { ok: true, pack };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function updatePlannerTermUiStateAction(input: {
+  termCode: string;
+  lastSolutionIndex: number;
+  favoriteSolutionIndex: number | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const sessionId = await requireSessionId();
+    if (!input.termCode) return { ok: false, error: "Missing term." };
+    if (input.lastSolutionIndex < 0) {
+      return { ok: false, error: "Invalid solution index." };
+    }
+    const db = createDb();
+    await db
+      .insert(schema.plannerTermUiState)
+      .values({
+        sessionId,
+        termCode: input.termCode,
+        lastSolutionIndex: input.lastSolutionIndex,
+        favoriteSolutionIndex: input.favoriteSolutionIndex,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.plannerTermUiState.sessionId,
+          schema.plannerTermUiState.termCode,
+        ],
+        set: {
+          lastSolutionIndex: input.lastSolutionIndex,
+          favoriteSolutionIndex: input.favoriteSolutionIndex,
+          updatedAt: new Date(),
+        },
+      });
+    return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
     return { ok: false, error: msg };
@@ -249,65 +351,6 @@ export async function reorderPlannerItemAction(
   }
 }
 
-export async function updatePlannerItemSelectionAction(input: {
-  itemId: number;
-  termCode: string;
-  anchorCrn: string;
-  selectionKind: SelectionKind;
-  linkedBundleId: number | null;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    const sessionId = await requireSessionId();
-    const db = createDb();
-    const bundles = await listLinkedBundleOptions(
-      db,
-      input.termCode,
-      input.anchorCrn,
-    );
-    if (bundles.length > 0) {
-      if (input.selectionKind !== "linked_bundle" || input.linkedBundleId == null) {
-        return {
-          ok: false,
-          error: "Pick a linked registration option for this section.",
-        };
-      }
-      const ok = await validateLinkedBundle(
-        db,
-        input.termCode,
-        input.anchorCrn,
-        input.linkedBundleId,
-      );
-      if (!ok) return { ok: false, error: "Invalid linked option." };
-    } else if (input.selectionKind !== "single_crn") {
-      return { ok: false, error: "Invalid selection." };
-    }
-
-    const res = await db
-      .update(schema.plannerItems)
-      .set({
-        anchorCrn: input.anchorCrn,
-        selectionKind: input.selectionKind,
-        linkedBundleId:
-          input.selectionKind === "linked_bundle"
-            ? input.linkedBundleId
-            : null,
-      })
-      .where(
-        and(
-          eq(schema.plannerItems.id, input.itemId),
-          eq(schema.plannerItems.sessionId, sessionId),
-          eq(schema.plannerItems.termCode, input.termCode),
-        ),
-      )
-      .returning({ id: schema.plannerItems.id });
-    if (res.length === 0) return { ok: false, error: "Item not found." };
-    return { ok: true };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Something went wrong.";
-    return { ok: false, error: msg };
-  }
-}
-
 export async function searchCoursesAction(
   termCode: string,
   query: string,
@@ -358,19 +401,34 @@ export async function getSectionDetailAction(
 export async function loadPlannerCatalogBootstrapAction(
   termCode: string,
 ): Promise<
-  | { ok: true; plannerItems: PlannerItemRow[]; catalog: PlannerCatalogJson }
+  | {
+      ok: true;
+      plannerItems: PlannerItemRow[];
+      catalog: PlannerCatalogJson;
+      termUiState: {
+        lastSolutionIndex: number;
+        favoriteSolutionIndex: number | null;
+      } | null;
+    }
   | { ok: false; error: string }
 > {
   try {
     const sessionId = await requireSessionId();
     if (!termCode) return { ok: false, error: "Missing term." };
     const db = createDb();
-    const { plannerItems, catalog } = await loadPlannerCatalogBootstrap(
-      db,
-      sessionId,
-      termCode,
-    );
-    return { ok: true, plannerItems, catalog };
+    const { plannerItems, catalog, termUiState } =
+      await loadPlannerCatalogBootstrap(db, sessionId, termCode);
+    return {
+      ok: true,
+      plannerItems,
+      catalog,
+      termUiState: termUiState
+        ? {
+            lastSolutionIndex: termUiState.lastSolutionIndex,
+            favoriteSolutionIndex: termUiState.favoriteSolutionIndex,
+          }
+        : null,
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
     return { ok: false, error: msg };
@@ -382,6 +440,15 @@ async function assertPlannerRowPersistable(
   termCode: string,
   row: PlannerItemRow,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (row.selectionKind === "unresolved") {
+    if (row.anchorCrn != null || row.linkedBundleId != null) {
+      return { ok: false, error: "Unresolved planner row must not have a section." };
+    }
+    return { ok: true };
+  }
+  if (row.anchorCrn == null) {
+    return { ok: false, error: "Resolved planner row is missing a section." };
+  }
   const bundles = await listLinkedBundleOptions(db, termCode, row.anchorCrn);
   if (bundles.length > 0) {
     if (row.selectionKind !== "linked_bundle" || row.linkedBundleId == null) {
@@ -417,6 +484,8 @@ export async function syncPlannerStateAction(
     const db = createDb();
 
     for (const row of items) {
+      const prefs = validateInstructorPrefsPayload(row.instructorPrefs);
+      if (!prefs.ok) return { ok: false, error: prefs.error };
       const v = await assertPlannerRowPersistable(db, termCode, row);
       if (!v.ok) return v;
     }
@@ -454,11 +523,17 @@ export async function syncPlannerStateAction(
             displayColor: row.displayColor,
             sortOrder: row.sortOrder,
             selectionKind: row.selectionKind,
-            anchorCrn: row.anchorCrn,
+            anchorCrn:
+              row.selectionKind === "unresolved" ? null : row.anchorCrn,
             linkedBundleId:
               row.selectionKind === "linked_bundle"
                 ? row.linkedBundleId
                 : null,
+            instructorPrefs: (() => {
+              const pr = validateInstructorPrefsPayload(row.instructorPrefs);
+              if (!pr.ok) throw new Error(pr.error);
+              return pr.value;
+            })(),
           })
           .where(
             and(

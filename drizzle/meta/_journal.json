@@ -15,6 +15,13 @@
       "when": 1777083729393,
       "tag": "0001_planner_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777090000000,
+      "tag": "0002_planner_auto_schedule",
+      "breakpoints": true
     }
   ]
 }

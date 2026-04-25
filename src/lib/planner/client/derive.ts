@@ -15,8 +15,11 @@ import type {
   ClientLinkedBundleRow,
   PlannerCatalogJson,
 } from "./catalog-types";
-import type { PlannerItemSelection, SelectionKind } from "../resolve-display-crns";
-import { resolveDisplayCrnsSync } from "../resolve-display-crns";
+import type { PlannerItemSelection, SelectionKind } from "../resolve-display-crns-shared";
+import {
+  resolveDisplayCrnsSync,
+  resolveDisplayCrnsWithMemberMap,
+} from "../resolve-display-crns-shared";
 
 const DAY_FIELDS = [
   "monday",
@@ -63,13 +66,7 @@ export function resolveItemDisplayCrns(
     anchorCrn: item.anchorCrn,
     linkedBundleId: item.linkedBundleId,
   };
-  if (sel.selectionKind === "single_crn" || sel.linkedBundleId == null) {
-    return [item.anchorCrn];
-  }
-  return resolveDisplayCrnsSync(
-    sel,
-    membersByBundleId.get(sel.linkedBundleId) ?? [],
-  );
+  return resolveDisplayCrnsWithMemberMap(sel, membersByBundleId);
 }
 
 export function buildCalendarBlocksFromCatalog(
