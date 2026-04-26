@@ -16,3 +16,20 @@ test("landing and planner pages load", async ({ page }) => {
     page.getByRole("heading", { name: /Your week/i }),
   ).toBeVisible();
 });
+
+test("llms discovery files", async ({ request }) => {
+  const short = await request.get("/llms.txt");
+  expect(short.status()).toBe(200);
+  expect(short.headers()["content-type"]).toMatch(/text\/plain/i);
+  const shortBody = await short.text();
+  expect(shortBody).toContain("# uwyoschedule");
+  expect(shortBody).toContain("/planner");
+  expect(shortBody).toContain("/sitemap.xml");
+
+  const full = await request.get("/llms-full.txt");
+  expect(full.status()).toBe(200);
+  expect(full.headers()["content-type"]).toMatch(/text\/plain/i);
+  const fullBody = await full.text();
+  expect(fullBody).toContain("sitemap.xml");
+  expect(fullBody).toContain("/terms/{termCode}");
+});

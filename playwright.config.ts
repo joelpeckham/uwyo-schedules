@@ -21,7 +21,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm exec next dev --port ${e2ePort}`,
+    // `next start` avoids clashing with an existing `next dev` in the same repo (Next single-dev lock).
+    command: `pnpm exec next start -H 127.0.0.1 --port ${e2ePort}`,
     url: e2eOrigin,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
