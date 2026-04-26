@@ -136,6 +136,60 @@ function orderedPrefScore(prefs: string[], facultyNames: (string | null)[]): num
   return 0;
 }
 
+/** True if at least one non-empty pref matches some faculty name (bidirectional includes, case-insensitive). */
+export function facultyNamesMatchAnyListedPref(
+  prefs: string[],
+  facultyNames: (string | null)[],
+): boolean {
+  return orderedPrefScore(prefs, facultyNames) > 0;
+}
+
+function anchorPrimaryFacultyPool(
+  anchorFaculty: { displayName: string | null; primaryIndicator: boolean | null }[],
+): (string | null)[] {
+  const primaryNames = anchorFaculty
+    .filter((f) => f.primaryIndicator === true)
+    .map((f) => f.displayName);
+  return primaryNames.length > 0
+    ? primaryNames
+    : anchorFaculty.map((f) => f.displayName);
+}
+
+/** Hard filter: false = candidate is allowed under prefs. */
+export function candidateViolatesHardInstructorPrefs(
+  cand: ScheduleCandidate,
+  prefs: InstructorPrefsV1,
+  facultyByCrn: Map<string, { displayName: string | null; primaryIndicator: boolean | null }[]>,
+  scheduleTypeByCrn: Map<string, string | null>,
+): boolean {
+  const primaryPrefs = prefs.primary.map((s) => s.trim()).filter(Boolean);
+  if (primaryPrefs.length > 0) {
+    const anchorFaculty = facultyByCrn.get(cand.anchorCrn) ?? [];
+    const pool = anchorPrimaryFacultyPool(anchorFaculty);
+    if (!facultyNamesMatchAnyListedPref(primaryPrefs, pool)) return true;
+  }
+
+  if (prefs.byScheduleType) {
+    for (const [typeKey, typePrefsRaw] of Object.entries(prefs.byScheduleType)) {
+      const typePrefs = typePrefsRaw.map((s) => s.trim()).filter(Boolean);
+      if (typePrefs.length === 0) continue;
+      const crnsOfType: string[] = [];
+      for (const crn of cand.crns) {
+        const st = scheduleTypeByCrn.get(crn) ?? null;
+        if (normalizeScheduleTypeKey(st) === typeKey) crnsOfType.push(crn);
+      }
+      if (crnsOfType.length === 0) continue;
+      for (const crn of crnsOfType) {
+        const fac = facultyByCrn.get(crn) ?? [];
+        const pool = fac.map((f) => f.displayName);
+        if (!facultyNamesMatchAnyListedPref(typePrefs, pool)) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function scoreCandidate(
   item: PlannerItemRow,
   cand: ScheduleCandidate,
@@ -145,13 +199,7 @@ function scoreCandidate(
 ): number {
   let score = 0;
   const anchorFaculty = facultyByCrn.get(cand.anchorCrn) ?? [];
-  const primaryNames = anchorFaculty
-    .filter((f) => f.primaryIndicator === true)
-    .map((f) => f.displayName);
-  const primaryPool =
-    primaryNames.length > 0
-      ? primaryNames
-      : anchorFaculty.map((f) => f.displayName);
+  const primaryPool = anchorPrimaryFacultyPool(anchorFaculty);
   score += orderedPrefScore(prefs.primary, primaryPool);
 
   if (prefs.byScheduleType) {
@@ -323,6 +371,16 @@ export function runSolveSearch(params: {
 
     for (const cand of list) {
       if (requireOpenSections && !allCrnsHaveSeats(cand.crns, seatsByCrn)) {
+        continue;
+      }
+      if (
+        candidateViolatesHardInstructorPrefs(
+          cand,
+          parseInstructorPrefs(item.instructorPrefs),
+          facultyByCrn,
+          scheduleTypeByCrn,
+        )
+      ) {
         continue;
       }
       if (overlapsAccumulated(cand, itemIndex)) continue;

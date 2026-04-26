@@ -10,12 +10,17 @@ import {
 import type { CourseSearchRow } from "@/lib/planner/data";
 import type { PlannerItemRow } from "@/lib/planner/data";
 import {
+  INSTRUCTOR_SELECT_ANY,
+  linkedScheduleTypeRows,
+  primaryInstructorOptions,
+} from "@/lib/planner/instructor-options-from-pack";
+import {
   parseInstructorPrefs,
   serializeInstructorPrefs,
   type InstructorPrefsV1,
 } from "@/lib/planner/instructor-prefs";
 import { courseSolvePackCourseKey } from "@/lib/planner/solve-schedules-core";
-import { normalizeScheduleTypeKey } from "@/lib/planner/swap-helpers";
+import { PlannerCourseColorPicker } from "@/components/planner/PlannerCourseColorPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,53 +36,24 @@ import { ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { usePlanner } from "./PlannerContext";
 
-const COLOR_OPTIONS = [
-  "#8B4513",
-  "#2F4F4F",
-  "#556B2F",
-  "#4A3728",
-  "#5C4033",
-  "#355E3B",
-  "#654321",
-  "#3D4F3D",
-] as const;
-
 type Props = { termCode: string };
 
-type AdvancedRow = { id: string; scheduleTypeLabel: string; names: string };
-
-function advancedRowsFromPrefs(
-  itemId: number,
-  p: InstructorPrefsV1,
-): AdvancedRow[] {
-  if (!p.byScheduleType) return [];
-  return Object.entries(p.byScheduleType).map(([key, names]) => ({
-    id: `${itemId}-${key}`,
-    scheduleTypeLabel: key,
-    names: names.join(", "),
-  }));
+function primarySelectValue(p: InstructorPrefsV1): string {
+  const n = p.primary[0]?.trim();
+  return n && n.length > 0 ? n : INSTRUCTOR_SELECT_ANY;
 }
 
-function prefsFromRows(
-  primary: string[],
-  advancedRows: AdvancedRow[],
-): InstructorPrefsV1 {
-  const byScheduleType: Record<string, string[]> = {};
-  for (const row of advancedRows) {
-    const key = normalizeScheduleTypeKey(row.scheduleTypeLabel);
-    if (!key) continue;
-    const parts = row.names
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (parts.length) byScheduleType[key] = parts;
-  }
-  return serializeInstructorPrefs({
-    v: 1,
-    primary,
-    byScheduleType:
-      Object.keys(byScheduleType).length > 0 ? byScheduleType : undefined,
-  });
+function linkedSelectValue(p: InstructorPrefsV1, scheduleTypeKey: string): string {
+  const n = p.byScheduleType?.[scheduleTypeKey]?.[0]?.trim();
+  return n && n.length > 0 ? n : INSTRUCTOR_SELECT_ANY;
+}
+
+function mergeOptionList(canonical: string[], current: string): string[] {
+  const cur = current.trim();
+  if (cur.length === 0 || cur === INSTRUCTOR_SELECT_ANY) return canonical;
+  const lower = new Set(canonical.map((s) => s.toLowerCase()));
+  if (lower.has(cur.toLowerCase())) return canonical;
+  return [cur, ...canonical];
 }
 
 export function CourseManager({ termCode }: Props) {
@@ -100,12 +76,8 @@ export function CourseManager({ termCode }: Props) {
   const [picked, setPicked] = useState<CourseSearchRow | null>(null);
   const [prefetchPackPending, setPrefetchPackPending] = useState(false);
   const [prefetchPackError, setPrefetchPackError] = useState<string | null>(null);
-  const [color, setColor] = useState<string>(COLOR_OPTIONS[0]!);
 
   const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
-  const [advancedDraft, setAdvancedDraft] = useState<
-    Record<number, AdvancedRow[]>
-  >({});
 
   const runSearch = useCallback(() => {
     const q = searchQ.trim();
@@ -171,7 +143,6 @@ export function CourseManager({ termCode }: Props) {
         termCode,
         subject: picked.subject,
         courseNumber: picked.courseNumber,
-        displayColor: color,
       });
       if (!res.ok) {
         setError(res.error);
@@ -187,7 +158,7 @@ export function CourseManager({ termCode }: Props) {
       setHits([]);
       setSearchQ("");
     });
-  }, [picked, termCode, color, refreshCatalogFromServer, recalculateSolutions]);
+  }, [picked, termCode, refreshCatalogFromServer, recalculateSolutions]);
 
   const persistPrefs = useCallback(
     (itemId: number, prefs: InstructorPrefsV1) => {
@@ -197,40 +168,46 @@ export function CourseManager({ termCode }: Props) {
     [updatePlannerItem, recalculateSolutions],
   );
 
-  const onPrimaryBlur = useCallback(
+  const setPrimaryInstructor = useCallback(
     (item: PlannerItemRow, value: string) => {
-      const primary = value
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
       const p = parseInstructorPrefs(item.instructorPrefs);
-      const rows =
-        advancedDraft[item.id] ?? advancedRowsFromPrefs(item.id, p);
-      persistPrefs(item.id, prefsFromRows(primary, rows));
+      const primary =
+        value === INSTRUCTOR_SELECT_ANY
+          ? []
+          : [value.trim()].filter(Boolean);
+      persistPrefs(
+        item.id,
+        serializeInstructorPrefs({
+          v: 1,
+          primary,
+          byScheduleType: p.byScheduleType,
+        }),
+      );
     },
-    [advancedDraft, persistPrefs],
+    [persistPrefs],
   );
 
-  const getAdvancedRows = (item: PlannerItemRow): AdvancedRow[] => {
-    if (advancedDraft[item.id]) return advancedDraft[item.id]!;
-    return advancedRowsFromPrefs(
-      item.id,
-      parseInstructorPrefs(item.instructorPrefs),
-    );
-  };
-
-  const setAdvancedRowsForItem = (
-    item: PlannerItemRow,
-    rows: AdvancedRow[],
-  ) => {
-    setAdvancedDraft((d) => ({ ...d, [item.id]: rows }));
-  };
-
-  const flushAdvanced = (item: PlannerItemRow) => {
-    const p = parseInstructorPrefs(item.instructorPrefs);
-    const rows = advancedDraft[item.id] ?? getAdvancedRows(item);
-    persistPrefs(item.id, prefsFromRows(p.primary, rows));
-  };
+  const setLinkedInstructor = useCallback(
+    (item: PlannerItemRow, scheduleTypeKey: string, value: string) => {
+      const p = parseInstructorPrefs(item.instructorPrefs);
+      const nextBy: Record<string, string[]> = { ...(p.byScheduleType ?? {}) };
+      if (value === INSTRUCTOR_SELECT_ANY) {
+        delete nextBy[scheduleTypeKey];
+      } else {
+        nextBy[scheduleTypeKey] = [value.trim()].filter(Boolean);
+      }
+      const keys = Object.keys(nextBy);
+      persistPrefs(
+        item.id,
+        serializeInstructorPrefs({
+          v: 1,
+          primary: p.primary,
+          byScheduleType: keys.length > 0 ? nextBy : undefined,
+        }),
+      );
+    },
+    [persistPrefs],
+  );
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
@@ -261,7 +238,7 @@ export function CourseManager({ termCode }: Props) {
       )}
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 sm:min-w-48">
           <Label htmlFor="course-search" className="text-muted-foreground">
             Search courses
           </Label>
@@ -316,27 +293,6 @@ export function CourseManager({ termCode }: Props) {
             </p>
           ) : null}
         </div>
-        <div className="flex flex-col gap-2 sm:w-44">
-          <Label className="text-muted-foreground">Color</Label>
-          <Select value={color} onValueChange={setColor}>
-            <SelectTrigger className="min-h-11 w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {COLOR_OPTIONS.map((c) => (
-                <SelectItem key={c} value={c}>
-                  <span className="flex items-center gap-2">
-                    <span
-                      className="inline-block size-3.5 rounded-sm border border-border"
-                      style={{ backgroundColor: c }}
-                    />
-                    {c}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         <Button
           type="button"
           className="min-h-11 touch-manipulation"
@@ -359,7 +315,16 @@ export function CourseManager({ termCode }: Props) {
       </div>
 
       <ul className="mt-6 space-y-3">
-        {plannerItems.map((item, idx) => (
+        {plannerItems.map((item, idx) => {
+          const packKey = courseSolvePackCourseKey(item.subject, item.courseNumber);
+          const pack = solvePacks[packKey];
+          const prefs = parseInstructorPrefs(item.instructorPrefs);
+          const primaryOpts = pack ? primaryInstructorOptions(pack) : [];
+          const primaryVal = primarySelectValue(prefs);
+          const primaryChoices = mergeOptionList(primaryOpts, primaryVal);
+          const linkedRows = pack ? linkedScheduleTypeRows(pack) : [];
+
+          return (
           <li
             key={item.id}
             className="rounded-lg border border-border bg-muted/20 p-3 sm:p-4"
@@ -410,30 +375,17 @@ export function CourseManager({ termCode }: Props) {
                 >
                   Down
                 </Button>
-                <Select
-                  value={item.displayColor}
-                  onValueChange={(v) => {
+                <PlannerCourseColorPicker
+                  displayColor={item.displayColor}
+                  disabled={pending}
+                  onPick={(hex) => {
                     startTransition(async () => {
-                      await updatePlannerItemColorAction(item.id, v);
+                      await updatePlannerItemColorAction(item.id, hex);
                       await refreshCatalogFromServer();
                       void recalculateSolutions();
                     });
                   }}
-                >
-                  <SelectTrigger size="sm" className="w-[7.5rem]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COLOR_OPTIONS.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        <span
-                          className="inline-block size-3 rounded-sm border border-border"
-                          style={{ backgroundColor: c }}
-                        />
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
                 <Button
                   type="button"
                   variant="ghost"
@@ -456,18 +408,36 @@ export function CourseManager({ termCode }: Props) {
                 htmlFor={`primary-${item.id}`}
                 className="text-muted-foreground"
               >
-                Preferred instructors (lecture)
+                Instructor (lecture)
               </Label>
-              <Input
-                id={`primary-${item.id}`}
-                className="mt-1 font-mono text-sm"
-                placeholder="Last name or partial, comma-separated"
-                defaultValue={parseInstructorPrefs(item.instructorPrefs).primary.join(
-                  ", ",
-                )}
-                key={`${item.id}-${JSON.stringify(item.instructorPrefs)}`}
-                onBlur={(e) => onPrimaryBlur(item, e.target.value)}
-              />
+              {!pack ? (
+                <p
+                  id={`primary-${item.id}`}
+                  className="mt-1 text-sm text-muted-foreground"
+                >
+                  Loading section options…
+                </p>
+              ) : (
+                <Select
+                  value={primaryVal}
+                  onValueChange={(v) => setPrimaryInstructor(item, v)}
+                >
+                  <SelectTrigger
+                    id={`primary-${item.id}`}
+                    className="mt-1 min-h-11 w-full max-w-md font-mono text-sm"
+                  >
+                    <SelectValue placeholder="Choose instructor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={INSTRUCTOR_SELECT_ANY}>Any</SelectItem>
+                    {primaryChoices.map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="mt-2">
@@ -486,107 +456,67 @@ export function CourseManager({ termCode }: Props) {
                 ) : (
                   <ChevronDown className="size-4" />
                 )}
-                Advanced (labs, discussions by type)
+                Advanced (linked labs and discussions)
               </button>
               {advancedOpen[item.id] ? (
-                <div className="mt-2 space-y-2 rounded-md border border-border bg-background p-3">
-                  {(advancedDraft[item.id] ?? getAdvancedRows(item)).map(
-                    (row) => (
-                      <div
-                        key={row.id}
-                        className="flex flex-col gap-2 sm:flex-row sm:items-end"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <Label className="text-xs text-muted-foreground">
-                            Schedule type (e.g. Laboratory, Lecture)
+                <div className="mt-2 space-y-3 rounded-md border border-border bg-background p-3">
+                  {!pack ? (
+                    <p className="text-sm text-muted-foreground">
+                      Loading section options…
+                    </p>
+                  ) : linkedRows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No linked section types for this course.
+                    </p>
+                  ) : (
+                    linkedRows.map((row) => {
+                      const lv = linkedSelectValue(prefs, row.scheduleTypeKey);
+                      const choices = mergeOptionList(
+                        row.instructorOptions,
+                        lv,
+                      );
+                      const fieldId = `linked-${item.id}-${row.scheduleTypeKey}`;
+                      return (
+                        <div key={row.scheduleTypeKey} className="space-y-1">
+                          <Label
+                            htmlFor={fieldId}
+                            className="text-xs text-muted-foreground"
+                          >
+                            Instructor ({row.label})
                           </Label>
-                          <Input
-                            className="mt-0.5 font-mono text-sm"
-                            value={row.scheduleTypeLabel}
-                            onChange={(e) => {
-                              const list =
-                                advancedDraft[item.id] ?? getAdvancedRows(item);
-                              setAdvancedRowsForItem(
-                                item,
-                                list.map((r) =>
-                                  r.id === row.id
-                                    ? { ...r, scheduleTypeLabel: e.target.value }
-                                    : r,
-                                ),
-                              );
-                            }}
-                          />
+                          <Select
+                            value={lv}
+                            onValueChange={(v) =>
+                              setLinkedInstructor(item, row.scheduleTypeKey, v)
+                            }
+                          >
+                            <SelectTrigger
+                              id={fieldId}
+                              className="min-h-11 w-full max-w-md font-mono text-sm"
+                            >
+                              <SelectValue placeholder="Choose instructor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={INSTRUCTOR_SELECT_ANY}>
+                                Any
+                              </SelectItem>
+                              {choices.map((name) => (
+                                <SelectItem key={name} value={name}>
+                                  {name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
-                        <div className="min-w-0 flex-[2]">
-                          <Label className="text-xs text-muted-foreground">
-                            Preferred names (comma-separated)
-                          </Label>
-                          <Input
-                            className="mt-0.5 font-mono text-sm"
-                            value={row.names}
-                            onChange={(e) => {
-                              const list =
-                                advancedDraft[item.id] ?? getAdvancedRows(item);
-                              setAdvancedRowsForItem(
-                                item,
-                                list.map((r) =>
-                                  r.id === row.id
-                                    ? { ...r, names: e.target.value }
-                                    : r,
-                                ),
-                              );
-                            }}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const list = (
-                              advancedDraft[item.id] ?? getAdvancedRows(item)
-                            ).filter((r) => r.id !== row.id);
-                            setAdvancedRowsForItem(item, list);
-                            const p = parseInstructorPrefs(item.instructorPrefs);
-                            persistPrefs(item.id, prefsFromRows(p.primary, list));
-                          }}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ),
+                      );
+                    })
                   )}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      const list =
-                        advancedDraft[item.id] ?? getAdvancedRows(item);
-                      setAdvancedRowsForItem(item, [
-                        ...list,
-                        {
-                          id: `${item.id}-${Date.now()}`,
-                          scheduleTypeLabel: "",
-                          names: "",
-                        },
-                      ]);
-                    }}
-                  >
-                    Add row
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => flushAdvanced(item)}
-                  >
-                    Apply advanced preferences
-                  </Button>
                 </div>
               ) : null}
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       {plannerItems.length === 0 ? (

@@ -1,8 +1,14 @@
 export type InstructorPrefsV1 = {
   v: 1;
-  /** Ordered preferred names (substring match, case-insensitive) for anchor / primary lecture. */
+  /**
+   * Anchor (lecture) instructor prefs: substring match, case-insensitive.
+   * The planner UI stores 0–1 chosen name; multiple entries are legacy / comma-era data.
+   */
   primary: string[];
-  /** Optional prefs keyed by `normalizeScheduleTypeKey` for non-lecture parts of a bundle. */
+  /**
+   * Linked bundle members (lab, discussion, …) keyed by `normalizeScheduleTypeKey`.
+   * UI stores 0–1 name per key; multiple strings per key are legacy.
+   */
   byScheduleType?: Record<string, string[]>;
 };
 

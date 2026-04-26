@@ -2,6 +2,7 @@
 
 import {
   loadPlannerCatalogBootstrapAction,
+  prefetchCourseSolvePackAction,
   solveSchedulesAction,
   syncPlannerStateAction,
   updatePlannerTermUiStateAction,
@@ -11,6 +12,7 @@ import { buildCalendarBlocksFromCatalog } from "@/lib/planner/client/derive";
 import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
 import type { ResolvedPlannerSelection } from "@/lib/planner/resolve-display-crns-shared";
 import {
+  courseSolvePackCourseKey,
   everyPlannerItemHasSolvePack,
   solveSchedulesFromPacks,
   type CourseSolvePack,
@@ -28,6 +30,7 @@ import {
 
 const PERSIST_DEBOUNCE_MS = 2500;
 const UI_STATE_DEBOUNCE_MS = 800;
+const PACK_PREFETCH_DEBOUNCE_MS = 400;
 
 function applySolutionToPlannerItems(
   items: PlannerItemRow[],
@@ -267,25 +270,27 @@ export function PlannerProvider({
     return true;
   }, [termCode]);
 
-  const removePlannerItem = useCallback(
-    (id: number) => {
-      setPlannerItems((prev) => {
-        const next = prev.filter((r) => r.id !== id);
-        itemsRef.current = next;
-        if (persistTimerRef.current) {
-          clearTimeout(persistTimerRef.current);
-          persistTimerRef.current = null;
-        }
-        void (async () => {
-          const res = await syncPlannerStateAction(termRef.current, next);
-          if (!res.ok) setSyncError(res.error);
-          else setSyncError(null);
-        })();
-        return next;
-      });
-    },
-    [],
-  );
+  const removePlannerItem = useCallback((id: number) => {
+    let next: PlannerItemRow[] = [];
+    setPlannerItems((prev) => {
+      next = prev.filter((r) => r.id !== id);
+      itemsRef.current = next;
+      return next;
+    });
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+    // Never call server actions inside a setState updater — updaters run during
+    // render and Next.js can touch Router synchronously when starting an action.
+    queueMicrotask(() => {
+      void (async () => {
+        const res = await syncPlannerStateAction(termRef.current, next);
+        if (!res.ok) setSyncError(res.error);
+        else setSyncError(null);
+      })();
+    });
+  }, []);
 
   const updatePlannerItem = useCallback(
     (id: number, patch: Partial<PlannerItemRow>) => {
@@ -344,6 +349,46 @@ export function PlannerProvider({
       return Math.min(Math.max(0, prev), sols.length - 1);
     });
   }, []);
+
+  const recalculateSolutionsRef = useRef(recalculateSolutions);
+  recalculateSolutionsRef.current = recalculateSolutions;
+
+  useEffect(() => {
+    if (plannerItems.length === 0) return;
+    const t = termCode;
+    const timer = setTimeout(() => {
+      const keyToCourse = new Map<
+        string,
+        { subject: string; courseNumber: string }
+      >();
+      for (const row of itemsRef.current) {
+        const k = courseSolvePackCourseKey(row.subject, row.courseNumber);
+        keyToCourse.set(k, {
+          subject: row.subject,
+          courseNumber: row.courseNumber,
+        });
+      }
+      const missing = [...keyToCourse.entries()].filter(
+        ([k]) => !solvePacksRef.current[k],
+      );
+      if (missing.length === 0) {
+        void recalculateSolutionsRef.current();
+        return;
+      }
+      void (async () => {
+        const results = await Promise.all(
+          missing.map(([, c]) =>
+            prefetchCourseSolvePackAction(t, c.subject, c.courseNumber),
+          ),
+        );
+        for (const res of results) {
+          if (res.ok) mergeSolvePack(res.pack);
+        }
+        void recalculateSolutionsRef.current();
+      })();
+    }, PACK_PREFETCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [termCode, plannerItems, mergeSolvePack]);
 
   const value = useMemo<PlannerContextValue>(
     () => ({

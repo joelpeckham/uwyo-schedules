@@ -18,10 +18,10 @@ import {
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import {
-  DEFAULT_DISPLAY_COLOR,
-  PLANNER_SESSION_COOKIE,
-  UUID_RE,
-} from "@/lib/planner/constants";
+  pickUnusedCourseColor,
+  isPlannerCoursePaletteColor,
+} from "@/lib/planner/course-colors";
+import { PLANNER_SESSION_COOKIE, UUID_RE } from "@/lib/planner/constants";
 import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import {
@@ -126,13 +126,26 @@ export async function addPlannerCourseWishAction(input: {
   termCode: string;
   subject: string;
   courseNumber: string;
-  displayColor?: string;
 }): Promise<
   { ok: true; item: PlannerItemRow } | { ok: false; error: string }
 > {
   try {
     const sessionId = await requireSessionId();
     const db = createDb();
+
+    const colorRows = await db
+      .select({ displayColor: schema.plannerItems.displayColor })
+      .from(schema.plannerItems)
+      .where(
+        and(
+          eq(schema.plannerItems.sessionId, sessionId),
+          eq(schema.plannerItems.termCode, input.termCode),
+        ),
+      );
+    const used = new Set(
+      colorRows.map((r) => r.displayColor.trim().toLowerCase()),
+    );
+    const displayColor = pickUnusedCourseColor(used);
 
     const [maxRow] = await db
       .select({ m: sql<number>`max(${schema.plannerItems.sortOrder})` })
@@ -152,7 +165,7 @@ export async function addPlannerCourseWishAction(input: {
         termCode: input.termCode,
         subject: input.subject,
         courseNumber: input.courseNumber,
-        displayColor: input.displayColor ?? DEFAULT_DISPLAY_COLOR,
+        displayColor,
         sortOrder: nextOrder,
         selectionKind: "unresolved",
         anchorCrn: null,
@@ -287,6 +300,12 @@ export async function updatePlannerItemColorAction(
     const sessionId = await requireSessionId();
     if (!/^#[0-9A-Fa-f]{6}$/.test(displayColor)) {
       return { ok: false, error: "Use a #RRGGBB color." };
+    }
+    if (!isPlannerCoursePaletteColor(displayColor)) {
+      return {
+        ok: false,
+        error: "Choose a color from the course color palette.",
+      };
     }
     const db = createDb();
     const res = await db

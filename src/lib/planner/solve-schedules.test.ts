@@ -286,4 +286,120 @@ describe("solveSchedulesFromPacks", () => {
     });
     expect(any.solutions).toHaveLength(1);
   });
+
+  it("hard-filters single_crn candidates by primary instructor pref", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A1",
+            linkedBundleId: null,
+            crns: ["A1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A2",
+            linkedBundleId: null,
+            crns: ["A2"],
+          },
+        ],
+        meetingsByCrn: {
+          A1: [{ dayIndex: 0, start: 600, end: 660 }],
+          A2: [{ dayIndex: 0, start: 600, end: 660 }],
+        },
+        facultyByCrn: {
+          A1: [{ displayName: "Alice Smith", primaryIndicator: true }],
+          A2: [{ displayName: "Bob Jones", primaryIndicator: true }],
+        },
+        scheduleTypeByCrn: {
+          A1: "Lecture",
+          A2: "Lecture",
+        },
+        seatsByCrn: {
+          A1: { seatsAvailable: 1, openSection: true },
+          A2: { seatsAvailable: 1, openSection: true },
+        },
+      }),
+    };
+    const items = [
+      itemStub({
+        id: 1,
+        subject: "CS",
+        courseNumber: "1000",
+        instructorPrefs: { v: 1, primary: ["Alice"] },
+      }),
+    ];
+    const r = solveSchedulesFromPacks(items, packs, {
+      requireOpenSections: false,
+    });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0]!.selections[1]!.anchorCrn).toBe("A1");
+  });
+
+  it("hard-filters linked_bundle candidates by lab instructor pref", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CHEM", "1000")]: basePack("CHEM", "1000", {
+        bundleMembersById: {
+          "10": ["L1", "LAB1"],
+          "11": ["L2", "LAB2"],
+        },
+        candidates: [
+          {
+            selectionKind: "linked_bundle",
+            anchorCrn: "L1",
+            linkedBundleId: 10,
+            crns: ["L1", "LAB1"],
+          },
+          {
+            selectionKind: "linked_bundle",
+            anchorCrn: "L2",
+            linkedBundleId: 11,
+            crns: ["L2", "LAB2"],
+          },
+        ],
+        meetingsByCrn: {
+          L1: [{ dayIndex: 1, start: 600, end: 660 }],
+          LAB1: [{ dayIndex: 1, start: 700, end: 760 }],
+          L2: [{ dayIndex: 1, start: 600, end: 660 }],
+          LAB2: [{ dayIndex: 1, start: 700, end: 760 }],
+        },
+        facultyByCrn: {
+          L1: [{ displayName: "Dr Lee", primaryIndicator: true }],
+          LAB1: [{ displayName: "Sam Smith", primaryIndicator: true }],
+          L2: [{ displayName: "Dr Lee", primaryIndicator: true }],
+          LAB2: [{ displayName: "Pat Jones", primaryIndicator: true }],
+        },
+        scheduleTypeByCrn: {
+          L1: "Lecture",
+          LAB1: "Laboratory",
+          L2: "Lecture",
+          LAB2: "Laboratory",
+        },
+        seatsByCrn: {
+          L1: { seatsAvailable: 1, openSection: true },
+          LAB1: { seatsAvailable: 1, openSection: true },
+          L2: { seatsAvailable: 1, openSection: true },
+          LAB2: { seatsAvailable: 1, openSection: true },
+        },
+      }),
+    };
+    const items = [
+      itemStub({
+        id: 2,
+        subject: "CHEM",
+        courseNumber: "1000",
+        instructorPrefs: {
+          v: 1,
+          primary: [],
+          byScheduleType: { laboratory: ["Jones"] },
+        },
+      }),
+    ];
+    const r = solveSchedulesFromPacks(items, packs, {
+      requireOpenSections: false,
+    });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0]!.selections[2]!.anchorCrn).toBe("L2");
+  });
 });
