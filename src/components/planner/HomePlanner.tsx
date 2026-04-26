@@ -66,7 +66,7 @@ export function HomePlanner({
   return (
     <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-background">
       <header className="border-b border-border px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between lg:max-w-[90rem]">
           <div className="flex items-center gap-4">
             <Image
               src="/brand/logo-wordmark.svg"
@@ -78,12 +78,16 @@ export function HomePlanner({
             />
           </div>
           {hasData ? (
-            <div className="flex flex-col gap-2 sm:items-end">
-              <label className="text-xs font-medium text-muted-foreground">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+              <label
+                htmlFor="planner-term-select"
+                className="text-xs font-medium text-muted-foreground sm:shrink-0"
+              >
                 Term
               </label>
               <Select value={termCode} onValueChange={onTermChange}>
                 <SelectTrigger
+                  id="planner-term-select"
                   size="default"
                   className="min-h-11 w-full min-w-[12rem] touch-manipulation sm:w-56"
                 >
@@ -102,7 +106,7 @@ export function HomePlanner({
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:max-w-[90rem]">
         <div>
           <h1 className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
             Your week
@@ -126,9 +130,15 @@ export function HomePlanner({
             initialCatalog={catalog}
             initialTermUiState={termUiState}
           >
-            <CourseManager key={termCode} termCode={termCode} />
-            <SchedulePager />
-            <WeekCalendar onBlockActivate={onBlockActivate} />
+            <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
+              <div className="min-w-0">
+                <CourseManager key={termCode} termCode={termCode} />
+              </div>
+              <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
+                <SchedulePager />
+                <WeekCalendar onBlockActivate={onBlockActivate} />
+              </div>
+            </div>
             <SectionJsonModal
               open={modalOpen}
               onOpenChange={setModalOpen}

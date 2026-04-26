@@ -10,6 +10,7 @@ const emptyCatalog: PlannerCatalogJson = {
   meetings: [],
   linkedBundles: [],
   linkedBundleMembers: [],
+  facultyByCrn: {},
 };
 
 export default async function Page({

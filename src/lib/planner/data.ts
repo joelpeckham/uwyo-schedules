@@ -39,7 +39,10 @@ export type CalendarBlock = {
   startMinutes: number;
   endMinutes: number;
   label: string;
+  /** Building / room (after instructor when space allows). */
   sublabel: string;
+  /** Comma-separated faculty names from Banner, if any. */
+  instructorSublabel: string | null;
   color: string;
   subject: string;
   courseNumber: string;
@@ -117,7 +120,7 @@ export async function listPlannerItems(
         eq(schema.plannerItems.termCode, termCode),
       ),
     )
-    .orderBy(asc(schema.plannerItems.sortOrder), asc(schema.plannerItems.id));
+    .orderBy(asc(schema.plannerItems.id));
 }
 
 export async function searchCourses(
@@ -368,6 +371,43 @@ export async function buildCalendarBlocks(
       ),
     );
 
+  const facultyRows = await db
+    .select({
+      sectionCrn: schema.sectionFaculty.sectionCrn,
+      displayName: schema.sectionFaculty.displayName,
+      sortOrder: schema.sectionFaculty.sortOrder,
+      primaryIndicator: schema.sectionFaculty.primaryIndicator,
+      id: schema.sectionFaculty.id,
+    })
+    .from(schema.sectionFaculty)
+    .where(
+      and(
+        eq(schema.sectionFaculty.termCode, termCode),
+        inArray(schema.sectionFaculty.sectionCrn, crnList),
+      ),
+    )
+    .orderBy(
+      schema.sectionFaculty.sectionCrn,
+      desc(schema.sectionFaculty.primaryIndicator),
+      asc(schema.sectionFaculty.sortOrder),
+      asc(schema.sectionFaculty.id),
+    );
+
+  const facultyByCrn = new Map<string, string>();
+  {
+    const namesByCrn = new Map<string, string[]>();
+    for (const r of facultyRows) {
+      const name = r.displayName?.trim();
+      if (!name) continue;
+      const list = namesByCrn.get(r.sectionCrn) ?? [];
+      list.push(name);
+      namesByCrn.set(r.sectionCrn, list);
+    }
+    for (const [crn, names] of namesByCrn) {
+      facultyByCrn.set(crn, names.join(", "));
+    }
+  }
+
   const sectionTitles = await loadSectionLabels(db, termCode, crnList);
 
   const schedRows = await db
@@ -410,6 +450,9 @@ export async function buildCalendarBlocks(
       const sub =
         [m.buildingDescription ?? m.building, m.room].filter(Boolean).join(" ") ||
         "";
+      const facultyRaw = facultyByCrn.get(m.sectionCrn)?.trim() ?? "";
+      const instructorSublabel =
+        facultyRaw.length > 0 ? facultyRaw : null;
 
       for (const field of DAY_FIELDS) {
         if (!m[field]) continue;
@@ -425,6 +468,7 @@ export async function buildCalendarBlocks(
           endMinutes: clipEnd,
           label: sectionTitles.get(m.sectionCrn) ?? label,
           sublabel: sub,
+          instructorSublabel,
           color: item.displayColor,
           subject: item.subject,
           courseNumber: item.courseNumber,

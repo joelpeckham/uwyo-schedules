@@ -118,6 +118,10 @@ export function buildCalendarBlocksFromCatalog(
       const sub =
         [m.buildingDescription ?? m.building, m.room].filter(Boolean).join(" ") ||
         "";
+      const facultyRaw =
+        catalog.facultyByCrn[m.sectionCrn]?.trim() ?? "";
+      const instructorSublabel =
+        facultyRaw.length > 0 ? facultyRaw : null;
 
       for (const field of DAY_FIELDS) {
         if (!m[field]) continue;
@@ -133,6 +137,7 @@ export function buildCalendarBlocksFromCatalog(
           endMinutes: clipEnd,
           label: sectionTitles.get(m.sectionCrn) ?? label,
           sublabel: sub,
+          instructorSublabel,
           color: item.displayColor,
           subject: item.subject,
           courseNumber: item.courseNumber,

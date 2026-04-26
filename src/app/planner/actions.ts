@@ -2,7 +2,7 @@
 
 import { createDb } from "@/db/index";
 import * as schema from "@/db/schema";
-import { and, eq, notInArray, sql } from "drizzle-orm";
+import { and, eq, notInArray } from "drizzle-orm";
 import {
   defaultInstructorPrefs,
   parseInstructorPrefs,
@@ -147,17 +147,6 @@ export async function addPlannerCourseWishAction(input: {
     );
     const displayColor = pickUnusedCourseColor(used);
 
-    const [maxRow] = await db
-      .select({ m: sql<number>`max(${schema.plannerItems.sortOrder})` })
-      .from(schema.plannerItems)
-      .where(
-        and(
-          eq(schema.plannerItems.sessionId, sessionId),
-          eq(schema.plannerItems.termCode, input.termCode),
-        ),
-      );
-    const nextOrder = (maxRow?.m ?? -1) + 1;
-
     const [inserted] = await db
       .insert(schema.plannerItems)
       .values({
@@ -166,7 +155,6 @@ export async function addPlannerCourseWishAction(input: {
         subject: input.subject,
         courseNumber: input.courseNumber,
         displayColor,
-        sortOrder: nextOrder,
         selectionKind: "unresolved",
         anchorCrn: null,
         linkedBundleId: null,
@@ -319,50 +307,6 @@ export async function updatePlannerItemColorAction(
       )
       .returning({ id: schema.plannerItems.id });
     if (res.length === 0) return { ok: false, error: "Item not found." };
-    return { ok: true };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Something went wrong.";
-    return { ok: false, error: msg };
-  }
-}
-
-export async function reorderPlannerItemAction(
-  itemId: number,
-  direction: "up" | "down",
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    const sessionId = await requireSessionId();
-    const db = createDb();
-    const [item] = await db
-      .select()
-      .from(schema.plannerItems)
-      .where(
-        and(
-          eq(schema.plannerItems.id, itemId),
-          eq(schema.plannerItems.sessionId, sessionId),
-        ),
-      )
-      .limit(1);
-    if (!item) return { ok: false, error: "Item not found." };
-
-    const ordered = await listPlannerItems(db, sessionId, item.termCode);
-    const idx = ordered.findIndex((r) => r.id === itemId);
-    if (idx < 0) return { ok: false, error: "Item not found." };
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= ordered.length) return { ok: true };
-
-    const a = ordered[idx]!;
-    const b = ordered[swapIdx]!;
-    await db.transaction(async (tx) => {
-      await tx
-        .update(schema.plannerItems)
-        .set({ sortOrder: b.sortOrder })
-        .where(eq(schema.plannerItems.id, a.id));
-      await tx
-        .update(schema.plannerItems)
-        .set({ sortOrder: a.sortOrder })
-        .where(eq(schema.plannerItems.id, b.id));
-    });
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
@@ -540,7 +484,6 @@ export async function syncPlannerStateAction(
             subject: row.subject,
             courseNumber: row.courseNumber,
             displayColor: row.displayColor,
-            sortOrder: row.sortOrder,
             selectionKind: row.selectionKind,
             anchorCrn:
               row.selectionKind === "unresolved" ? null : row.anchorCrn,

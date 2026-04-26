@@ -381,27 +381,71 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                           ((b.endMinutes - b.startMinutes) / totalMin) *
                           gridHeightPx;
                         const heightPx = Math.max(8, rawH);
+                        const pad = calendarBlockPaddingPx(heightPx);
+                        const titlePx = calendarTitleFontPx(heightPx);
+                        const secondaryPx = Math.max(7, titlePx - 1);
+                        const tier = calendarSecondaryTier(heightPx);
+                        const loc = b.sublabel.trim();
+                        const inst = b.instructorSublabel?.trim() ?? "";
+                        const titleAttr = [b.label, inst, loc]
+                          .filter(Boolean)
+                          .join(" · ");
+                        let showInstructor = false;
+                        let showLocation = false;
+                        if (tier === "both") {
+                          showInstructor = inst.length > 0;
+                          showLocation = loc.length > 0;
+                        } else if (tier === "one") {
+                          if (inst.length > 0) showInstructor = true;
+                          else if (loc.length > 0) showLocation = true;
+                        }
+                        const titleClampClass =
+                          tier === "none"
+                            ? "truncate"
+                            : "line-clamp-2 min-h-0 break-words";
                         return (
                           <button
                             key={b.key}
                             type="button"
+                            title={titleAttr}
                             className={cn(
-                              "touch-none absolute left-0.5 right-0.5 overflow-hidden rounded-md border border-border bg-card py-1.5 pr-1 pl-2 text-left shadow-sm active:scale-[0.99]",
-                              "flex flex-col gap-0.5 border-l-[4px]",
+                              "touch-none absolute left-0.5 right-0.5 overflow-hidden rounded-md border border-border bg-card text-left shadow-sm active:scale-[0.99]",
+                              "flex min-h-0 flex-col justify-start gap-0.5 border-l-[4px]",
                             )}
                             style={{
                               top: topPx,
                               height: heightPx,
                               borderLeftColor: b.color,
+                              paddingTop: pad,
+                              paddingBottom: pad,
+                              paddingLeft: Math.min(10, pad + 4),
+                              paddingRight: Math.min(8, pad + 2),
                             }}
                             onClick={() => onBlockActivate(b)}
                           >
-                            <span className="line-clamp-3 font-mono text-[10px] font-medium leading-tight text-foreground">
+                            <span
+                              className={cn(
+                                "min-w-0 font-mono font-medium leading-tight text-foreground",
+                                titleClampClass,
+                              )}
+                              style={{ fontSize: titlePx }}
+                            >
                               {b.label}
                             </span>
-                            {b.sublabel ? (
-                              <span className="line-clamp-2 font-mono text-[9px] text-muted-foreground">
-                                {b.sublabel}
+                            {showInstructor ? (
+                              <span
+                                className="line-clamp-1 min-w-0 font-mono leading-tight text-muted-foreground"
+                                style={{ fontSize: secondaryPx }}
+                              >
+                                {inst}
+                              </span>
+                            ) : null}
+                            {showLocation ? (
+                              <span
+                                className="line-clamp-1 min-w-0 font-mono leading-tight text-muted-foreground"
+                                style={{ fontSize: secondaryPx }}
+                              >
+                                {loc}
                               </span>
                             ) : null}
                           </button>
@@ -422,4 +466,21 @@ function formatHour(h: number): string {
   const ap = h >= 12 ? "p.m." : "a.m.";
   const hr = h % 12 === 0 ? 12 : h % 12;
   return `${hr} ${ap}`;
+}
+
+function calendarBlockPaddingPx(heightPx: number): number {
+  return Math.min(6, Math.max(1, Math.round(heightPx * 0.06)));
+}
+
+function calendarTitleFontPx(heightPx: number): number {
+  return Math.min(11, Math.max(8, Math.round(heightPx * 0.2)));
+}
+
+/** How many secondary lines (instructor / location) fit at this zoom level. */
+function calendarSecondaryTier(
+  heightPx: number,
+): "none" | "one" | "both" {
+  if (heightPx < 28) return "none";
+  if (heightPx < 44) return "one";
+  return "both";
 }

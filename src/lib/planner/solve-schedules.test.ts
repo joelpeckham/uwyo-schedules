@@ -111,7 +111,6 @@ function itemStub(
     sessionId: "00000000-0000-0000-0000-000000000001",
     termCode: "202401",
     displayColor: "#000",
-    sortOrder: 0,
     selectionKind: "unresolved",
     anchorCrn: null,
     linkedBundleId: null,

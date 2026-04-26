@@ -1,6 +1,6 @@
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
-import { and, asc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 
 export type PlannerTermUiStateRow = typeof schema.plannerTermUiState.$inferSelect;
 
@@ -53,6 +53,7 @@ export async function loadPlannerCatalogBootstrap(
         meetings: [],
         linkedBundles: [],
         linkedBundleMembers: [],
+        facultyByCrn: {},
       },
       termUiState,
     };
@@ -242,6 +243,44 @@ export async function loadPlannerCatalogBootstrap(
             ),
           );
 
+  const facultyRows =
+    meetingCrnList.length === 0
+      ? []
+      : await db
+          .select({
+            sectionCrn: schema.sectionFaculty.sectionCrn,
+            displayName: schema.sectionFaculty.displayName,
+            sortOrder: schema.sectionFaculty.sortOrder,
+            primaryIndicator: schema.sectionFaculty.primaryIndicator,
+            id: schema.sectionFaculty.id,
+          })
+          .from(schema.sectionFaculty)
+          .where(
+            and(
+              eq(schema.sectionFaculty.termCode, termCode),
+              inArray(schema.sectionFaculty.sectionCrn, meetingCrnList),
+            ),
+          )
+          .orderBy(
+            schema.sectionFaculty.sectionCrn,
+            desc(schema.sectionFaculty.primaryIndicator),
+            asc(schema.sectionFaculty.sortOrder),
+            asc(schema.sectionFaculty.id),
+          );
+
+  const facultyByCrn: Record<string, string> = {};
+  const namesByCrn = new Map<string, string[]>();
+  for (const r of facultyRows) {
+    const name = r.displayName?.trim();
+    if (!name) continue;
+    const list = namesByCrn.get(r.sectionCrn) ?? [];
+    list.push(name);
+    namesByCrn.set(r.sectionCrn, list);
+  }
+  for (const [crn, names] of namesByCrn) {
+    facultyByCrn[crn] = names.join(", ");
+  }
+
   return {
     plannerItems,
     catalog: {
@@ -249,6 +288,7 @@ export async function loadPlannerCatalogBootstrap(
       meetings,
       linkedBundles,
       linkedBundleMembers,
+      facultyByCrn,
     },
     termUiState,
   };

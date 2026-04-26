@@ -47,4 +47,6 @@ export type PlannerCatalogJson = {
   meetings: ClientCatalogMeeting[];
   linkedBundles: ClientLinkedBundleRow[];
   linkedBundleMembers: ClientLinkedBundleMemberRow[];
+  /** Section CRN → instructor display names for calendar (comma-separated). */
+  facultyByCrn: Record<string, string>;
 };

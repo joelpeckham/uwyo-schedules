@@ -3,7 +3,6 @@
 import {
   addPlannerCourseWishAction,
   prefetchCourseSolvePackAction,
-  reorderPlannerItemAction,
   searchCoursesAction,
   updatePlannerItemColorAction,
 } from "@/app/planner/actions";
@@ -315,7 +314,7 @@ export function CourseManager({ termCode }: Props) {
       </div>
 
       <ul className="mt-6 space-y-3">
-        {plannerItems.map((item, idx) => {
+        {plannerItems.map((item) => {
           const packKey = courseSolvePackCourseKey(item.subject, item.courseNumber);
           const pack = solvePacks[packKey];
           const prefs = parseInstructorPrefs(item.instructorPrefs);
@@ -341,40 +340,6 @@ export function CourseManager({ termCode }: Props) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={idx === 0 || pending}
-                  onClick={() =>
-                    startTransition(() =>
-                      reorderPlannerItemAction(item.id, "up").then(() =>
-                        refreshCatalogFromServer().then((ok) => {
-                          if (ok) void recalculateSolutions();
-                        }),
-                      ),
-                    )
-                  }
-                >
-                  Up
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={idx >= plannerItems.length - 1 || pending}
-                  onClick={() =>
-                    startTransition(() =>
-                      reorderPlannerItemAction(item.id, "down").then(() =>
-                        refreshCatalogFromServer().then((ok) => {
-                          if (ok) void recalculateSolutions();
-                        }),
-                      ),
-                    )
-                  }
-                >
-                  Down
-                </Button>
                 <PlannerCourseColorPicker
                   displayColor={item.displayColor}
                   disabled={pending}

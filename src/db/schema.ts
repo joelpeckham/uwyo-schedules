@@ -235,7 +235,6 @@ export const plannerItems = pgTable(
     subject: text("subject").notNull(),
     courseNumber: text("course_number").notNull(),
     displayColor: text("display_color").notNull(),
-    sortOrder: integer("sort_order").notNull().default(0),
     /** `unresolved` | `single_crn` | `linked_bundle` */
     selectionKind: text("selection_kind").notNull(),
     anchorCrn: text("anchor_crn"),

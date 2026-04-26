@@ -42,6 +42,7 @@ const minimalCatalog: PlannerCatalogJson = {
   ],
   linkedBundles: [],
   linkedBundleMembers: [],
+  facultyByCrn: {},
 };
 
 describe("listSameTypeSwapGhostsFromCatalog", () => {
