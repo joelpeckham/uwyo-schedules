@@ -283,6 +283,18 @@ function mergeBundleMembers(
   }
 }
 
+function courseIntervalsOverlapBlackouts(
+  acc: TimeInterval[],
+  blackouts: TimeInterval[],
+): boolean {
+  for (const b of blackouts) {
+    for (const iv of acc) {
+      if (intervalsOverlap(iv, b)) return true;
+    }
+  }
+  return false;
+}
+
 /** Shared DFS + scoring (no DB). Used by server solve and `solveSchedulesFromPacks`. */
 export function runSolveSearch(params: {
   items: PlannerItemRow[];
@@ -292,6 +304,8 @@ export function runSolveSearch(params: {
   scheduleTypeByCrn: Map<string, string | null>;
   seatsByCrn: Map<string, { seatsAvailable: number | null; openSection: boolean | null }>;
   requireOpenSections: boolean;
+  /** User busy times; any overlap with a candidate section meeting rejects the candidate. */
+  blackoutIntervals?: TimeInterval[];
   maxSolutions?: number;
   timeoutMs?: number;
 }): SolveSchedulesResult {
@@ -304,6 +318,7 @@ export function runSolveSearch(params: {
     seatsByCrn,
     requireOpenSections,
   } = params;
+  const blackoutIntervals = params.blackoutIntervals ?? [];
   const maxSolutions = params.maxSolutions ?? MAX_SOLUTIONS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -334,7 +349,8 @@ export function runSolveSearch(params: {
     for (const crn of cand.crns) {
       acc.push(...(meetingsByCrn.get(crn) ?? []));
     }
-    return hasAnyOverlap(acc);
+    if (hasAnyOverlap(acc)) return true;
+    return courseIntervalsOverlapBlackouts(acc, blackoutIntervals);
   }
 
   function dfs(depth: number): void {
@@ -456,6 +472,7 @@ export function solveSchedulesFromPacks(
   packs: Record<string, CourseSolvePack>,
   opts: {
     requireOpenSections: boolean;
+    blackoutIntervals?: TimeInterval[];
     maxSolutions?: number;
     timeoutMs?: number;
   },
@@ -503,6 +520,7 @@ export function solveSchedulesFromPacks(
     scheduleTypeByCrn,
     seatsByCrn,
     requireOpenSections: opts.requireOpenSections,
+    blackoutIntervals: opts.blackoutIntervals,
     maxSolutions: opts.maxSolutions,
     timeoutMs: opts.timeoutMs,
   });

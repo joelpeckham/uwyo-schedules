@@ -3,12 +3,17 @@
 import {
   loadPlannerCatalogBootstrapAction,
   prefetchCourseSolvePackAction,
+  savePlannerBlackoutsAction,
   solveSchedulesAction,
   syncPlannerStateAction,
   updatePlannerTermUiStateAction,
 } from "@/app/planner/actions";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import { buildCalendarBlocksFromCatalog } from "@/lib/planner/client/derive";
+import {
+  blackoutsDocToTimeIntervals,
+  type PlannerBlackoutsDocV1,
+} from "@/lib/planner/blackouts";
 import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
 import type { ResolvedPlannerSelection } from "@/lib/planner/resolve-display-crns-shared";
 import {
@@ -30,7 +35,10 @@ import {
 
 const PERSIST_DEBOUNCE_MS = 2500;
 const UI_STATE_DEBOUNCE_MS = 800;
+const BLACKOUT_PERSIST_DEBOUNCE_MS = 800;
 const PACK_PREFETCH_DEBOUNCE_MS = 400;
+
+const EMPTY_BLACKOUTS: PlannerBlackoutsDocV1 = { v: 1, items: [] };
 
 function applySolutionToPlannerItems(
   items: PlannerItemRow[],
@@ -77,6 +85,12 @@ type PlannerContextValue = {
   /** Prefetched per-course solve payloads (client-side DFS when complete). */
   solvePacks: Record<string, CourseSolvePack>;
   mergeSolvePack: (pack: CourseSolvePack) => void;
+  blackouts: PlannerBlackoutsDocV1;
+  setBlackouts: (
+    doc:
+      | PlannerBlackoutsDocV1
+      | ((prev: PlannerBlackoutsDocV1) => PlannerBlackoutsDocV1),
+  ) => void;
 };
 
 const PlannerContext = createContext<PlannerContextValue | null>(null);
@@ -88,6 +102,7 @@ type ProviderProps = {
   initialTermUiState: {
     lastSolutionIndex: number;
     favoriteSolutionIndex: number | null;
+    blackouts: PlannerBlackoutsDocV1;
   } | null;
   children: React.ReactNode;
 };
@@ -114,6 +129,9 @@ export function PlannerProvider({
     number | null
   >(initialTermUiState?.favoriteSolutionIndex ?? null);
   const [requireOpenSections, setRequireOpenSections] = useState(false);
+  const [blackouts, setBlackoutsState] = useState<PlannerBlackoutsDocV1>(
+    () => initialTermUiState?.blackouts ?? EMPTY_BLACKOUTS,
+  );
   const [solvePacks, setSolvePacks] = useState<Record<string, CourseSolvePack>>(
     {},
   );
@@ -148,7 +166,12 @@ export function PlannerProvider({
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistInFlightRef = useRef(false);
   const uiPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blackoutPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const blackoutPersistInFlightRef = useRef(false);
   const requireOpenRef = useRef(requireOpenSections);
+  const blackoutsRef = useRef(blackouts);
 
   useEffect(() => {
     itemsRef.current = plannerItems;
@@ -159,6 +182,9 @@ export function PlannerProvider({
   useEffect(() => {
     requireOpenRef.current = requireOpenSections;
   }, [requireOpenSections]);
+  useEffect(() => {
+    blackoutsRef.current = blackouts;
+  }, [blackouts]);
 
   const setSolutionIndex = useCallback((n: number) => {
     const sols = solutionsRef.current;
@@ -201,6 +227,22 @@ export function PlannerProvider({
     }
   }, []);
 
+  const flushBlackoutPersist = useCallback(async () => {
+    const t = termRef.current;
+    if (blackoutPersistInFlightRef.current) return;
+    blackoutPersistInFlightRef.current = true;
+    try {
+      const res = await savePlannerBlackoutsAction({
+        termCode: t,
+        items: blackoutsRef.current.items,
+      });
+      if (!res.ok) setSyncError(res.error);
+      else setSyncError(null);
+    } finally {
+      blackoutPersistInFlightRef.current = false;
+    }
+  }, []);
+
   const schedulePersist = useCallback(() => {
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
     persistTimerRef.current = setTimeout(() => {
@@ -209,6 +251,16 @@ export function PlannerProvider({
     }, PERSIST_DEBOUNCE_MS);
   }, [flushPersist]);
 
+  const scheduleBlackoutPersist = useCallback(() => {
+    if (blackoutPersistTimerRef.current) {
+      clearTimeout(blackoutPersistTimerRef.current);
+    }
+    blackoutPersistTimerRef.current = setTimeout(() => {
+      blackoutPersistTimerRef.current = null;
+      void flushBlackoutPersist();
+    }, BLACKOUT_PERSIST_DEBOUNCE_MS);
+  }, [flushBlackoutPersist]);
+
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "hidden") {
@@ -216,12 +268,17 @@ export function PlannerProvider({
           clearTimeout(persistTimerRef.current);
           persistTimerRef.current = null;
         }
+        if (blackoutPersistTimerRef.current) {
+          clearTimeout(blackoutPersistTimerRef.current);
+          blackoutPersistTimerRef.current = null;
+        }
         void flushPersist();
+        void flushBlackoutPersist();
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [flushPersist]);
+  }, [flushPersist, flushBlackoutPersist]);
 
   useEffect(() => {
     const onLeave = () => {
@@ -229,11 +286,16 @@ export function PlannerProvider({
         clearTimeout(persistTimerRef.current);
         persistTimerRef.current = null;
       }
+      if (blackoutPersistTimerRef.current) {
+        clearTimeout(blackoutPersistTimerRef.current);
+        blackoutPersistTimerRef.current = null;
+      }
       void flushPersist();
+      void flushBlackoutPersist();
     };
     window.addEventListener("pagehide", onLeave);
     return () => window.removeEventListener("pagehide", onLeave);
-  }, [flushPersist]);
+  }, [flushPersist, flushBlackoutPersist]);
 
   useEffect(() => {
     if (uiPersistTimerRef.current) clearTimeout(uiPersistTimerRef.current);
@@ -266,6 +328,9 @@ export function PlannerProvider({
       Math.max(0, res.termUiState?.lastSolutionIndex ?? 0),
     );
     setFavoriteSolutionIndex(res.termUiState?.favoriteSolutionIndex ?? null);
+    const nextBlackouts = res.termUiState?.blackouts ?? EMPTY_BLACKOUTS;
+    blackoutsRef.current = nextBlackouts;
+    setBlackoutsState(nextBlackouts);
     setSyncError(null);
     return true;
   }, [termCode]);
@@ -322,6 +387,7 @@ export function PlannerProvider({
     if (everyPlannerItemHasSolvePack(rows, packs)) {
       const result = solveSchedulesFromPacks(rows, packs, {
         requireOpenSections: requireOpen,
+        blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
       });
       setSyncError(null);
       setSolutions(result.solutions);
@@ -352,6 +418,25 @@ export function PlannerProvider({
 
   const recalculateSolutionsRef = useRef(recalculateSolutions);
   recalculateSolutionsRef.current = recalculateSolutions;
+
+  const setBlackouts = useCallback(
+    (
+      next:
+        | PlannerBlackoutsDocV1
+        | ((prev: PlannerBlackoutsDocV1) => PlannerBlackoutsDocV1),
+    ) => {
+      setBlackoutsState((prev) => {
+        const doc = typeof next === "function" ? next(prev) : next;
+        blackoutsRef.current = doc;
+        queueMicrotask(() => {
+          scheduleBlackoutPersist();
+          void recalculateSolutionsRef.current();
+        });
+        return doc;
+      });
+    },
+    [scheduleBlackoutPersist],
+  );
 
   useEffect(() => {
     if (plannerItems.length === 0) return;
@@ -419,6 +504,8 @@ export function PlannerProvider({
       recalculateSolutions,
       solvePacks,
       mergeSolvePack,
+      blackouts,
+      setBlackouts,
     }),
     [
       termCode,
@@ -441,6 +528,8 @@ export function PlannerProvider({
       recalculateSolutions,
       solvePacks,
       mergeSolvePack,
+      blackouts,
+      setBlackouts,
     ],
   );
 

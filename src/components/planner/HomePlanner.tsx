@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ensurePlannerSessionAction } from "@/app/planner/actions";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
+import type { PlannerTermUiStateRow } from "@/lib/planner/catalog-bootstrap";
 import type { CalendarBlock } from "@/lib/planner/data";
 import type { PlannerItemRow } from "@/lib/planner/data";
 import type { TermOption } from "@/lib/planner/data";
+import { parseBlackoutsJson } from "@/lib/planner/blackouts";
 import {
   Select,
   SelectContent,
@@ -26,10 +28,7 @@ type Props = {
   termCode: string;
   plannerItems: PlannerItemRow[];
   catalog: PlannerCatalogJson;
-  termUiState: {
-    lastSolutionIndex: number;
-    favoriteSolutionIndex: number | null;
-  } | null;
+  termUiState: PlannerTermUiStateRow | null;
   hasSessionCookie: boolean;
 };
 
@@ -128,7 +127,15 @@ export function HomePlanner({
             termCode={termCode}
             initialPlannerItems={plannerItems}
             initialCatalog={catalog}
-            initialTermUiState={termUiState}
+            initialTermUiState={
+              termUiState
+                ? {
+                    lastSolutionIndex: termUiState.lastSolutionIndex,
+                    favoriteSolutionIndex: termUiState.favoriteSolutionIndex,
+                    blackouts: parseBlackoutsJson(termUiState.blackouts),
+                  }
+                : null
+            }
           >
             <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
               <div className="min-w-0">

@@ -263,6 +263,10 @@ export const plannerTermUiState = pgTable(
       .references(() => terms.code, { onDelete: "cascade" }),
     lastSolutionIndex: integer("last_solution_index").notNull().default(0),
     favoriteSolutionIndex: integer("favorite_solution_index"),
+    /** Versioned JSON: `{ v: 1, items: [...] }` — user busy times for schedule solving. */
+    blackouts: jsonb("blackouts")
+      .notNull()
+      .default(sql`'{"v":1,"items":[]}'::jsonb`),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

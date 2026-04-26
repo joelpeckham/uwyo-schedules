@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { visibleDayIndicesForBlocks } from "./WeekCalendar";
+import {
+  visibleDayIndicesForBlocks,
+  visibleDayIndicesMerged,
+} from "./WeekCalendar";
 
 describe("visibleDayIndicesForBlocks", () => {
   it("returns weekdays only when no Sat/Sun blocks", () => {
@@ -25,5 +28,13 @@ describe("visibleDayIndicesForBlocks", () => {
     expect(
       visibleDayIndicesForBlocks([{ dayIndex: 5 }, { dayIndex: 6 }]),
     ).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+});
+
+describe("visibleDayIndicesMerged", () => {
+  it("adds Saturday when only a blackout uses Saturday", () => {
+    expect(
+      visibleDayIndicesMerged([{ dayIndex: 0 }], [{ dayIndex: 5 }]),
+    ).toEqual([0, 1, 2, 3, 4, 5]);
   });
 });

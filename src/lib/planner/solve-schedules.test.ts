@@ -207,6 +207,85 @@ describe("solveSchedulesFromPacks", () => {
     expect(r.solutions[0]!.selections[2]!.anchorCrn).toBe("B1");
   });
 
+  it("blackout overlapping the only meeting yields no solutions", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A1",
+            linkedBundleId: null,
+            crns: ["A1"],
+          },
+        ],
+        meetingsByCrn: {
+          A1: [{ dayIndex: 0, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: {},
+        seatsByCrn: {
+          A1: { seatsAvailable: 3, openSection: true },
+        },
+      }),
+    };
+    const items = [itemStub({ id: 1, subject: "CS", courseNumber: "1000" })];
+    const r = solveSchedulesFromPacks(items, packs, {
+      requireOpenSections: false,
+      blackoutIntervals: [{ dayIndex: 0, start: 600, end: 660 }],
+    });
+    expect(r.solutions).toHaveLength(0);
+  });
+
+  it("blackout on another day still allows schedule", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A1",
+            linkedBundleId: null,
+            crns: ["A1"],
+          },
+        ],
+        meetingsByCrn: {
+          A1: [{ dayIndex: 0, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: {},
+        seatsByCrn: {
+          A1: { seatsAvailable: 3, openSection: true },
+        },
+      }),
+      [courseSolvePackCourseKey("MATH", "2000")]: basePack("MATH", "2000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "B1",
+            linkedBundleId: null,
+            crns: ["B1"],
+          },
+        ],
+        meetingsByCrn: {
+          B1: [{ dayIndex: 0, start: 700, end: 760 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: {},
+        seatsByCrn: {
+          B1: { seatsAvailable: 2, openSection: true },
+        },
+      }),
+    };
+    const items = [
+      itemStub({ id: 1, subject: "CS", courseNumber: "1000" }),
+      itemStub({ id: 2, subject: "MATH", courseNumber: "2000" }),
+    ];
+    const r = solveSchedulesFromPacks(items, packs, {
+      requireOpenSections: false,
+      blackoutIntervals: [{ dayIndex: 1, start: 600, end: 720 }],
+    });
+    expect(r.solutions).toHaveLength(1);
+  });
+
   it("returns no solutions when only overlapping sections exist", () => {
     const packs: Record<string, CourseSolvePack> = {
       [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {

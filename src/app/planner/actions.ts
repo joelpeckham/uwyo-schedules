@@ -22,6 +22,13 @@ import {
   isPlannerCoursePaletteColor,
 } from "@/lib/planner/course-colors";
 import { PLANNER_SESSION_COOKIE, UUID_RE } from "@/lib/planner/constants";
+import {
+  MAX_PLANNER_BLACKOUTS,
+  parseBlackoutsItemsArray,
+  parseBlackoutsJson,
+  stableBlackoutsJsonForDb,
+  type PlannerBlackoutsDocV1,
+} from "@/lib/planner/blackouts";
 import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import {
@@ -257,6 +264,48 @@ export async function updatePlannerTermUiStateAction(input: {
   }
 }
 
+export async function savePlannerBlackoutsAction(input: {
+  termCode: string;
+  items: unknown;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const sessionId = await requireSessionId();
+    if (!input.termCode?.trim()) return { ok: false, error: "Missing term." };
+    if (Array.isArray(input.items) && input.items.length > MAX_PLANNER_BLACKOUTS) {
+      return {
+        ok: false,
+        error: `At most ${MAX_PLANNER_BLACKOUTS} busy-time blocks.`,
+      };
+    }
+    const doc = parseBlackoutsItemsArray(input.items);
+    const db = createDb();
+    await db
+      .insert(schema.plannerTermUiState)
+      .values({
+        sessionId,
+        termCode: input.termCode.trim(),
+        lastSolutionIndex: 0,
+        favoriteSolutionIndex: null,
+        blackouts: stableBlackoutsJsonForDb(doc),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.plannerTermUiState.sessionId,
+          schema.plannerTermUiState.termCode,
+        ],
+        set: {
+          blackouts: stableBlackoutsJsonForDb(doc),
+          updatedAt: new Date(),
+        },
+      });
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
 export async function removePlannerItemAction(
   itemId: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -371,6 +420,7 @@ export async function loadPlannerCatalogBootstrapAction(
       termUiState: {
         lastSolutionIndex: number;
         favoriteSolutionIndex: number | null;
+        blackouts: PlannerBlackoutsDocV1;
       } | null;
     }
   | { ok: false; error: string }
@@ -389,6 +439,7 @@ export async function loadPlannerCatalogBootstrapAction(
         ? {
             lastSolutionIndex: termUiState.lastSolutionIndex,
             favoriteSolutionIndex: termUiState.favoriteSolutionIndex,
+            blackouts: parseBlackoutsJson(termUiState.blackouts),
           }
         : null,
     };

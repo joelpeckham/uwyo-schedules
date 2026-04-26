@@ -1,6 +1,7 @@
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
+import { blackoutsDocToTimeIntervals, parseBlackoutsJson } from "./blackouts";
 import type { PlannerItemRow } from "./data";
 import { listLinkedBundleOptions, listSectionsForCourse } from "./data";
 import type { PlannerItemSelection } from "./resolve-display-crns-shared";
@@ -415,6 +416,21 @@ export async function solveSchedulesForTerm(
     }
   }
 
+  const sessionId = items[0]!.sessionId;
+  const [uiRow] = await db
+    .select({ blackouts: schema.plannerTermUiState.blackouts })
+    .from(schema.plannerTermUiState)
+    .where(
+      and(
+        eq(schema.plannerTermUiState.sessionId, sessionId),
+        eq(schema.plannerTermUiState.termCode, termCode),
+      ),
+    )
+    .limit(1);
+  const blackoutIntervals = uiRow
+    ? blackoutsDocToTimeIntervals(parseBlackoutsJson(uiRow.blackouts))
+    : [];
+
   return runSolveSearch({
     items,
     candidateLists,
@@ -423,6 +439,7 @@ export async function solveSchedulesForTerm(
     scheduleTypeByCrn,
     seatsByCrn,
     requireOpenSections: opts.requireOpenSections,
+    blackoutIntervals,
     maxSolutions,
     timeoutMs,
   });

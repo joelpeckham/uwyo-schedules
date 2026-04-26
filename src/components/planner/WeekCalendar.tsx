@@ -2,22 +2,51 @@
 
 import type { CalendarBlock } from "@/lib/planner/data";
 import {
+  clampInterval,
+  snapIntervalEndpoints,
+  type PlannerBlackoutItemV1,
+} from "@/lib/planner/blackouts";
+import {
   CALENDAR_END_HOUR,
   CALENDAR_HOUR_COUNT,
   CALENDAR_START_HOUR,
 } from "@/lib/planner/constants";
 import { cn } from "@/lib/utils";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CircleHelp, Move, MousePointerClick, ZoomIn } from "lucide-react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import {
+  Ban,
+  CircleHelp,
+  Move,
+  MousePointerClick,
+  Plus,
+  ZoomIn,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { usePlanner } from "./PlannerContext";
 
 const HOUR_RANGE_HELP =
@@ -43,6 +72,11 @@ const SCHEDULE_HELP: readonly {
     label: "Open details",
     body: "Tap a block to read section details from Banner.",
   },
+  {
+    Icon: Ban,
+    label: "Busy times",
+    body: "Use “Mark busy time” and drag on a day column, or “Add busy…” for exact times. Busy blocks are avoided when paging schedules. Two fingers still pan and zoom the week.",
+  },
 ] as const;
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -60,6 +94,15 @@ export function visibleDayIndicesForBlocks(
   if (hasSat && hasSun) return FULL_WEEK_INDICES;
   if (hasSat) return [...WEEKDAY_INDICES, 5];
   return [...WEEKDAY_INDICES, 6];
+}
+
+/** Week columns when courses and/or busy blocks use weekend days. */
+export function visibleDayIndicesMerged(
+  blocks: readonly { dayIndex: number }[],
+  blackouts: readonly { dayIndex: number }[],
+): readonly number[] {
+  const merged: { dayIndex: number }[] = [...blocks, ...blackouts];
+  return visibleDayIndicesForBlocks(merged);
 }
 
 const MAX_HOUR_ROW_PX = 140;
@@ -97,11 +140,53 @@ function dampedPinchRowRatio(
   return clamp(startRowPx * t);
 }
 
+function formatQuarterHourLabel(totalMinutes: number): string {
+  const h24 = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  const ap = h24 >= 12 ? "p.m." : "a.m.";
+  const hr = h24 % 12 === 0 ? 12 : h24 % 12;
+  const mm = m === 0 ? "" : `:${String(m).padStart(2, "0")}`;
+  return `${hr}${mm} ${ap}`;
+}
+
+function clientYToMinutes(
+  clientY: number,
+  columnEl: HTMLElement,
+  gridHeightPx: number,
+  startMin: number,
+  totalMin: number,
+): number {
+  const rect = columnEl.getBoundingClientRect();
+  const y = clientY - rect.top;
+  const frac = Math.max(0, Math.min(1, y / gridHeightPx));
+  return startMin + frac * totalMin;
+}
+
 export function WeekCalendar({ onBlockActivate }: Props) {
-  const { calendarBlocks: blocks } = usePlanner();
+  const { calendarBlocks: blocks, blackouts, setBlackouts } = usePlanner();
+  const [markBusyMode, setMarkBusyMode] = useState(false);
+  const [busyDialogOpen, setBusyDialogOpen] = useState(false);
+  const [editingBlackoutId, setEditingBlackoutId] = useState<string | null>(null);
+  const [formDayIndex, setFormDayIndex] = useState(0);
+  const [formStartMin, setFormStartMin] = useState(9 * 60);
+  const [formEndMin, setFormEndMin] = useState(10 * 60);
+  const [formLabel, setFormLabel] = useState("");
+  const [dragPreview, setDragPreview] = useState<{
+    dayIndex: number;
+    topPx: number;
+    heightPx: number;
+  } | null>(null);
+  const dragSessionRef = useRef<{
+    dayIndex: number;
+    columnEl: HTMLElement;
+    pointerId: number;
+    startClientY: number;
+    anchorMinutes: number;
+  } | null>(null);
+
   const visibleDayIndices = useMemo(
-    () => visibleDayIndicesForBlocks(blocks),
-    [blocks],
+    () => visibleDayIndicesMerged(blocks, blackouts.items),
+    [blocks, blackouts.items],
   );
   const isWeekdaysOnlyView = visibleDayIndices.length === WEEKDAY_INDICES.length;
   const gridMinWidthRem =
@@ -278,6 +363,214 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   const rowPx = hourRowPx ?? Math.max(44, minRowPx);
   const gridHeightPx = hourCount * rowPx;
 
+  const timeQuarterOptions = useMemo(() => {
+    const out: { value: number; label: string }[] = [];
+    for (let h = CALENDAR_START_HOUR; h <= CALENDAR_END_HOUR; h++) {
+      for (const q of [0, 15, 30, 45]) {
+        const m = h * 60 + q;
+        if (m >= (CALENDAR_END_HOUR + 1) * 60) break;
+        out.push({ value: m, label: formatQuarterHourLabel(m) });
+      }
+    }
+    return out;
+  }, []);
+
+  const openAddBusyDialog = useCallback(() => {
+    setEditingBlackoutId(null);
+    setFormDayIndex(0);
+    setFormStartMin(9 * 60);
+    setFormEndMin(10 * 60);
+    setFormLabel("");
+    setBusyDialogOpen(true);
+  }, []);
+
+  const openEditBlackout = useCallback((item: PlannerBlackoutItemV1) => {
+    setEditingBlackoutId(item.id);
+    setFormDayIndex(item.dayIndex);
+    setFormStartMin(item.start);
+    setFormEndMin(item.end);
+    setFormLabel(item.label ?? "");
+    setBusyDialogOpen(true);
+  }, []);
+
+  const commitBusyForm = useCallback(() => {
+    const body = clampInterval({
+      dayIndex: formDayIndex,
+      start: formStartMin,
+      end: formEndMin,
+      label: formLabel.trim() || undefined,
+    });
+    if (body.end - body.start < 30) {
+      setBusyDialogOpen(false);
+      return;
+    }
+    const newId =
+      globalThis.crypto?.randomUUID?.() ?? `b${Date.now().toString(36)}`;
+    const next: PlannerBlackoutItemV1 = {
+      id: editingBlackoutId ?? newId,
+      dayIndex: body.dayIndex,
+      start: body.start,
+      end: body.end,
+      label: body.label,
+    };
+    if (editingBlackoutId) {
+      setBlackouts((prev) => ({
+        v: 1,
+        items: prev.items.map((i) => (i.id === editingBlackoutId ? next : i)),
+      }));
+    } else {
+      setBlackouts((prev) => ({ v: 1, items: [...prev.items, next] }));
+    }
+    setBusyDialogOpen(false);
+  }, [
+    editingBlackoutId,
+    formDayIndex,
+    formEndMin,
+    formLabel,
+    formStartMin,
+    setBlackouts,
+  ]);
+
+  const removeEditingBlackout = useCallback(() => {
+    if (!editingBlackoutId) return;
+    setBlackouts((prev) => ({
+      v: 1,
+      items: prev.items.filter((i) => i.id !== editingBlackoutId),
+    }));
+    setBusyDialogOpen(false);
+  }, [editingBlackoutId, setBlackouts]);
+
+  const endDragToBlackout = useCallback(
+    (clientY: number) => {
+      const sess = dragSessionRef.current;
+      if (!sess) return;
+      const rawEnd = clientYToMinutes(
+        clientY,
+        sess.columnEl,
+        gridHeightPx,
+        startMin,
+        totalMin,
+      );
+      let a = Math.min(sess.anchorMinutes, rawEnd);
+      let b = Math.max(sess.anchorMinutes, rawEnd);
+      const snapped = snapIntervalEndpoints(a, b);
+      a = snapped.start;
+      b = snapped.end;
+      let body = clampInterval({
+        dayIndex: sess.dayIndex,
+        start: a,
+        end: b,
+        label: undefined,
+      });
+      if (body.end - body.start < 30) {
+        body = clampInterval({
+          dayIndex: sess.dayIndex,
+          start: body.start,
+          end: body.start + 30,
+          label: undefined,
+        });
+      }
+      dragSessionRef.current = null;
+      setDragPreview(null);
+      if (body.end - body.start < 30) return;
+      const id =
+        globalThis.crypto?.randomUUID?.() ?? `b${Date.now().toString(36)}`;
+      setBlackouts((prev) => ({
+        v: 1,
+        items: [
+          ...prev.items,
+          {
+            id,
+            dayIndex: body.dayIndex,
+            start: body.start,
+            end: body.end,
+          },
+        ],
+      }));
+    },
+    [gridHeightPx, setBlackouts, startMin, totalMin],
+  );
+
+  const onDayColumnPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>, dayIndex: number) => {
+      if (!markBusyMode || e.button !== 0) return;
+      if ((e.target as HTMLElement).closest("button")) return;
+      const col = e.currentTarget as HTMLElement;
+      try {
+        col.setPointerCapture(e.pointerId);
+      } catch {
+        return;
+      }
+      const anchor = clientYToMinutes(
+        e.clientY,
+        col,
+        gridHeightPx,
+        startMin,
+        totalMin,
+      );
+      dragSessionRef.current = {
+        dayIndex,
+        columnEl: col,
+        pointerId: e.pointerId,
+        startClientY: e.clientY,
+        anchorMinutes: anchor,
+      };
+    },
+    [gridHeightPx, markBusyMode, startMin, totalMin],
+  );
+
+  const onDayColumnPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const sess = dragSessionRef.current;
+      if (!sess || e.pointerId !== sess.pointerId) return;
+      const rawEnd = clientYToMinutes(
+        e.clientY,
+        sess.columnEl,
+        gridHeightPx,
+        startMin,
+        totalMin,
+      );
+      let a = Math.min(sess.anchorMinutes, rawEnd);
+      let b = Math.max(sess.anchorMinutes, rawEnd);
+      const snapped = snapIntervalEndpoints(a, b);
+      a = snapped.start;
+      b = snapped.end;
+      const topPx = ((a - startMin) / totalMin) * gridHeightPx;
+      const heightPx = Math.max(4, ((b - a) / totalMin) * gridHeightPx);
+      setDragPreview({ dayIndex: sess.dayIndex, topPx, heightPx });
+    },
+    [gridHeightPx, startMin, totalMin],
+  );
+
+  const onDayColumnPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const sess = dragSessionRef.current;
+      if (!sess || e.pointerId !== sess.pointerId) return;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      endDragToBlackout(e.clientY);
+    },
+    [endDragToBlackout],
+  );
+
+  const onDayColumnPointerCancel = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const sess = dragSessionRef.current;
+      if (!sess || e.pointerId !== sess.pointerId) return;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      dragSessionRef.current = null;
+      setDragPreview(null);
+    },
+    [],
+  );
+
   const hours: number[] = [];
   for (let h = CALENDAR_START_HOUR; h <= CALENDAR_END_HOUR; h++) hours.push(h);
 
@@ -289,18 +582,43 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       {isWeekdaysOnlyView ? (
         <p className="sr-only">
           Showing Monday through Friday. Saturday or Sunday columns appear when
-          a selected course meets on that day.
+          a selected course or busy time uses that day.
         </p>
       ) : null}
       <div className="border-b border-border p-3 sm:p-4">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
           <h2
             id="planner-week-calendar-heading"
             className="font-heading min-w-0 text-lg font-medium text-foreground"
           >
             Weekly schedule
           </h2>
-          <Dialog>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant={markBusyMode ? "default" : "outline"}
+              size="default"
+              className="min-h-11 touch-manipulation"
+              aria-pressed={markBusyMode}
+              onClick={() => {
+                setMarkBusyMode((v) => !v);
+                dragSessionRef.current = null;
+                setDragPreview(null);
+              }}
+            >
+              Mark busy time
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="default"
+              className="min-h-11 touch-manipulation"
+              onClick={openAddBusyDialog}
+            >
+              <Plus className="mr-1.5 size-4 shrink-0" aria-hidden />
+              Add busy…
+            </Button>
+            <Dialog>
             <DialogTrigger asChild>
               <Button
                 type="button"
@@ -347,6 +665,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               </ul>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
       </div>
 
@@ -395,8 +714,16 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 {visibleDayIndices.map((dayIndex) => (
                   <div
                     key={dayIndex}
-                    className="relative min-w-[4.5rem] flex-1 border-l border-border"
+                    role="presentation"
+                    className={cn(
+                      "relative min-w-[4.5rem] flex-1 border-l border-border",
+                      markBusyMode && "cursor-crosshair touch-manipulation",
+                    )}
                     style={{ height: gridHeightPx, minHeight: gridHeightPx }}
+                    onPointerDown={(e) => onDayColumnPointerDown(e, dayIndex)}
+                    onPointerMove={onDayColumnPointerMove}
+                    onPointerUp={onDayColumnPointerUp}
+                    onPointerCancel={onDayColumnPointerCancel}
                   >
                     <div className="pointer-events-none absolute inset-0 flex flex-col">
                       {hours.map((h) => (
@@ -407,6 +734,53 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                         />
                       ))}
                     </div>
+                    {blackouts.items
+                      .filter((bo) => bo.dayIndex === dayIndex)
+                      .map((bo) => {
+                        const topPx =
+                          ((bo.start - startMin) / totalMin) * gridHeightPx;
+                        const rawH =
+                          ((bo.end - bo.start) / totalMin) * gridHeightPx;
+                        const heightPx = Math.max(8, rawH);
+                        const title =
+                          bo.label?.trim() ||
+                          `Busy ${formatQuarterHourLabel(bo.start)}–${formatQuarterHourLabel(bo.end)}`;
+                        return (
+                          <button
+                            key={bo.id}
+                            type="button"
+                            title={title}
+                            aria-label={`Edit busy time: ${title}`}
+                            className={cn(
+                              "absolute left-0.5 right-0.5 z-[12] overflow-hidden rounded-md border border-dashed border-muted-foreground/45 bg-muted/55 text-left shadow-none",
+                              "bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.06)_5px,rgba(0,0,0,0.06)_6px)] dark:bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(255,255,255,0.06)_5px,rgba(255,255,255,0.06)_6px)]",
+                            )}
+                            style={{
+                              top: topPx,
+                              height: heightPx,
+                              padding: "4px 6px",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditBlackout(bo);
+                            }}
+                          >
+                            <span className="line-clamp-2 text-[10px] font-medium leading-tight text-muted-foreground">
+                              {bo.label?.trim() || "Busy"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    {dragPreview && dragPreview.dayIndex === dayIndex ? (
+                      <div
+                        className="pointer-events-none absolute left-0.5 right-0.5 z-[11] rounded-md border-2 border-dashed border-primary bg-primary/15"
+                        style={{
+                          top: dragPreview.topPx,
+                          height: dragPreview.heightPx,
+                        }}
+                        aria-hidden
+                      />
+                    ) : null}
                     {blocks
                       .filter((b) => b.dayIndex === dayIndex)
                       .map((b) => {
@@ -445,7 +819,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                             type="button"
                             title={titleAttr}
                             className={cn(
-                              "touch-none absolute left-0.5 right-0.5 overflow-hidden rounded-md border border-border bg-card text-left shadow-sm active:scale-[0.99]",
+                              "touch-none absolute left-0.5 right-0.5 z-[20] overflow-hidden rounded-md border border-border bg-card text-left shadow-sm active:scale-[0.99]",
                               "flex min-h-0 flex-col justify-start gap-0.5 border-l-[4px]",
                             )}
                             style={{
@@ -494,6 +868,129 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           </div>
         </div>
       </div>
+
+      <Dialog open={busyDialogOpen} onOpenChange={setBusyDialogOpen}>
+        <DialogContent className="max-h-[min(32rem,90vh)] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingBlackoutId ? "Edit busy time" : "Add busy time"}
+            </DialogTitle>
+            <DialogDescription>
+              Block times you are not available (work, commute, etc.). Valid
+              schedules skip these intervals.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-1">
+            <div className="grid gap-2">
+              <Label htmlFor="busy-day">Day</Label>
+              <Select
+                value={String(formDayIndex)}
+                onValueChange={(v) => setFormDayIndex(Number(v))}
+              >
+                <SelectTrigger
+                  id="busy-day"
+                  className="min-h-11 w-full touch-manipulation"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DAY_LABELS.map((label, di) => (
+                    <SelectItem key={di} value={String(di)}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+              <div className="grid gap-2">
+                <Label htmlFor="busy-start">Starts</Label>
+                <Select
+                  value={String(formStartMin)}
+                  onValueChange={(v) => setFormStartMin(Number(v))}
+                >
+                  <SelectTrigger
+                    id="busy-start"
+                    className="min-h-11 w-full touch-manipulation"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {timeQuarterOptions.map((o) => (
+                      <SelectItem key={o.value} value={String(o.value)}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="busy-end">Ends</Label>
+                <Select
+                  value={String(formEndMin)}
+                  onValueChange={(v) => setFormEndMin(Number(v))}
+                >
+                  <SelectTrigger
+                    id="busy-end"
+                    className="min-h-11 w-full touch-manipulation"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {timeQuarterOptions.map((o) => (
+                      <SelectItem key={o.value} value={String(o.value)}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="busy-label">Label (optional)</Label>
+              <Input
+                id="busy-label"
+                className="min-h-11 touch-manipulation"
+                maxLength={80}
+                placeholder="e.g. Work"
+                value={formLabel}
+                onChange={(e) => setFormLabel(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+            {editingBlackoutId ? (
+              <Button
+                type="button"
+                variant="destructive"
+                className="min-h-11 w-full touch-manipulation sm:w-auto"
+                onClick={removeEditingBlackout}
+              >
+                Remove
+              </Button>
+            ) : (
+              <span className="hidden sm:block" />
+            )}
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 touch-manipulation"
+                onClick={() => setBusyDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="min-h-11 touch-manipulation"
+                onClick={commitBusyForm}
+              >
+                Save
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
