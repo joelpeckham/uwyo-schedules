@@ -4,7 +4,7 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-## Design system (uwyoSchedules)
+## Design system (uwyoschedule)
 
 - **Source of truth:** `design-system/README.md` (voice, color, type, components, content rules) and `design-system/colors_and_type.css` (tokens).
 - **Cursor skill:** `.cursor/skills/uwyoSchedules-design/SKILL.md` — invoke when building or reviewing on-brand UI, static mocks, or when mapping tokens into the Next.js app.

@@ -1,6 +1,6 @@
-# uwyoSchedules Web — UI Kit
+# uwyoschedule Web — UI Kit
 
-High-fidelity recreation of the uwyoSchedules schedule builder. This is the canonical surface for the brand: a three-column app with search/courses on the left, a weekly calendar in the middle, and preferences/summary on the right.
+High-fidelity recreation of the uwyoschedule schedule builder. This is the canonical surface for the brand: a three-column app with search/courses on the left, a weekly calendar in the middle, and preferences/summary on the right.
 
 ## What's here
 

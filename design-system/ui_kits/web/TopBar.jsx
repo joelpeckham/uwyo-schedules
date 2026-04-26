@@ -5,7 +5,7 @@ function TopBar({ user = "Jordan P." }) {
       <div className="topbar-inner">
         <a className="brand" href="#">
           <span className="brand-mark">u</span>
-          <span className="brand-word">uwyo<span className="accent">Schedules</span></span>
+          <span className="brand-word">uwyo<span className="accent">Schedule</span></span>
         </a>
         <nav className="topnav">
           <a className="topnav-link active" href="#">Schedules</a>

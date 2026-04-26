@@ -18,10 +18,15 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "uwyoSchedules",
+  metadataBase: new URL("https://uwyoschedule.org"),
+  title: "uwyoschedule",
   description:
     "Find a University of Wyoming class schedule that fits, fast and automatic.",
   icons: { icon: "/brand/favicon.svg" },
+  openGraph: {
+    siteName: "uwyoschedule",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

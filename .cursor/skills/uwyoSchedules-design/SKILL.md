@@ -1,13 +1,13 @@
 ---
-name: uwyoschedules-design
+name: uwyoschedule-design
 description: >-
-  On-brand UI and content for uwyoSchedules. Use for interfaces, static mocks,
+  On-brand UI and content for uwyoschedule. Use for interfaces, static mocks,
   HTML previews, and production Next.js. Covers tokens (colors_and_type.css),
   voice, Lucide, logos, and the web UI kit under design-system/.
 user-invocable: true
 ---
 
-# uwyoSchedules design system
+# uwyoschedule design system
 
 **Canonical content lives in the repository at** `design-system/`. This skill is a short pointer; read the full spec there before shipping visuals or copy.
 

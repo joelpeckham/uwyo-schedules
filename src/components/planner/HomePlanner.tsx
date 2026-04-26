@@ -69,7 +69,7 @@ export function HomePlanner({
           <div className="flex items-center gap-4">
             <Image
               src="/brand/logo-wordmark.svg"
-              alt="uwyoSchedules"
+              alt="uwyoschedule"
               width={180}
               height={36}
               priority

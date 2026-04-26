@@ -1,8 +1,8 @@
-# uwyoSchedules — Design System
+# uwyoschedule — Design System
 
 **Tagline:** _Finding your University of Wyoming class schedule, fast and automatic._
 
-uwyoSchedules helps UW students go from "course list" to "weekly schedule that actually works" in minutes — without the soul-crushing back-and-forth of WyoWeb's registration screens. The product is calm, focused, and locally rooted: it feels like Wyoming, not like generic ed-tech.
+uwyoschedule helps UW students go from "course list" to "weekly schedule that actually works" in minutes — without the soul-crushing back-and-forth of WyoWeb's registration screens. The product is calm, focused, and locally rooted: it feels like Wyoming, not like generic ed-tech.
 
 This design system is the canonical source of truth for the brand's visual and content language: typography, color, components, tone, and the assets needed to ship anything from a marketing page to an in-app modal.
 
@@ -12,7 +12,7 @@ This design system is the canonical source of truth for the brand's visual and c
 
 No codebase, Figma, or screenshots were attached at creation time. The system was built from:
 
-- The product description: _"uwyoSchedules: We make finding a schedule for your University of Wyoming classes fast, easy, and automatic."_
+- The product description: _"uwyoschedule: We make finding a schedule for your University of Wyoming classes fast, easy, and automatic."_
 - Stylistic direction: **warm earthly color palette, serif fonts, shadcn/ui base components, Claude/Anthropic-inspired editorial calm**.
 - Regional context: University of Wyoming sits in Laramie, WY — high plains, sagebrush, sandstone, and big sky. The palette pulls from that landscape rather than UW's official brown-and-gold athletic colors (we keep brown as the primary anchor but read warmer and more refined).
 
@@ -35,7 +35,7 @@ If a real codebase or Figma file becomes available, the next iteration should:
 | `../public/brand/` | Copies of `assets/*.svg` served by Next.js (e.g. `/brand/favicon.svg`). |
 | `fonts/` | Web font files (currently empty — uses Google Fonts CDN, see _Type substitutions_). |
 | `preview/` | HTML cards rendering each token / component group for the Design System tab. |
-| `ui_kits/web/` | High-fidelity React/JSX recreation of the uwyoSchedules web app. |
+| `ui_kits/web/` | High-fidelity React/JSX recreation of the uwyoschedule web app. |
 
 ---
 
@@ -64,7 +64,7 @@ The voice is **warm, plainspoken, and quietly confident** — like a friend who 
 ### Pronouns
 
 - **"You"** for the user. Always.
-- **"We"** for uwyoSchedules itself, sparingly. Use mostly in onboarding, empty states, error explanations.
+- **"We"** for uwyoschedule itself, sparingly. Use mostly in onboarding, empty states, error explanations.
 - **No "our team"** — feels stilted. Just "we."
 
 ### Emoji & decoration
@@ -171,7 +171,7 @@ A canonical card:
 
 ## ICONOGRAPHY
 
-uwyoSchedules uses **[Lucide](https://lucide.dev)** as its icon system, loaded from the official CDN. Lucide's clean, geometric, single-stroke style sits well next to a serif display face — it stays calm and editorial rather than competing.
+uwyoschedule uses **[Lucide](https://lucide.dev)** as its icon system, loaded from the official CDN. Lucide's clean, geometric, single-stroke style sits well next to a serif display face — it stays calm and editorial rather than competing.
 
 **Loaded via:** `<script src="https://unpkg.com/lucide@latest"></script>` then `<i data-lucide="calendar"></i>`.
 
@@ -202,7 +202,7 @@ uwyoSchedules uses **[Lucide](https://lucide.dev)** as its icon system, loaded f
 ### Logo & marks
 
 The wordmark and a "U" monogram live in `assets/`:
-- `logo-wordmark.svg` — the full lockup, "uwyoSchedules" in serif.
+- `logo-wordmark.svg` — the full lockup, "uwyoschedule" in serif.
 - `logo-mark.svg` — the standalone monogram in a rust circle.
 - `favicon.svg` — small-size monogram.
 

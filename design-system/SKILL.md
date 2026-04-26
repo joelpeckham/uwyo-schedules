@@ -1,5 +1,5 @@
 ---
-name: uwyoschedules-design
+name: uwyoschedule-design
 description: >-
   Pointer only. The active Cursor skill for this design system lives at
   .cursor/skills/uwyoSchedules-design/SKILL.md in the repository root.
