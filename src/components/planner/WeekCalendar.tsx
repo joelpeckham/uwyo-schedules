@@ -7,7 +7,7 @@ import {
   CALENDAR_START_HOUR,
 } from "@/lib/planner/constants";
 import { cn } from "@/lib/utils";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp, Move, MousePointerClick, ZoomIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +47,21 @@ const SCHEDULE_HELP: readonly {
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
+const WEEKDAY_INDICES = [0, 1, 2, 3, 4] as const;
+const FULL_WEEK_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
+
+/** Sat=5, Sun=6 per `DAY_FIELDS` in derive.ts */
+export function visibleDayIndicesForBlocks(
+  blocks: readonly { dayIndex: number }[],
+): readonly number[] {
+  const hasSat = blocks.some((b) => b.dayIndex === 5);
+  const hasSun = blocks.some((b) => b.dayIndex === 6);
+  if (!hasSat && !hasSun) return WEEKDAY_INDICES;
+  if (hasSat && hasSun) return FULL_WEEK_INDICES;
+  if (hasSat) return [...WEEKDAY_INDICES, 5];
+  return [...WEEKDAY_INDICES, 6];
+}
+
 const MAX_HOUR_ROW_PX = 140;
 const TWO_FINGER_PINCH_ZOOM_MIN_RATIO = 0.12;
 const TWO_FINGER_PAN_STABLE_MAX_RATIO = 0.2;
@@ -84,6 +99,15 @@ function dampedPinchRowRatio(
 
 export function WeekCalendar({ onBlockActivate }: Props) {
   const { calendarBlocks: blocks } = usePlanner();
+  const visibleDayIndices = useMemo(
+    () => visibleDayIndicesForBlocks(blocks),
+    [blocks],
+  );
+  const isWeekdaysOnlyView = visibleDayIndices.length === WEEKDAY_INDICES.length;
+  const gridMinWidthRem =
+    visibleDayIndices.length === FULL_WEEK_INDICES.length
+      ? 40
+      : 3 + visibleDayIndices.length * 4.5;
 
   const hScrollRef = useRef<HTMLDivElement | null>(null);
   const weekHeaderRef = useRef<HTMLDivElement | null>(null);
@@ -262,6 +286,12 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm"
       aria-labelledby="planner-week-calendar-heading"
     >
+      {isWeekdaysOnlyView ? (
+        <p className="sr-only">
+          Showing Monday through Friday. Saturday or Sunday columns appear when
+          a selected course meets on that day.
+        </p>
+      ) : null}
       <div className="border-b border-border p-3 sm:p-4">
         <div className="flex items-start justify-between gap-2">
           <h2
@@ -321,18 +351,21 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       </div>
 
       <div ref={hScrollRef} className="overflow-x-auto">
-        <div className="flex min-w-[40rem] flex-col">
+        <div
+          className="flex flex-col"
+          style={{ minWidth: `max(100%, ${gridMinWidthRem}rem)` }}
+        >
           <div
             ref={weekHeaderRef}
             className="flex shrink-0 border-b border-border bg-muted/30"
           >
             <div className="w-12 shrink-0" aria-hidden />
-            {DAY_LABELS.map((d) => (
+            {visibleDayIndices.map((dayIndex) => (
               <div
-                key={d}
+                key={dayIndex}
                 className="min-w-[4.5rem] flex-1 border-l border-border py-2 text-center font-mono text-xs font-medium text-muted-foreground"
               >
-                {d}
+                {DAY_LABELS[dayIndex]}
               </div>
             ))}
           </div>
@@ -342,7 +375,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
             className="relative min-h-0 touch-none overflow-y-auto overscroll-y-contain"
             style={{ height: "min(70vh, 32rem)" }}
           >
-            <div className="flex min-w-[40rem]">
+            <div
+              className="flex"
+              style={{ minWidth: `max(100%, ${gridMinWidthRem}rem)` }}
+            >
               <div className="flex w-12 shrink-0 flex-col border-r border-border bg-muted/20">
                 {hours.map((h) => (
                   <div
@@ -356,9 +392,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               </div>
 
               <div className="flex min-w-0 flex-1">
-                {DAY_LABELS.map((label, dayIndex) => (
+                {visibleDayIndices.map((dayIndex) => (
                   <div
-                    key={label}
+                    key={dayIndex}
                     className="relative min-w-[4.5rem] flex-1 border-l border-border"
                     style={{ height: gridHeightPx, minHeight: gridHeightPx }}
                   >
