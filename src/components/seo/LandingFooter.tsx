@@ -4,7 +4,7 @@ const featuredSubjects = [
   "MATH",
   "ENGL",
   "COSC",
-  "BIOL",
+  "LIFE",
   "CHEM",
   "PHYS",
   "STAT",
