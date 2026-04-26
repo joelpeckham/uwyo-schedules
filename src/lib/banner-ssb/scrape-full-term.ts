@@ -1,3 +1,5 @@
+import { revalidateTag } from "next/cache";
+import { SEO_BANNER_DATA_TAG } from "@/lib/seo/cache-tags";
 import { BannerSsbClient } from "./client";
 import {
   MAX_SEARCH_RESULT_PAGES,
@@ -141,6 +143,12 @@ export async function scrapeFullTermToDatabase(
     linkedBundles: linkedParsed,
     hotRun,
   });
+
+  try {
+    revalidateTag(SEO_BANNER_DATA_TAG, "max");
+  } catch (err) {
+    console.warn("[seo] revalidateTag skipped", err);
+  }
 
   return {
     subjects: subjects.length,

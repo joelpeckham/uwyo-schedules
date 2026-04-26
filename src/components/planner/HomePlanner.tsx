@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ensurePlannerSessionAction } from "@/app/planner/actions";
@@ -67,14 +68,17 @@ export function HomePlanner({
       <header className="border-b border-border px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between lg:max-w-[90rem]">
           <div className="flex items-center gap-4">
-            <Image
-              src="/brand/logo-wordmark.svg"
-              alt="uwyoschedule"
-              width={180}
-              height={36}
-              priority
-              className="text-primary"
-            />
+            <Link href="/" className="inline-flex shrink-0">
+              <Image
+                src="/brand/logo-wordmark.svg"
+                alt="uwyoschedule home"
+                width={180}
+                height={36}
+                priority
+                sizes="(max-width: 640px) 160px, 180px"
+                className="text-primary"
+              />
+            </Link>
           </div>
           {hasData ? (
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
@@ -106,10 +110,17 @@ export function HomePlanner({
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:max-w-[90rem]">
-        <div>
-          <h1 className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+        <div
+          id="planner"
+          tabIndex={-1}
+          className="scroll-mt-24 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Planner
+          </p>
+          <h2 className="mt-1 font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
             Your week
-          </h1>
+          </h2>
           <p className="mt-2 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">
             Add courses, set optional instructor preferences, and page through
             valid weekly schedules. Tap a block for Banner section details.

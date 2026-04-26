@@ -17,12 +17,20 @@ You can start editing the page by modifying `src/app/page.tsx`. The page auto-up
 
 The brand kit (tokens, copy guidelines, HTML previews, UI kit) lives in **`design-system/`**. A Cursor agent skill that points to it is at **`.cursor/skills/uwyoSchedules-design/SKILL.md`**. SVG logos and the favicon are also under **`public/brand/`** for use in the Next.js app.
 
+## SEO
+
+- **Canonical site:** `https://uwyoschedule.org` (override with `NEXT_PUBLIC_SITE_URL` in `.env.local` for previews).
+- **Discovery:** [`/sitemap.xml`](https://uwyoschedule.org/sitemap.xml) and [`/robots.txt`](https://uwyoschedule.org/robots.txt) are generated from the App Router.
+- **Search Console:** After deploying, add the property in [Google Search Console](https://search.google.com/search-console), set the DNS or HTML verification token in `GOOGLE_SITE_VERIFICATION` (see `.env.example`), redeploy, then submit the sitemap URL above under **Sitemaps**.
+- **Bing:** In [Bing Webmaster Tools](https://www.bing.com/webmasters), import the site and submit the same sitemap URL.
+- **Instructor URLs:** Optional; set `SEO_INSTRUCTOR_PAGES=1` to index `/instructors/[slug]` (off by default).
+
 ## Testing
 
 - **Unit and component tests (Vitest):** `pnpm test` (watch) or `pnpm test:run` (CI mode).
 - **End-to-end (Playwright):** `pnpm exec playwright install chromium` once per machine, then `pnpm test:e2e`. The dev server uses port `45123` by default (override with `E2E_PORT`).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Fonts load through [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) (Inter, Source Serif 4, JetBrains Mono).
 
 ## Learn More
 
