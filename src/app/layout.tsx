@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { Inter, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { SITE_URL } from "@/lib/seo/site";
@@ -88,7 +89,10 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${sourceSerif4.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
