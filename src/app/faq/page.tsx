@@ -37,7 +37,14 @@ export default function FaqPage() {
         </dl>
         <p className="mt-12 text-sm text-muted-foreground">
           <Link className="text-primary underline-offset-4 hover:underline" href="/">
-            Planner home
+            Home
+          </Link>
+          {" · "}
+          <Link
+            className="text-primary underline-offset-4 hover:underline"
+            href="/planner"
+          >
+            Planner
           </Link>
           {" · "}
           <Link

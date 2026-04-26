@@ -186,8 +186,11 @@ export default async function CourseDetailPage({ params }: Props) {
 
       <p className="mt-10 text-sm text-muted-foreground">
         Prefer the planner?{" "}
-        <Link className="text-primary underline-offset-4 hover:underline" href="/">
-          Build a schedule on the home page
+        <Link
+          className="text-primary underline-offset-4 hover:underline"
+          href="/planner"
+        >
+          Open the planner
         </Link>
         .
       </p>

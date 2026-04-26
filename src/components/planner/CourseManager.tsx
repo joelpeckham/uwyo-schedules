@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { usePlanner } from "./PlannerContext";
 
 type Props = { termCode: string };
@@ -78,14 +78,20 @@ export function CourseManager({ termCode }: Props) {
 
   const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
 
+  /** Bumps invalidate in-flight search responses after the user picks a course. */
+  const searchSeqRef = useRef(0);
+  const autoAddAfterPrefetchRef = useRef(false);
+
   const runSearch = useCallback(() => {
     const q = searchQ.trim();
     if (q.length < 2) {
       setHits([]);
       return;
     }
+    const seq = ++searchSeqRef.current;
     startTransition(async () => {
       const rows = await searchCoursesAction(termCode, q);
+      if (seq !== searchSeqRef.current) return;
       setHits(rows);
     });
   }, [searchQ, termCode]);
@@ -134,14 +140,13 @@ export function CourseManager({ termCode }: Props) {
     picked && solvePacks[pickedPackKey],
   );
 
-  const submitAdd = useCallback(() => {
-    if (!picked) return;
-    setError(null);
-    startTransition(async () => {
+  const runAddCourse = useCallback(
+    async (row: CourseSearchRow) => {
+      setError(null);
       const res = await addPlannerCourseWishAction({
         termCode,
-        subject: picked.subject,
-        courseNumber: picked.courseNumber,
+        subject: row.subject,
+        courseNumber: row.courseNumber,
       });
       if (!res.ok) {
         setError(res.error);
@@ -156,8 +161,49 @@ export function CourseManager({ termCode }: Props) {
       setPicked(null);
       setHits([]);
       setSearchQ("");
-    });
-  }, [picked, termCode, refreshCatalogFromServer, recalculateSolutions]);
+    },
+    [termCode, refreshCatalogFromServer, recalculateSolutions],
+  );
+
+  const submitAdd = useCallback(() => {
+    if (!picked) return;
+    startTransition(() => void runAddCourse(picked));
+  }, [picked, runAddCourse]);
+
+  const onPickCourseFromSearch = useCallback(
+    (h: CourseSearchRow) => {
+      setError(null);
+      searchSeqRef.current += 1;
+      setHits([]);
+      const key = courseSolvePackCourseKey(h.subject, h.courseNumber);
+      if (solvePacks[key]) {
+        startTransition(() => void runAddCourse(h));
+        return;
+      }
+      setPicked(h);
+      setSearchQ("");
+      autoAddAfterPrefetchRef.current = true;
+    },
+    [solvePacks, runAddCourse],
+  );
+
+  useEffect(() => {
+    if (!autoAddAfterPrefetchRef.current || !picked) return;
+    if (prefetchPackPending) return;
+    if (prefetchPackError) {
+      autoAddAfterPrefetchRef.current = false;
+      return;
+    }
+    if (!hasPackForPicked) return;
+    autoAddAfterPrefetchRef.current = false;
+    startTransition(() => void runAddCourse(picked));
+  }, [
+    picked,
+    prefetchPackPending,
+    prefetchPackError,
+    hasPackForPicked,
+    runAddCourse,
+  ]);
 
   const persistPrefs = useCallback(
     (itemId: number, prefs: InstructorPrefsV1) => {
@@ -264,7 +310,7 @@ export function CourseManager({ termCode }: Props) {
                         picked?.courseNumber === h.courseNumber &&
                         "bg-muted",
                     )}
-                    onClick={() => setPicked(h)}
+                    onClick={() => onPickCourseFromSearch(h)}
                   >
                     <span className="font-mono text-foreground">
                       {h.subjectCourse ?? `${h.subject} ${h.courseNumber}`}

@@ -19,7 +19,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const latest = await getLatestTermCode(db);
 
   const staticEntries: MetadataRoute.Sitemap = [
-    { url: base, lastModified: now, changeFrequency: "daily", priority: 1 },
+    {
+      url: base,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 1,
+    },
+    {
+      url: `${base}/planner`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.95,
+    },
     {
       url: `${base}/about`,
       lastModified: now,

@@ -16,6 +16,12 @@ export default function NotFound() {
         </Link>
         <Link
           className="text-primary underline-offset-4 hover:underline"
+          href="/planner"
+        >
+          Planner
+        </Link>
+        <Link
+          className="text-primary underline-offset-4 hover:underline"
           href="/courses"
         >
           Courses by subject

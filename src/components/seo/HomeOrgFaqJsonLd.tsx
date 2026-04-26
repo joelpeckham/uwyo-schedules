@@ -2,7 +2,8 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { HOME_FAQ_ITEMS } from "@/lib/seo/home-faq";
 import { absoluteUrl } from "@/lib/seo/site";
 
-export function HomeJsonLd() {
+/** Organization + FAQPage for the marketing home (`/`). WebApplication lives on `/planner` via PlannerJsonLd. */
+export function HomeOrgFaqJsonLd() {
   const org = {
     "@type": "Organization",
     "@id": absoluteUrl("/#organization"),
@@ -20,18 +21,6 @@ export function HomeJsonLd() {
     sameAs: ["https://www.uwyo.edu/"],
   };
 
-  const app = {
-    "@type": "WebApplication",
-    "@id": absoluteUrl("/#webapp"),
-    name: "uwyoschedule",
-    url: absoluteUrl("/"),
-    applicationCategory: "EducationalApplication",
-    operatingSystem: "Web",
-    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-    browserRequirements: "Requires JavaScript.",
-    publisher: { "@id": absoluteUrl("/#organization") },
-  };
-
   const faq = {
     "@type": "FAQPage",
     mainEntity: HOME_FAQ_ITEMS.map((item) => ({
@@ -44,5 +33,5 @@ export function HomeJsonLd() {
     })),
   };
 
-  return <JsonLd data={[org, app, faq]} />;
+  return <JsonLd data={[org, faq]} />;
 }

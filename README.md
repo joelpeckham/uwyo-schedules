@@ -20,7 +20,7 @@ The brand kit (tokens, copy guidelines, HTML previews, UI kit) lives in **`desig
 ## SEO
 
 - **Canonical site:** `https://uwyoschedule.org` (override with `NEXT_PUBLIC_SITE_URL` in `.env.local` for previews).
-- **Discovery:** [`/sitemap.xml`](https://uwyoschedule.org/sitemap.xml) and [`/robots.txt`](https://uwyoschedule.org/robots.txt) are generated from the App Router.
+- **Discovery:** [`/sitemap.xml`](https://uwyoschedule.org/sitemap.xml) and [`/robots.txt`](https://uwyoschedule.org/robots.txt) are generated from the App Router. The interactive planner lives at [`/planner`](https://uwyoschedule.org/planner); `/` is the marketing landing page.
 - **Search Console:** After deploying, add the property in [Google Search Console](https://search.google.com/search-console), set the DNS or HTML verification token in `GOOGLE_SITE_VERIFICATION` (see `.env.example`), redeploy, then submit the sitemap URL above under **Sitemaps**.
 - **Bing:** In [Bing Webmaster Tools](https://www.bing.com/webmasters), import the site and submit the same sitemap URL.
 - **Instructor URLs:** Optional; set `SEO_INSTRUCTOR_PAGES=1` to index `/instructors/[slug]` (off by default).

@@ -17,7 +17,7 @@ function subjectHref(code: string) {
   return `/courses/${encodeURIComponent(code.toLowerCase())}`;
 }
 
-export function HomeFooter({
+export function LandingFooter({
   latestTermCode,
 }: {
   latestTermCode: string | null;
@@ -51,6 +51,9 @@ export function HomeFooter({
           </ul>
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+          <Link className="hover:text-primary hover:underline" href="/planner">
+            Planner
+          </Link>
           <Link className="hover:text-primary hover:underline" href="/about">
             About
           </Link>

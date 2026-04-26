@@ -51,8 +51,11 @@ export default function AboutPage() {
           holds, or seat counts — always confirm in official UW systems.
         </p>
         <p className="mt-8 text-sm text-muted-foreground">
-          <Link className="text-primary underline-offset-4 hover:underline" href="/">
-            Back to the planner
+          <Link
+            className="text-primary underline-offset-4 hover:underline"
+            href="/planner"
+          >
+            Open the planner
           </Link>
           {" · "}
           <Link className="text-primary underline-offset-4 hover:underline" href="/faq">
