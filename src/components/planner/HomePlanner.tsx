@@ -8,6 +8,8 @@ import type { PlannerTermUiStateRow } from "@/lib/planner/catalog-bootstrap";
 import type { CalendarBlock } from "@/lib/planner/data";
 import type { PlannerItemRow } from "@/lib/planner/data";
 import { parseBlackoutsJson } from "@/lib/planner/blackouts";
+import Link from "next/link";
+
 import { CourseManager } from "./CourseManager";
 import { PlannerProvider } from "./PlannerContext";
 import { SectionJsonModal } from "./SectionJsonModal";
@@ -49,7 +51,7 @@ export function HomePlanner({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:max-w-[90rem]">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:max-w-[90rem]">
         <div
           id="planner"
           tabIndex={-1}
@@ -87,8 +89,25 @@ export function HomePlanner({
                 : null
             }
           >
+            <nav
+              aria-label="Jump to planner section"
+              className="sticky top-0 z-10 -mx-1 mb-2 flex gap-2 border-b border-border bg-background/95 px-1 py-2 backdrop-blur-sm supports-backdrop-filter:bg-background/85 lg:hidden"
+            >
+              <Link
+                href="#planner-courses"
+                className="inline-flex min-h-9 flex-1 items-center justify-center rounded-md border border-border bg-card px-3 text-center text-sm font-medium text-foreground shadow-sm transition hover:bg-muted"
+              >
+                Courses and preferences
+              </Link>
+              <Link
+                href="#planner-week-calendar"
+                className="inline-flex min-h-9 flex-1 items-center justify-center rounded-md border border-border bg-card px-3 text-center text-sm font-medium text-foreground shadow-sm transition hover:bg-muted"
+              >
+                Week view
+              </Link>
+            </nav>
             <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
-              <div className="min-w-0">
+              <div className="min-w-0 lg:sticky lg:top-4 lg:z-1 lg:max-h-[min(100vh-2rem,56rem)] lg:self-start lg:overflow-y-auto">
                 <CourseManager key={termCode} termCode={termCode} />
               </div>
               <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
@@ -103,7 +122,7 @@ export function HomePlanner({
             />
           </PlannerProvider>
         )}
-      </main>
+      </div>
     </div>
   );
 }

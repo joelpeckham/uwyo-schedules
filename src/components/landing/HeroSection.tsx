@@ -17,7 +17,7 @@ export function HeroSection() {
           Build a UW class schedule that fits your life.
         </h1>
         <p className="mt-6 max-w-prose text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl">
-          From course list to class schedule, in minutes. Pick your classes — we
+          From course list to class schedule, in minutes. Pick your classes—we
           generate every conflict-free weekly schedule from the live UW course
           catalog.
         </p>

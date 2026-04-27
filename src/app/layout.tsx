@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { Inter, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
+import { SkipToMain } from "@/components/seo/SkipToMain";
 import { SITE_URL } from "@/lib/seo/site";
 
 const inter = Inter({
@@ -87,9 +88,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${inter.variable} ${sourceSerif4.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
+        <SkipToMain />
         {children}
         <Analytics />
       </body>

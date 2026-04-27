@@ -17,19 +17,19 @@ export default async function TermsIndexPage() {
   const terms = await listTerms(db);
   if (terms.length === 0) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
         <h1 className="font-heading text-3xl font-medium text-foreground">
           Terms
         </h1>
         <p className="mt-4 text-muted-foreground">
           No terms in the database yet. Run an ingest job, then reload.
         </p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="font-heading text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
         Terms
       </h1>
@@ -51,6 +51,6 @@ export default async function TermsIndexPage() {
           </li>
         ))}
       </ul>
-    </main>
+    </div>
   );
 }

@@ -321,7 +321,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   useEffect(() => {
     try {
       if (!localStorage.getItem(GESTURE_TIP_STORAGE_KEY)) {
-        setShowGestureTip(true);
+        queueMicrotask(() => setShowGestureTip(true));
       }
     } catch {
       /* private mode or blocked */
@@ -1064,8 +1064,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   return (
     <section
+      id="planner-week-calendar"
       className={cn(
-        "overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm",
+        "scroll-mt-20 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm",
         courseDragSession && "select-none",
       )}
       aria-labelledby="planner-week-calendar-heading"
@@ -1135,8 +1136,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           >
             Weekly schedule
           </h2>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-y-2 sm:justify-end">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-y-2 overflow-x-auto overflow-y-visible pb-1 [scrollbar-width:thin] sm:flex-wrap sm:justify-end sm:overflow-visible sm:pb-0">
+            <div className="flex shrink-0 flex-nowrap items-center gap-2 sm:flex-wrap">
               <Button
                 type="button"
                 variant="outline"
@@ -1172,7 +1173,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               ) : null}
             </div>
             <div
-              className="flex h-9 min-w-0 max-w-full shrink-0 items-center justify-between gap-3 sm:ml-2 sm:border-l sm:border-border sm:pl-3"
+              className="flex h-9 min-w-0 max-w-full shrink-0 items-center justify-between gap-3 sm:ml-2 sm:max-w-full sm:border-l sm:border-border sm:pl-3"
             >
               <Label
                 htmlFor="exclude-full-toggle"
@@ -1190,7 +1191,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 }}
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2 sm:ml-2 sm:border-l sm:border-border sm:pl-3">
+            <div className="flex shrink-0 flex-nowrap items-center gap-2 sm:ml-2 sm:flex-wrap sm:border-l sm:border-border sm:pl-3">
               <Button
                 type="button"
                 variant={markBusyMode ? "default" : "outline"}
@@ -1216,7 +1217,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 Add busy…
               </Button>
             </div>
-            <div className="flex items-center gap-1 sm:ml-2 sm:border-l sm:border-border sm:pl-3">
+            <div className="flex shrink-0 items-center gap-1 sm:ml-2 sm:border-l sm:border-border sm:pl-3">
               <Button
                 type="button"
                 variant="outline"

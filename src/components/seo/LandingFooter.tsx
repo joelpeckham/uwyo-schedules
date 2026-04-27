@@ -26,7 +26,7 @@ export function LandingFooter({
     <footer className="border-t border-border bg-muted/15 px-4 py-10 sm:px-6">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 lg:max-w-[90rem]">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          <h2 className="text-sm font-semibold tracking-wide text-muted-foreground">
             Browse by subject
           </h2>
           <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-2 text-sm">

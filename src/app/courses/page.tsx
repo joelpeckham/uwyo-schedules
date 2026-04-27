@@ -24,7 +24,7 @@ export default async function CoursesIndexPage() {
   const latest = await getLatestTermCode(db);
   if (!latest) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
         <h1 className="font-heading text-3xl font-medium text-foreground">
           Courses by subject
         </h1>
@@ -32,14 +32,14 @@ export default async function CoursesIndexPage() {
           No terms in the database yet. Run an ingest job, then reload this
           page.
         </p>
-      </main>
+      </div>
     );
   }
 
   const subjects = await listSubjectsForTermCached(latest);
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:max-w-[90rem]">
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:max-w-[90rem]">
       <h1 className="font-heading text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
         Courses by subject
       </h1>
@@ -66,6 +66,6 @@ export default async function CoursesIndexPage() {
           </li>
         ))}
       </ul>
-    </main>
+    </div>
   );
 }

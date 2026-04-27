@@ -292,7 +292,7 @@ export function CourseManager({ termCode }: Props) {
   return (
     <section
       id="planner-courses"
-      className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm"
+      className="scroll-mt-20 rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm"
     >
       <h2 className="font-heading text-lg font-medium text-foreground">
         Your courses

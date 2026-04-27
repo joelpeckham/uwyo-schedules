@@ -16,7 +16,7 @@ import { absoluteUrl } from "@/lib/seo/site";
 export const metadata: Metadata = {
   title: "uwyoschedule — University of Wyoming class schedule planner",
   description:
-    "Plan a University of Wyoming class schedule that fits your life. From course list to a conflict-free week in minutes — then open the planner to build yours.",
+    "Plan a University of Wyoming class schedule that fits your life. From course list to a conflict-free week in minutes—then open the planner to build yours.",
   alternates: { canonical: "/" },
   openGraph: {
     url: absoluteUrl("/"),

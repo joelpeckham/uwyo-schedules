@@ -29,7 +29,7 @@ export default function AboutPage() {
 
   return (
     <SiteChrome>
-      <main className="mx-auto max-w-prose px-4 py-10 sm:px-6">
+      <div className="mx-auto max-w-prose px-4 py-10 sm:px-6">
         <JsonLd data={articleJson} />
         <h1 className="font-heading text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
           About uwyoschedule
@@ -62,7 +62,7 @@ export default function AboutPage() {
             FAQ
           </Link>
         </p>
-      </main>
+      </div>
     </SiteChrome>
   );
 }

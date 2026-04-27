@@ -50,7 +50,7 @@ export default async function TermSubjectPage({ params }: Props) {
   };
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:max-w-[90rem]">
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:max-w-[90rem]">
       <JsonLd data={collectionJson} />
       <SeoBreadcrumbs
         items={[
@@ -104,6 +104,6 @@ export default async function TermSubjectPage({ params }: Props) {
           </tbody>
         </table>
       </div>
-    </main>
+    </div>
   );
 }

@@ -1,11 +1,11 @@
 export function LaramieCallout() {
   return (
     <section
-      className="relative overflow-hidden border-b border-border bg-cream-100 px-4 py-14 sm:px-6 sm:py-16"
+      className="relative overflow-hidden border-b border-border bg-muted px-4 py-14 sm:px-6 sm:py-16"
       aria-labelledby="laramie-heading"
     >
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.12]"
+        className="pointer-events-none absolute inset-0 opacity-[0.12] dark:opacity-[0.18]"
         aria-hidden
         style={{
           backgroundImage: "url(/brand/topo-divider.svg)",
