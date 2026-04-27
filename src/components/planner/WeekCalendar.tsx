@@ -19,6 +19,10 @@ import {
   CALENDAR_START_HOUR,
 } from "@/lib/planner/constants";
 import { filterFeasibleSwapGhosts } from "@/lib/planner/planner-swap-feasibility";
+import {
+  everyPlannerItemHasSolvePack,
+  plannerItemsAdmitAtLeastOneSchedule,
+} from "@/lib/planner/solve-schedules-core";
 import { cn } from "@/lib/utils";
 import {
   useCallback,
@@ -298,6 +302,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     isRecalculatingSolutions,
     syncError,
     clearSyncError,
+    scheduleFeasibilityError,
+    clearScheduleFeasibilityError,
+    solvePacks,
     infeasibilityHints,
     mergedPackConstraintMaps,
     applyPlannerItemSelection,
@@ -848,10 +855,46 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [courseDragSession, endCourseDrag]);
 
+  const pinDragGlobalFeasibleFromPinnedCrnForBlock = useCallback(
+    (b: CalendarBlock) => {
+      if (
+        plannerItems.find((r) => r.id === b.plannerItemId)?.selectionKind !==
+        "unresolved"
+      ) {
+        return undefined;
+      }
+      return (pinnedCrn: string) => {
+        const next = plannerItems.map((r) => {
+          if (r.id !== b.plannerItemId || r.selectionKind !== "unresolved") {
+            return r;
+          }
+          const pins = parseSectionPinsJson(r.sectionPins);
+          return {
+            ...r,
+            sectionPins: {
+              v: pins.v,
+              byType: {
+                ...pins.byType,
+                [b.sectionScheduleTypeKey]: pinnedCrn,
+              },
+            },
+          };
+        });
+        if (!everyPlannerItemHasSolvePack(next, solvePacks)) return true;
+        return plannerItemsAdmitAtLeastOneSchedule(next, solvePacks, {
+          requireOpenSections,
+          blackoutIntervals: blackoutsDocToTimeIntervals(blackouts),
+        });
+      };
+    },
+    [plannerItems, solvePacks, requireOpenSections, blackouts],
+  );
+
   const onCourseBlockPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>, block: CalendarBlock) => {
       if (e.button !== 0) return;
       setSwapError(null);
+      clearScheduleFeasibilityError();
       const el = e.currentTarget;
       const br = el.getBoundingClientRect();
       courseGrabOffsetRef.current = {
@@ -871,7 +914,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       }
       capturedCourseBlockElRef.current = el;
     },
-    [],
+    [clearScheduleFeasibilityError],
   );
 
   const onCourseBlockPointerMove = useCallback(
@@ -913,6 +956,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           facultyByCrn: mergedPackConstraintMaps.facultyByCrn,
           scheduleTypeByCrn: mergedPackConstraintMaps.scheduleTypeByCrn,
           rawGhosts: raw,
+          pinDragGlobalFeasibleFromPinnedCrn:
+            pinDragGlobalFeasibleFromPinnedCrnForBlock(b),
         });
         const snapped = pickCourseSnap(
           lastCoursePointerRef.current.x,
@@ -963,7 +1008,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       mergedPackConstraintMaps.scheduleTypeByCrn,
       mergedPackConstraintMaps.seatsByCrn,
       pickCourseSnap,
+      pinDragGlobalFeasibleFromPinnedCrnForBlock,
+      plannerItems,
       requireOpenSections,
+      solvePacks,
     ],
   );
 
@@ -1115,6 +1163,21 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               type="button"
               className="ml-2 underline"
               onClick={() => clearSyncError()}
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+        {scheduleFeasibilityError ? (
+          <div
+            className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
+            {scheduleFeasibilityError}
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => clearScheduleFeasibilityError()}
             >
               Dismiss
             </button>

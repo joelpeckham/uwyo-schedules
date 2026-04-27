@@ -24,6 +24,7 @@ import type { ResolvedPlannerSelection } from "@/lib/planner/resolve-display-crn
 import {
   courseSolvePackCourseKey,
   everyPlannerItemHasSolvePack,
+  plannerItemsAdmitAtLeastOneSchedule,
   solveSchedulesFromPacks,
   type CourseSolvePack,
   type ScheduleSolution,
@@ -73,6 +74,9 @@ type PlannerContextValue = {
   calendarBlocks: CalendarBlock[];
   syncError: string | null;
   clearSyncError: () => void;
+  /** Set when a pin or section change would leave no valid full schedule (client packs only). */
+  scheduleFeasibilityError: string | null;
+  clearScheduleFeasibilityError: () => void;
   refreshCatalogFromServer: () => Promise<boolean>;
   setPlannerItems: (items: PlannerItemRow[]) => void;
   removePlannerItem: (id: number) => void;
@@ -137,6 +141,9 @@ export function PlannerProvider({
     useState<PlannerItemRow[]>(initialPlannerItems);
   const [catalog, setCatalog] = useState<PlannerCatalogJson>(initialCatalog);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [scheduleFeasibilityError, setScheduleFeasibilityError] = useState<
+    string | null
+  >(null);
 
   const [solutions, setSolutions] = useState<ScheduleSolution[]>([]);
   const [solutionsCapped, setSolutionsCapped] = useState(false);
@@ -427,18 +434,32 @@ export function PlannerProvider({
 
   const applyPlannerItemSelection = useCallback(
     (itemId: number, sel: ResolvedPlannerSelection) => {
-      setPlannerItems((prev) => {
-        const next = prev.map((r) =>
-          r.id === itemId
-            ? {
-                ...r,
-                selectionKind: sel.selectionKind,
-                anchorCrn: sel.anchorCrn,
-                linkedBundleId: sel.linkedBundleId,
-                sectionPins: EMPTY_SECTION_PINS,
-              }
-            : r,
+      const prev = itemsRef.current;
+      const next = prev.map((r) =>
+        r.id === itemId
+          ? {
+              ...r,
+              selectionKind: sel.selectionKind,
+              anchorCrn: sel.anchorCrn,
+              linkedBundleId: sel.linkedBundleId,
+              sectionPins: EMPTY_SECTION_PINS,
+            }
+          : r,
+      );
+      if (
+        everyPlannerItemHasSolvePack(next, solvePacksRef.current) &&
+        !plannerItemsAdmitAtLeastOneSchedule(next, solvePacksRef.current, {
+          requireOpenSections: requireOpenRef.current,
+          blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
+        })
+      ) {
+        setScheduleFeasibilityError(
+          "That section doesn't fit with your other courses and pins.",
         );
+        return;
+      }
+      setScheduleFeasibilityError(null);
+      setPlannerItems(() => {
         itemsRef.current = next;
         return next;
       });
@@ -452,18 +473,37 @@ export function PlannerProvider({
 
   const toggleSectionPin = useCallback(
     (itemId: number, scheduleTypeKey: string, sectionCrn: string) => {
-      setPlannerItems((prev) => {
-        const next = prev.map((r) => {
-          if (r.id !== itemId || r.selectionKind !== "unresolved") return r;
-          const pins = parseSectionPinsJson(r.sectionPins);
-          const byType = { ...pins.byType };
-          if (byType[scheduleTypeKey] === sectionCrn) {
-            delete byType[scheduleTypeKey];
-          } else {
-            byType[scheduleTypeKey] = sectionCrn;
-          }
-          return { ...r, sectionPins: { v: pins.v, byType } };
-        });
+      const prev = itemsRef.current;
+      const row = prev.find((r) => r.id === itemId);
+      if (!row || row.selectionKind !== "unresolved") return;
+      const pins = parseSectionPinsJson(row.sectionPins);
+      const isRemoval = pins.byType[scheduleTypeKey] === sectionCrn;
+      const next = prev.map((r) => {
+        if (r.id !== itemId || r.selectionKind !== "unresolved") return r;
+        const p = parseSectionPinsJson(r.sectionPins);
+        const byType = { ...p.byType };
+        if (byType[scheduleTypeKey] === sectionCrn) {
+          delete byType[scheduleTypeKey];
+        } else {
+          byType[scheduleTypeKey] = sectionCrn;
+        }
+        return { ...r, sectionPins: { v: p.v, byType } };
+      });
+      if (
+        !isRemoval &&
+        everyPlannerItemHasSolvePack(next, solvePacksRef.current) &&
+        !plannerItemsAdmitAtLeastOneSchedule(next, solvePacksRef.current, {
+          requireOpenSections: requireOpenRef.current,
+          blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
+        })
+      ) {
+        setScheduleFeasibilityError(
+          "That pin doesn't fit with your other courses and pins.",
+        );
+        return;
+      }
+      setScheduleFeasibilityError(null);
+      setPlannerItems(() => {
         itemsRef.current = next;
         return next;
       });
@@ -477,18 +517,32 @@ export function PlannerProvider({
 
   const setSectionPinFromDrag = useCallback(
     (itemId: number, scheduleTypeKey: string, sectionCrn: string) => {
-      setPlannerItems((prev) => {
-        const next = prev.map((r) => {
-          if (r.id !== itemId || r.selectionKind !== "unresolved") return r;
-          const pins = parseSectionPinsJson(r.sectionPins);
-          return {
-            ...r,
-            sectionPins: {
-              v: pins.v,
-              byType: { ...pins.byType, [scheduleTypeKey]: sectionCrn },
-            },
-          };
-        });
+      const prev = itemsRef.current;
+      const next = prev.map((r) => {
+        if (r.id !== itemId || r.selectionKind !== "unresolved") return r;
+        const pins = parseSectionPinsJson(r.sectionPins);
+        return {
+          ...r,
+          sectionPins: {
+            v: pins.v,
+            byType: { ...pins.byType, [scheduleTypeKey]: sectionCrn },
+          },
+        };
+      });
+      if (
+        everyPlannerItemHasSolvePack(next, solvePacksRef.current) &&
+        !plannerItemsAdmitAtLeastOneSchedule(next, solvePacksRef.current, {
+          requireOpenSections: requireOpenRef.current,
+          blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
+        })
+      ) {
+        setScheduleFeasibilityError(
+          "That move doesn't fit with your other courses and pins.",
+        );
+        return;
+      }
+      setScheduleFeasibilityError(null);
+      setPlannerItems(() => {
         itemsRef.current = next;
         return next;
       });
@@ -565,6 +619,8 @@ export function PlannerProvider({
       calendarBlocks,
       syncError,
       clearSyncError: () => setSyncError(null),
+      scheduleFeasibilityError,
+      clearScheduleFeasibilityError: () => setScheduleFeasibilityError(null),
       refreshCatalogFromServer,
       setPlannerItems: (items) => {
         setPlannerItems(items);
@@ -597,6 +653,7 @@ export function PlannerProvider({
       effectivePlannerItems,
       calendarBlocks,
       syncError,
+      scheduleFeasibilityError,
       refreshCatalogFromServer,
       removePlannerItem,
       updatePlannerItem,

@@ -548,3 +548,27 @@ export function everyPlannerItemHasSolvePack(
   }
   return true;
 }
+
+/**
+ * True if the planner admits at least one global schedule for `items`.
+ * When any course pack is missing, returns true (unknown — caller may defer validation).
+ */
+export function plannerItemsAdmitAtLeastOneSchedule(
+  items: PlannerItemRow[],
+  packs: Record<string, CourseSolvePack>,
+  opts: {
+    requireOpenSections: boolean;
+    blackoutIntervals?: TimeInterval[];
+    maxSolutions?: number;
+  },
+): boolean {
+  if (items.length === 0) return true;
+  if (!everyPlannerItemHasSolvePack(items, packs)) return true;
+  return (
+    solveSchedulesFromPacks(items, packs, {
+      requireOpenSections: opts.requireOpenSections,
+      blackoutIntervals: opts.blackoutIntervals ?? [],
+      maxSolutions: opts.maxSolutions ?? 1,
+    }).solutions.length > 0
+  );
+}

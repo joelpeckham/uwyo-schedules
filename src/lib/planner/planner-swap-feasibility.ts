@@ -95,6 +95,11 @@ export function filterFeasibleSwapGhosts(params: {
   >;
   scheduleTypeByCrn: Map<string, string | null>;
   rawGhosts: SwapGhostMeeting[];
+  /**
+   * When set (unresolved pin-drag), require this in addition to swap.ok.
+   * Uses the same global solve as the planner so ghosts match commit semantics.
+   */
+  pinDragGlobalFeasibleFromPinnedCrn?: (pinnedCrn: string) => boolean;
 }): SwapGhostMeeting[] {
   const {
     catalog,
@@ -107,6 +112,7 @@ export function filterFeasibleSwapGhosts(params: {
     facultyByCrn,
     scheduleTypeByCrn,
     rawGhosts,
+    pinDragGlobalFeasibleFromPinnedCrn,
   } = params;
 
   const membersByBundleId = buildMembersByBundleId(
@@ -139,6 +145,12 @@ export function filterFeasibleSwapGhosts(params: {
       catalog,
     );
     if (!swap.ok) continue;
+
+    if (pinDragGlobalFeasibleFromPinnedCrn) {
+      if (!pinDragGlobalFeasibleFromPinnedCrn(g.crn)) continue;
+      feasibleCrns.add(g.crn);
+      continue;
+    }
 
     const patched: PlannerItemRow = {
       ...draggedPlannerItem,
