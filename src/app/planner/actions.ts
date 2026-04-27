@@ -21,7 +21,11 @@ import {
   pickUnusedCourseColor,
   isPlannerCoursePaletteColor,
 } from "@/lib/planner/course-colors";
-import { PLANNER_SESSION_COOKIE, UUID_RE } from "@/lib/planner/constants";
+import {
+  MAX_PLANNER_COURSES_PER_TERM,
+  PLANNER_SESSION_COOKIE,
+  UUID_RE,
+} from "@/lib/planner/constants";
 import {
   MAX_PLANNER_BLACKOUTS,
   parseBlackoutsItemsArray,
@@ -142,7 +146,7 @@ export async function addPlannerCourseWishAction(input: {
     const sessionId = await requireSessionId();
     const db = createDb();
 
-    const colorRows = await db
+    const existingRows = await db
       .select({ displayColor: schema.plannerItems.displayColor })
       .from(schema.plannerItems)
       .where(
@@ -151,8 +155,14 @@ export async function addPlannerCourseWishAction(input: {
           eq(schema.plannerItems.termCode, input.termCode),
         ),
       );
+    if (existingRows.length >= MAX_PLANNER_COURSES_PER_TERM) {
+      return {
+        ok: false,
+        error: `At most ${MAX_PLANNER_COURSES_PER_TERM} courses for one term.`,
+      };
+    }
     const used = new Set(
-      colorRows.map((r) => r.displayColor.trim().toLowerCase()),
+      existingRows.map((r) => r.displayColor.trim().toLowerCase()),
     );
     const displayColor = pickUnusedCourseColor(used);
 
@@ -523,6 +533,12 @@ export async function syncPlannerStateAction(
   try {
     const sessionId = await requireSessionId();
     if (!termCode) return { ok: false, error: "Missing term." };
+    if (items.length > MAX_PLANNER_COURSES_PER_TERM) {
+      return {
+        ok: false,
+        error: `At most ${MAX_PLANNER_COURSES_PER_TERM} courses for one term.`,
+      };
+    }
     const db = createDb();
 
     for (const row of items) {

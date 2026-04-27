@@ -4,6 +4,9 @@ export const PLANNER_SESSION_COOKIE = "uwyo_planner_sid";
 export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/** Guardrail against unbounded list growth / abuse per session+term. */
+export const MAX_PLANNER_COURSES_PER_TERM = 40;
+
 export { DEFAULT_COURSE_DISPLAY_COLOR as DEFAULT_DISPLAY_COLOR } from "./course-colors";
 
 /** First hour row (4:00–4:59 a.m.). */

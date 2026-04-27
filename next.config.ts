@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
         key: "X-Content-Type-Options",
         value: "nosniff",
       },
+      {
+        key: "X-Frame-Options",
+        value: "SAMEORIGIN",
+      },
+      {
+        key: "Permissions-Policy",
+        value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+      },
     ] as const;
     const hsts =
       process.env.VERCEL === "1"

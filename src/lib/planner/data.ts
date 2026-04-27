@@ -124,13 +124,15 @@ export async function listPlannerItems(
     .orderBy(asc(schema.plannerItems.id));
 }
 
+const MAX_COURSE_SEARCH_QUERY_LEN = 200;
+
 export async function searchCourses(
   db: Database,
   termCode: string,
   query: string,
   limit = 24,
 ): Promise<CourseSearchRow[]> {
-  const q = query.trim();
+  const q = query.trim().slice(0, MAX_COURSE_SEARCH_QUERY_LEN);
   if (q.length < 2) return [];
   const pattern = `%${escapeIlikePattern(q)}%`;
 
