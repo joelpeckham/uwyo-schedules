@@ -65,7 +65,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -1197,22 +1196,22 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 </span>
               ) : null}
             </div>
-            <div className="flex h-9 min-w-0 w-full items-center justify-start gap-3 md:w-auto">
-              <Label
-                htmlFor="exclude-full-toggle"
-                className="cursor-pointer text-sm leading-snug text-foreground"
-              >
-                Exclude full
-              </Label>
-              <Switch
+            <div className="flex min-w-0 w-full flex-wrap items-center gap-2 md:w-auto">
+              <Button
+                type="button"
+                variant={requireOpenSections ? "default" : "outline"}
+                size="lg"
+                className="h-9 touch-manipulation"
                 id="exclude-full-toggle"
-                className="shrink-0"
-                checked={requireOpenSections}
-                onCheckedChange={(next) => {
+                aria-pressed={requireOpenSections}
+                onClick={() => {
+                  const next = !requireOpenSections;
                   setRequireOpenSections(next);
                   void recalculateSolutions(next);
                 }}
-              />
+              >
+                Exclude full
+              </Button>
             </div>
             <div className="flex min-w-0 w-full flex-wrap items-center gap-2 md:w-auto">
               <Button
