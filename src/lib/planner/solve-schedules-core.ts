@@ -79,7 +79,7 @@ export type ScheduleSolution = {
   selections: Record<number, ResolvedPlannerSelection>;
 };
 
-const MAX_SOLUTIONS = 500;
+export const DEFAULT_MAX_SOLUTIONS = 1;
 const DEFAULT_TIMEOUT_MS = 2000;
 
 export function courseSolvePackCourseKey(
@@ -337,7 +337,7 @@ export function runSolveSearch(params: {
     requireOpenSections,
   } = params;
   const blackoutIntervals = params.blackoutIntervals ?? [];
-  const maxSolutions = params.maxSolutions ?? MAX_SOLUTIONS;
+  const maxSolutions = params.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const indices = items.map((_, i) => i);
@@ -708,7 +708,7 @@ export function plannerItemsAdmitAtLeastOneSchedule(
     solveSchedulesFromPacks(items, packs, {
       requireOpenSections: opts.requireOpenSections,
       blackoutIntervals: opts.blackoutIntervals ?? [],
-      maxSolutions: opts.maxSolutions ?? 1,
+      maxSolutions: opts.maxSolutions ?? DEFAULT_MAX_SOLUTIONS,
     }).solutions.length > 0
   );
 }

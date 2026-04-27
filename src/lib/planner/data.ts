@@ -231,26 +231,38 @@ export type LinkedBundleOption = {
   summary: string;
 };
 
-export async function listLinkedBundleOptions(
+/**
+ * Loads linked-bundle registration options for many anchor CRNs in three queries
+ * (bundles, members, section labels) instead of one round-trip per anchor.
+ */
+export async function listLinkedBundleOptionsForAnchors(
   db: Database,
   termCode: string,
-  anchorCrn: string,
-): Promise<LinkedBundleOption[]> {
+  anchorCrns: string[],
+): Promise<Map<string, LinkedBundleOption[]>> {
+  const out = new Map<string, LinkedBundleOption[]>();
+  const deduped = [...new Set(anchorCrns.filter(Boolean))];
+  if (deduped.length === 0) return out;
+
   const bundles = await db
     .select({
       id: schema.linkedBundles.id,
+      anchorCrn: schema.linkedBundles.anchorCrn,
       bundleIndex: schema.linkedBundles.bundleIndex,
     })
     .from(schema.linkedBundles)
     .where(
       and(
         eq(schema.linkedBundles.termCode, termCode),
-        eq(schema.linkedBundles.anchorCrn, anchorCrn),
+        inArray(schema.linkedBundles.anchorCrn, deduped),
       ),
     )
-    .orderBy(asc(schema.linkedBundles.bundleIndex));
+    .orderBy(
+      asc(schema.linkedBundles.anchorCrn),
+      asc(schema.linkedBundles.bundleIndex),
+    );
 
-  if (bundles.length === 0) return [];
+  if (bundles.length === 0) return out;
 
   const bundleIds = bundles.map((b) => b.id);
   const members = await db
@@ -279,7 +291,7 @@ export async function listLinkedBundleOptions(
       ? new Map<string, string>()
       : await loadSectionLabels(db, termCode, allCrns);
 
-  return bundles.map((b) => {
+  for (const b of bundles) {
     const list = (byBundle.get(b.id) ?? []).sort((a, c) => a.position - c.position);
     const memberCrns = list.map((x) => x.crn);
     const parts = memberCrns.map(
@@ -289,13 +301,29 @@ export async function listLinkedBundleOptions(
       parts.length > 0
         ? parts.join(" · ")
         : `Option ${b.bundleIndex + 1}`;
-    return {
+    const opt: LinkedBundleOption = {
       id: b.id,
       bundleIndex: b.bundleIndex,
       memberCrns,
       summary,
     };
-  });
+    const arr = out.get(b.anchorCrn) ?? [];
+    arr.push(opt);
+    out.set(b.anchorCrn, arr);
+  }
+
+  return out;
+}
+
+export async function listLinkedBundleOptions(
+  db: Database,
+  termCode: string,
+  anchorCrn: string,
+): Promise<LinkedBundleOption[]> {
+  const byAnchor = await listLinkedBundleOptionsForAnchors(db, termCode, [
+    anchorCrn,
+  ]);
+  return byAnchor.get(anchorCrn) ?? [];
 }
 
 async function loadSectionLabels(

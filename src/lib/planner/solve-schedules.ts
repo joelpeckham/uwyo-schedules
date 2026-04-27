@@ -3,7 +3,10 @@ import * as schema from "@/db/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { blackoutsDocToTimeIntervals, parseBlackoutsJson } from "./blackouts";
 import type { PlannerItemRow } from "./data";
-import { listLinkedBundleOptions, listSectionsForCourse } from "./data";
+import {
+  listLinkedBundleOptionsForAnchors,
+  listSectionsForCourse,
+} from "./data";
 import type { PlannerItemSelection } from "./resolve-display-crns-shared";
 import { resolveDisplayCrnsSync } from "./resolve-display-crns-shared";
 import { loadOrderedMembersForBundleIds } from "./resolve-display-crns";
@@ -13,6 +16,7 @@ import {
 } from "./section-pins";
 import {
   courseSolvePackCourseKey,
+  DEFAULT_MAX_SOLUTIONS,
   eligibleForStandaloneSingleCrn,
   meetingRowToIntervals,
   runSolveSearch,
@@ -54,13 +58,21 @@ export async function enumerateUnresolvedCandidatesForCourse(
   termCode: string,
   subject: string,
   courseNumber: string,
-): Promise<ScheduleCandidate[]> {
+): Promise<{
+  candidates: ScheduleCandidate[];
+  scheduleTypeByCrn: Map<string, string | null>;
+}> {
   const sections = await listSectionsForCourse(
     db,
     termCode,
     subject,
     courseNumber,
   );
+  const scheduleTypeByCrn = new Map<string, string | null>();
+  for (const s of sections) {
+    scheduleTypeByCrn.set(s.crn, s.scheduleTypeDescription);
+  }
+
   const sectionCrnList = sections.map((s) => s.crn);
   const linkedNonAnchorMemberCrns = await loadLinkedNonAnchorMemberCrns(
     db,
@@ -68,9 +80,14 @@ export async function enumerateUnresolvedCandidatesForCourse(
     sectionCrnList,
   );
 
+  const bundlesByAnchor =
+    sectionCrnList.length === 0
+      ? new Map()
+      : await listLinkedBundleOptionsForAnchors(db, termCode, sectionCrnList);
+
   const out: ScheduleCandidate[] = [];
   for (const s of sections) {
-    const bundles = await listLinkedBundleOptions(db, termCode, s.crn);
+    const bundles = bundlesByAnchor.get(s.crn) ?? [];
     if (bundles.length > 0) {
       for (const b of bundles) {
         const sel: PlannerItemSelection = {
@@ -95,7 +112,7 @@ export async function enumerateUnresolvedCandidatesForCourse(
       });
     }
   }
-  return out;
+  return { candidates: out, scheduleTypeByCrn };
 }
 
 async function enumerateCandidatesForItem(
@@ -105,24 +122,15 @@ async function enumerateCandidatesForItem(
   membersByBundleId: Map<number, string[]>,
 ): Promise<ScheduleCandidate[]> {
   if (item.selectionKind === "unresolved") {
-    const list = await enumerateUnresolvedCandidatesForCourse(
-      db,
-      termCode,
-      item.subject,
-      item.courseNumber,
-    );
+    const { candidates: list, scheduleTypeByCrn } =
+      await enumerateUnresolvedCandidatesForCourse(
+        db,
+        termCode,
+        item.subject,
+        item.courseNumber,
+      );
     const pins = parseSectionPinsJson(item.sectionPins);
     if (Object.keys(pins.byType).length === 0) return list;
-    const sections = await listSectionsForCourse(
-      db,
-      termCode,
-      item.subject,
-      item.courseNumber,
-    );
-    const scheduleTypeByCrn = new Map<string, string | null>();
-    for (const s of sections) {
-      scheduleTypeByCrn.set(s.crn, s.scheduleTypeDescription);
-    }
     return filterCandidatesBySectionPins(list, pins, scheduleTypeByCrn);
   }
 
@@ -170,7 +178,7 @@ export async function loadCourseSolvePack(
   courseNumber: string,
 ): Promise<CourseSolvePack> {
   const courseKey = courseSolvePackCourseKey(subject, courseNumber);
-  const candidates = await enumerateUnresolvedCandidatesForCourse(
+  const { candidates } = await enumerateUnresolvedCandidatesForCourse(
     db,
     termCode,
     subject,
@@ -312,7 +320,7 @@ export async function solveSchedulesForTerm(
     timeoutMs?: number;
   },
 ): Promise<SolveSchedulesResult> {
-  const maxSolutions = opts.maxSolutions ?? 500;
+  const maxSolutions = opts.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
   const timeoutMs = opts.timeoutMs ?? 2000;
 
   if (items.length === 0) {
