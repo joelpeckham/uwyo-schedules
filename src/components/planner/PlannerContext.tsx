@@ -141,7 +141,7 @@ export function PlannerProvider({
   const [solutions, setSolutions] = useState<ScheduleSolution[]>([]);
   const [solutionsCapped, setSolutionsCapped] = useState(false);
   const [solutionsTimedOut, setSolutionsTimedOut] = useState(false);
-  const [requireOpenSections, setRequireOpenSections] = useState(false);
+  const [requireOpenSections, setRequireOpenSections] = useState(true);
   const [blackouts, setBlackoutsState] = useState<PlannerBlackoutsDocV1>(
     () => initialTermUiState?.blackouts ?? EMPTY_BLACKOUTS,
   );

@@ -71,13 +71,16 @@ export function SectionJsonModal({ open, onOpenChange, termCode, crn }: Props) {
         showCloseButton
         className="flex max-h-[min(92vh,52rem)] w-full max-w-[min(100vw-1.5rem,56rem)] flex-col gap-3 overflow-hidden p-4 sm:max-w-[min(100vw-2rem,56rem)] sm:p-5"
       >
-        <DialogHeader className="shrink-0">
+        <DialogHeader className="shrink-0 space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Section details
+          </p>
           <DialogTitle className="pr-8 font-mono text-sm font-normal leading-snug">
             {showLoading ? "Loading…" : title}
           </DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-border/80 bg-muted/20 [-webkit-overflow-scrolling:touch]">
-          <div className="p-3 sm:p-4">
+          <div className="p-4">
             {showLoading ? (
               <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
                 Loading section details…

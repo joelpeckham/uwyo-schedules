@@ -34,7 +34,7 @@ export function PlannerCourseColorPicker({
           variant="outline"
           size="sm"
           disabled={disabled}
-          className="h-7 w-10 shrink-0 border-border p-0"
+          className="h-8 w-10 shrink-0 border-border p-0"
           aria-label="Course calendar color"
         >
           <span

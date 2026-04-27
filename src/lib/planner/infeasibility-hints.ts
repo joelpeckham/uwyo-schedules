@@ -64,7 +64,7 @@ export function computeInfeasibilityHints(params: {
     });
     if (withSeatsOff.solutions.length > 0) {
       hints.push(
-        "Turn off “Only sections with seats” to preview fuller sections, then turn it back on once you see a pattern that works.",
+        "Turn off “Exclude full” to allow full sections, then turn it on again once you see a pattern that works.",
       );
     }
   }

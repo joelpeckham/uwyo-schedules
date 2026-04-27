@@ -105,7 +105,7 @@ describe("computeInfeasibilityHints", () => {
       requireOpenSections: true,
     });
     expect(
-      hints.some((h) => h.toLowerCase().includes("seats")),
+      hints.some((h) => h.toLowerCase().includes("exclude")),
     ).toBe(true);
   });
 });

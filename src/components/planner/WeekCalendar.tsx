@@ -31,8 +31,10 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
+  AlertCircle,
   ArrowLeftRight,
   Ban,
+  Check,
   CircleHelp,
   Copy,
   Hand,
@@ -56,6 +58,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -362,8 +365,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   const isWeekdaysOnlyView = visibleDayIndices.length === WEEKDAY_INDICES.length;
   const gridMinWidthRem =
     visibleDayIndices.length === FULL_WEEK_INDICES.length
-      ? 40
-      : 3 + visibleDayIndices.length * 4.5;
+      ? 40.5
+      : 3.5 + visibleDayIndices.length * 4.5;
 
   const hScrollRef = useRef<HTMLDivElement | null>(null);
   const weekHeaderRef = useRef<HTMLDivElement | null>(null);
@@ -1125,142 +1128,163 @@ export function WeekCalendar({ onBlockActivate }: Props) {
             Finding the best week…
           </p>
         ) : null}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
           <h2
             id="planner-week-calendar-heading"
             className="font-heading min-w-0 text-lg font-medium text-foreground"
           >
             Weekly schedule
           </h2>
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="touch-manipulation"
-              disabled={displayWeekCrns.length === 0}
-              onClick={() => void copyCrns()}
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-y-2 sm:justify-end">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="h-9 touch-manipulation"
+                disabled={displayWeekCrns.length === 0}
+                onClick={() => void copyCrns()}
+              >
+                <Copy className="mr-1.5 size-4 shrink-0" aria-hidden />
+                Copy CRNs
+              </Button>
+              {copyStatus === "ok" ? (
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+                  aria-live="polite"
+                >
+                  <Check
+                    className="size-3.5 shrink-0 text-primary"
+                    aria-hidden
+                    strokeWidth={2.5}
+                  />
+                  Copied
+                </span>
+              ) : null}
+              {copyStatus === "err" ? (
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs text-destructive"
+                  aria-live="polite"
+                >
+                  <AlertCircle className="size-3.5 shrink-0" aria-hidden />
+                  Copy failed
+                </span>
+              ) : null}
+            </div>
+            <div
+              className="flex h-9 min-w-0 max-w-full shrink-0 items-center justify-between gap-3 sm:ml-2 sm:border-l sm:border-border sm:pl-3"
             >
-              <Copy className="mr-1.5 size-4 shrink-0" aria-hidden />
-              Copy CRNs
-            </Button>
-            {copyStatus === "ok" ? (
-              <span className="text-xs text-muted-foreground" aria-live="polite">
-                Copied
-              </span>
-            ) : null}
-            {copyStatus === "err" ? (
-              <span className="text-xs text-destructive" aria-live="polite">
-                Copy failed
-              </span>
-            ) : null}
-            <div className="flex items-center gap-2 border-border sm:border-l sm:pl-2">
-              <input
-                id="open-only-week"
-                type="checkbox"
-                className="size-4 rounded border-border accent-primary"
+              <Label
+                htmlFor="exclude-full-toggle"
+                className="cursor-pointer text-sm leading-snug text-foreground"
+              >
+                Exclude full
+              </Label>
+              <Switch
+                id="exclude-full-toggle"
+                className="shrink-0"
                 checked={requireOpenSections}
-                onChange={(e) => {
-                  const next = e.target.checked;
+                onCheckedChange={(next) => {
                   setRequireOpenSections(next);
                   void recalculateSolutions(next);
                 }}
               />
-              <Label htmlFor="open-only-week" className="text-sm text-foreground">
-                Only sections with seats
-              </Label>
             </div>
-            <Button
-              type="button"
-              variant={markBusyMode ? "default" : "outline"}
-              size="default"
-              className="min-h-11 touch-manipulation"
-              aria-pressed={markBusyMode}
-              onClick={() => {
-                setMarkBusyMode((v) => !v);
-                blackoutDragRef.current = null;
-                setDragPreview(null);
-              }}
-            >
-              Mark busy time
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="default"
-              className="min-h-11 touch-manipulation"
-              onClick={openAddBusyDialog}
-            >
-              <Plus className="mr-1.5 size-4 shrink-0" aria-hidden />
-              Add busy…
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="touch-manipulation"
-              aria-label="Zoom week view out"
-              onClick={zoomCalendarOut}
-            >
-              <Minus className="size-4" aria-hidden />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="touch-manipulation"
-              aria-label="Zoom week view in"
-              onClick={zoomCalendarIn}
-            >
-              <ZoomIn className="size-4" aria-hidden />
-            </Button>
-            <Dialog>
-            <DialogTrigger asChild>
+            <div className="flex flex-wrap items-center gap-2 sm:ml-2 sm:border-l sm:border-border sm:pl-3">
               <Button
                 type="button"
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground hover:text-foreground -mt-0.5 shrink-0"
-                aria-label="How to use the weekly schedule"
+                variant={markBusyMode ? "default" : "outline"}
+                size="lg"
+                className="h-9 touch-manipulation"
+                aria-pressed={markBusyMode}
+                onClick={() => {
+                  setMarkBusyMode((v) => !v);
+                  blackoutDragRef.current = null;
+                  setDragPreview(null);
+                }}
               >
-                <CircleHelp className="size-5" />
+                Mark busy time
               </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[min(32rem,85vh)] overflow-y-auto sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>How to use the weekly schedule</DialogTitle>
-                <DialogDescription>
-                  Gestures for moving and zooming your week preview.
-                </DialogDescription>
-              </DialogHeader>
-              <ul className="list-none space-y-4">
-                {SCHEDULE_HELP.map((item) => {
-                  const I = item.Icon;
-                  return (
-                    <li
-                      key={item.label}
-                      className="flex gap-3 border-b border-border pb-4 last:border-b-0 last:pb-0"
-                    >
-                      <div
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/40 text-muted-foreground"
-                        aria-hidden
-                      >
-                        <I className="size-4" strokeWidth={2} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-foreground">
-                          {item.label}
-                        </p>
-                        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                          {item.body}
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </DialogContent>
-          </Dialog>
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="h-9 touch-manipulation"
+                onClick={openAddBusyDialog}
+              >
+                <Plus className="mr-1.5 size-4 shrink-0" aria-hidden />
+                Add busy…
+              </Button>
+            </div>
+            <div className="flex items-center gap-1 sm:ml-2 sm:border-l sm:border-border sm:pl-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-lg"
+                className="touch-manipulation"
+                aria-label="Zoom week view out"
+                onClick={zoomCalendarOut}
+              >
+                <Minus className="size-4" aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-lg"
+                className="touch-manipulation"
+                aria-label="Zoom week view in"
+                onClick={zoomCalendarIn}
+              >
+                <ZoomIn className="size-4" aria-hidden />
+              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-lg"
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    aria-label="How to use the weekly schedule"
+                  >
+                    <CircleHelp className="size-5" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-h-[min(32rem,85vh)] overflow-y-auto sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>How to use the weekly schedule</DialogTitle>
+                    <DialogDescription>
+                      Gestures for moving and zooming your week preview.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <ul className="list-none space-y-4">
+                    {SCHEDULE_HELP.map((item) => {
+                      const I = item.Icon;
+                      return (
+                        <li
+                          key={item.label}
+                          className="flex gap-3 border-b border-border pb-4 last:border-b-0 last:pb-0"
+                        >
+                          <div
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/40 text-muted-foreground"
+                            aria-hidden
+                          >
+                            <I className="size-4" strokeWidth={2} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground">
+                              {item.label}
+                            </p>
+                            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                              {item.body}
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
@@ -1270,7 +1294,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       </div>
 
       {showNoSchedulesHelp ? (
-        <div className="border-b border-border bg-muted/20 px-3 py-3 sm:px-4">
+        <div className="border-b border-border bg-muted/20 p-3 sm:p-4">
           {infeasibilityHints.length > 0 ? (
             <ul className="mb-3 list-inside list-disc space-y-2 text-sm text-foreground">
               {infeasibilityHints.map((h, i) => (
@@ -1291,14 +1315,14 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                   onClick={() => {
                     setRequireOpenSections(false);
                     void recalculateSolutions(false);
-                    document.getElementById("open-only-week")?.focus();
+                    document.getElementById("exclude-full-toggle")?.focus();
                   }}
                 >
-                  Turn off “only sections with seats”
+                  Turn off “Exclude full”
                 </button>
                 <span className="text-muted-foreground">
                   {" "}
-                  (then turn it back on if you need open seats only).
+                  (then turn it on again if you need open seats only).
                 </span>
               </li>
             ) : (
@@ -1307,10 +1331,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                   type="button"
                   className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
                   onClick={() =>
-                    document.getElementById("open-only-week")?.focus()
+                    document.getElementById("exclude-full-toggle")?.focus()
                   }
                 >
-                  Try “only sections with seats”
+                  Try “Exclude full”
                 </button>
                 <span className="text-muted-foreground">
                   {" "}
@@ -1387,7 +1411,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
       {swapError ? (
         <div
-          className="border-b border-border px-3 py-2 text-xs text-destructive sm:px-4"
+          className="border-b border-border px-3 py-2.5 text-xs text-destructive sm:px-4"
           role="alert"
         >
           {swapError}
@@ -1410,7 +1434,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
             ref={weekHeaderRef}
             className="flex shrink-0 border-b border-border bg-muted/30"
           >
-            <div className="w-12 shrink-0" aria-hidden />
+            <div className="w-14 shrink-0" aria-hidden />
             {visibleDayIndices.map((dayIndex) => (
               <div
                 key={dayIndex}
@@ -1424,17 +1448,17 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           <div
             ref={viewportRef}
             className="relative min-h-0 touch-none overflow-y-auto overscroll-y-contain"
-            style={{ height: "min(70vh, 32rem)" }}
+            style={{ height: "min(72vh, 40rem)" }}
           >
             <div
               className="flex"
               style={{ minWidth: `max(100%, ${gridMinWidthRem}rem)` }}
             >
-              <div className="flex w-12 shrink-0 flex-col border-r border-border bg-muted/20">
+              <div className="flex w-14 shrink-0 flex-col border-r border-border bg-muted/20">
                 {hours.map((h) => (
                   <div
                     key={h}
-                    className="flex items-start justify-end pr-1 font-mono text-[10px] leading-tight text-muted-foreground"
+                    className="flex items-start justify-end pr-1.5 font-mono text-[10px] leading-tight text-muted-foreground"
                     style={{ height: rowPx, minHeight: rowPx }}
                   >
                     {formatHour(h)}

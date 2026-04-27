@@ -438,7 +438,7 @@ export function CourseManager({ termCode }: Props) {
             key={item.id}
             className="rounded-lg border border-border bg-muted/20 p-3 sm:p-4"
           >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-mono text-sm font-medium text-foreground">
@@ -456,7 +456,7 @@ export function CourseManager({ termCode }: Props) {
                     : "This course uses fixed CRNs from an earlier pick. Remove it from the list if you want to start fresh with automatic sections."}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <PlannerCourseColorPicker
                   displayColor={item.displayColor}
                   disabled={pending}
@@ -487,16 +487,13 @@ export function CourseManager({ termCode }: Props) {
 
             <div className="mt-3">
               <Label
-                htmlFor={`primary-${item.id}`}
                 className="text-muted-foreground"
+                htmlFor={pack ? `primary-${item.id}` : undefined}
               >
                 Instructor (lecture)
               </Label>
               {!pack ? (
-                <p
-                  id={`primary-${item.id}`}
-                  className="mt-1 text-sm text-muted-foreground"
-                >
+                <p className="mt-1 text-sm text-muted-foreground">
                   Loading section options…
                 </p>
               ) : (
