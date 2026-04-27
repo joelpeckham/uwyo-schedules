@@ -37,6 +37,9 @@ jobs:
       - name: Vitest
         run: pnpm test:run
 
+      - name: Knip
+        run: pnpm knip
+
   e2e:
     name: Playwright
     runs-on: ubuntu-latest

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   visibleDayIndicesForBlocks,
   visibleDayIndicesMerged,
-} from "./WeekCalendar";
+} from "./week-calendar/visible-days";
 
 describe("visibleDayIndicesForBlocks", () => {
   it("returns weekdays only when no Sat/Sun blocks", () => {

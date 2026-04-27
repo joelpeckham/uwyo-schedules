@@ -75,6 +75,7 @@ export function CourseManager({ termCode }: Props) {
 
   const [pending, startTransition] = useTransition();
   const [searchQ, setSearchQ] = useState("");
+  const [searchFetching, setSearchFetching] = useState(false);
   const [hits, setHits] = useState<CourseSearchRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<CourseSearchRow | null>(null);
@@ -93,15 +94,25 @@ export function CourseManager({ termCode }: Props) {
     if (q.length < 2) {
       setHits([]);
       setSearchActiveIndex(-1);
+      setSearchFetching(false);
       return;
     }
     const seq = ++searchSeqRef.current;
-    startTransition(async () => {
-      const rows = await searchCoursesAction(termCode, q);
-      if (seq !== searchSeqRef.current) return;
-      setHits(rows);
-      setSearchActiveIndex(rows.length > 0 ? 0 : -1);
-    });
+    setSearchFetching(true);
+    void (async () => {
+      try {
+        const rows = await searchCoursesAction(termCode, q);
+        if (seq !== searchSeqRef.current) return;
+        startTransition(() => {
+          setHits(rows);
+          setSearchActiveIndex(rows.length > 0 ? 0 : -1);
+          setSearchFetching(false);
+        });
+      } catch {
+        if (seq !== searchSeqRef.current) return;
+        startTransition(() => setSearchFetching(false));
+      }
+    })();
   }, [searchQ, termCode]);
 
   useEffect(() => {
@@ -342,7 +353,12 @@ export function CourseManager({ termCode }: Props) {
               Type at least 2 characters to search.
             </p>
           ) : null}
-          {searchQueryLen >= 2 && !pending && hits.length === 0 ? (
+          {searchQueryLen >= 2 && searchFetching ? (
+            <p className="mt-1 text-xs text-muted-foreground" role="status">
+              Searching…
+            </p>
+          ) : null}
+          {searchQueryLen >= 2 && !searchFetching && !pending && hits.length === 0 ? (
             <p className="mt-1 text-xs text-muted-foreground" role="status">
               No courses match that search.
             </p>

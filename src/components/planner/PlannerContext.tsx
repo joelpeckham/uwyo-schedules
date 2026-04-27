@@ -30,6 +30,7 @@ import {
   type CourseSolvePack,
   type ScheduleSolution,
 } from "@/lib/planner/solve-schedules-core";
+import { yieldToMain } from "@/lib/planner/yield-to-main";
 import {
   createContext,
   useCallback,
@@ -445,6 +446,9 @@ export function PlannerProvider({
           setSolutionsTimedOut(false);
           return;
         }
+
+        await yieldToMain();
+        if (myGen !== recalcGenRef.current) return;
 
         const result = solveSchedulesFromPacks(rows, packs, {
           requireOpenSections: requireOpen,

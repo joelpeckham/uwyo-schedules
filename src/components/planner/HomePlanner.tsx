@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ensurePlannerSessionAction } from "@/app/planner/actions";
@@ -12,7 +13,21 @@ import { parseBlackoutsJson } from "@/lib/planner/blackouts";
 import { CourseManager } from "./CourseManager";
 import { PlannerProvider } from "./PlannerContext";
 import { SectionJsonModal } from "./SectionJsonModal";
-import { WeekCalendar } from "./WeekCalendar";
+
+const WeekCalendar = dynamic(
+  () => import("./WeekCalendar").then((m) => m.WeekCalendar),
+  {
+    loading: () => (
+      <div
+        className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 px-4 py-12 text-sm text-muted-foreground"
+        role="status"
+        aria-live="polite"
+      >
+        Loading calendar…
+      </div>
+    ),
+  },
+);
 
 type Props = {
   termCode: string;
@@ -75,34 +90,36 @@ export function HomePlanner({
             this page.
           </p>
         ) : (
-          <PlannerProvider
-            key={termCode}
-            termCode={termCode}
-            initialPlannerItems={plannerItems}
-            initialCatalog={catalog}
-            initialTermUiState={
-              termUiState
-                ? {
-                    blackouts: parseBlackoutsJson(termUiState.blackouts),
-                  }
-                : null
-            }
-          >
-            <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
-              <div className="min-w-0 lg:sticky lg:top-4 lg:z-1 lg:max-h-[min(100vh-2rem,56rem)] lg:self-start lg:overflow-y-auto">
-                <CourseManager key={termCode} termCode={termCode} />
+          <>
+            <PlannerProvider
+              key={termCode}
+              termCode={termCode}
+              initialPlannerItems={plannerItems}
+              initialCatalog={catalog}
+              initialTermUiState={
+                termUiState
+                  ? {
+                      blackouts: parseBlackoutsJson(termUiState.blackouts),
+                    }
+                  : null
+              }
+            >
+              <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
+                <div className="min-w-0 lg:sticky lg:top-4 lg:z-1 lg:max-h-[min(100vh-2rem,56rem)] lg:self-start lg:overflow-y-auto">
+                  <CourseManager key={termCode} termCode={termCode} />
+                </div>
+                <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
+                  <WeekCalendar onBlockActivate={onBlockActivate} />
+                </div>
               </div>
-              <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
-                <WeekCalendar onBlockActivate={onBlockActivate} />
-              </div>
-            </div>
+            </PlannerProvider>
             <SectionJsonModal
               open={modalOpen}
               onOpenChange={setModalOpen}
               termCode={termCode}
               crn={modalCrn}
             />
-          </PlannerProvider>
+          </>
         )}
       </div>
     </div>
