@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 import { HeaderNav } from "./HeaderNav";
+import { LogoWordmark } from "./LogoWordmark";
 
 export function SiteChrome({
   children,
@@ -15,16 +15,12 @@ export function SiteChrome({
     <div className="flex min-h-screen min-w-0 flex-col bg-background">
       <header className="border-b border-border px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:max-w-[90rem]">
-          <Link href="/" className="inline-flex items-center gap-2 shrink-0">
-            <Image
-              src="/brand/logo-wordmark.svg"
-              alt="uwyoschedule home"
-              width={160}
-              height={32}
-              className="text-primary"
-              priority
-              sizes="160px"
-            />
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 shrink-0"
+            aria-label="uwyoschedule home"
+          >
+            <LogoWordmark className="shrink-0" />
           </Link>
           <HeaderNav actions={actions} />
         </div>
