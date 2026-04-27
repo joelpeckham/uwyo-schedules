@@ -1,7 +1,10 @@
 import type { PlannerItemRow } from "./data";
 import type { InstructorPrefsV1 } from "./instructor-prefs";
 import { parseInstructorPrefs } from "./instructor-prefs";
-import type { PlannerItemSelection, ResolvedPlannerSelection } from "./resolve-display-crns-shared";
+import type {
+  PlannerItemSelection,
+  ResolvedPlannerSelection,
+} from "./resolve-display-crns-shared";
 import { resolveDisplayCrnsSync } from "./resolve-display-crns-shared";
 import { bannerClockToMinutes } from "./banner-time";
 import {
@@ -113,6 +116,17 @@ function selectionFromCandidate(c: ScheduleCandidate): ResolvedPlannerSelection 
     anchorCrn: c.anchorCrn,
     linkedBundleId: c.linkedBundleId,
   };
+}
+
+function candidateMatchesResolvedSelection(
+  c: ScheduleCandidate,
+  s: ResolvedPlannerSelection,
+): boolean {
+  return (
+    c.selectionKind === s.selectionKind &&
+    c.anchorCrn === s.anchorCrn &&
+    c.linkedBundleId === s.linkedBundleId
+  );
 }
 
 /** Exported for tests: whether `single_crn` alone is a valid registration for this CRN. */
@@ -475,24 +489,22 @@ function candidateListForPlannerItem(
   return [];
 }
 
-/**
- * Pure client/in-memory solve using prefetched per-course packs (no DB).
- * Merges maps from all packs referenced by `items`.
- */
-export function solveSchedulesFromPacks(
+function mergePackMapsForSolve(
   items: PlannerItemRow[],
   packs: Record<string, CourseSolvePack>,
-  opts: {
-    requireOpenSections: boolean;
-    blackoutIntervals?: TimeInterval[];
-    maxSolutions?: number;
-    timeoutMs?: number;
-  },
-): SolveSchedulesResult {
-  if (items.length === 0) {
-    return { solutions: [], capped: false, timedOut: false, itemOrder: [] };
-  }
-
+): {
+  meetingsByCrn: Map<string, TimeInterval[]>;
+  facultyByCrn: Map<
+    string,
+    { displayName: string | null; primaryIndicator: boolean | null }[]
+  >;
+  scheduleTypeByCrn: Map<string, string | null>;
+  seatsByCrn: Map<
+    string,
+    { seatsAvailable: number | null; openSection: boolean | null }
+  >;
+  bundleMembersMerged: Map<number, string[]>;
+} {
   const meetingsByCrn = new Map<string, TimeInterval[]>();
   const facultyByCrn = new Map<
     string,
@@ -519,10 +531,138 @@ export function solveSchedulesFromPacks(
     mergeBundleMembers(bundleMembersMerged, p.bundleMembersById);
   }
 
-  const candidateLists: ScheduleCandidate[][] = items.map((item) => {
+  return {
+    meetingsByCrn,
+    facultyByCrn,
+    scheduleTypeByCrn,
+    seatsByCrn,
+    bundleMembersMerged,
+  };
+}
+
+function sortCandidateListsPreferPrevious(
+  items: PlannerItemRow[],
+  lists: ScheduleCandidate[][],
+  previousSelections: Record<number, ResolvedPlannerSelection> | null | undefined,
+): ScheduleCandidate[][] {
+  if (!previousSelections) return lists;
+  return lists.map((list, i) => {
+    const id = items[i]!.id;
+    const pref = previousSelections[id];
+    if (!pref) return list;
+    return [...list].sort((a, b) => {
+      const am = candidateMatchesResolvedSelection(a, pref) ? 0 : 1;
+      const bm = candidateMatchesResolvedSelection(b, pref) ? 0 : 1;
+      return am - bm;
+    });
+  });
+}
+
+/**
+ * True if every row still has its prior selection among current candidates and
+ * the combined assignment has no meeting overlap or blackout conflicts.
+ */
+export function scheduleSolutionStillValidForItems(
+  items: PlannerItemRow[],
+  packs: Record<string, CourseSolvePack>,
+  solution: ScheduleSolution,
+  opts: {
+    requireOpenSections: boolean;
+    blackoutIntervals?: TimeInterval[];
+  },
+): boolean {
+  if (items.length === 0) return true;
+  if (!everyPlannerItemHasSolvePack(items, packs)) return false;
+
+  const {
+    meetingsByCrn,
+    facultyByCrn,
+    scheduleTypeByCrn,
+    seatsByCrn,
+    bundleMembersMerged,
+  } = mergePackMapsForSolve(items, packs);
+
+  const blackoutIntervals = opts.blackoutIntervals ?? [];
+  const chosen: ScheduleCandidate[] = [];
+
+  for (const item of items) {
+    const sel = solution.selections[item.id];
+    if (!sel) return false;
+    const key = courseSolvePackCourseKey(item.subject, item.courseNumber);
+    const list = candidateListForPlannerItem(
+      item,
+      packs[key],
+      bundleMembersMerged,
+    );
+    const cand = list.find((c) => candidateMatchesResolvedSelection(c, sel));
+    if (!cand) return false;
+    if (
+      opts.requireOpenSections &&
+      !allCrnsHaveOpenSeats(cand.crns, seatsByCrn)
+    ) {
+      return false;
+    }
+    if (
+      candidateViolatesHardInstructorPrefs(
+        cand,
+        parseInstructorPrefs(item.instructorPrefs),
+        facultyByCrn,
+        scheduleTypeByCrn,
+      )
+    ) {
+      return false;
+    }
+    chosen.push(cand);
+  }
+
+  const acc: TimeInterval[] = [];
+  for (const cand of chosen) {
+    for (const crn of cand.crns) {
+      acc.push(...(meetingsByCrn.get(crn) ?? []));
+    }
+  }
+  if (hasAnyOverlap(acc)) return false;
+  if (courseIntervalsOverlapBlackouts(acc, blackoutIntervals)) return false;
+  return true;
+}
+
+/**
+ * Pure client/in-memory solve using prefetched per-course packs (no DB).
+ * Merges maps from all packs referenced by `items`.
+ */
+export function solveSchedulesFromPacks(
+  items: PlannerItemRow[],
+  packs: Record<string, CourseSolvePack>,
+  opts: {
+    requireOpenSections: boolean;
+    blackoutIntervals?: TimeInterval[];
+    maxSolutions?: number;
+    timeoutMs?: number;
+    /** Prefer DFS leaves that keep these per-item selections when still feasible. */
+    previousSelections?: Record<number, ResolvedPlannerSelection> | null;
+  },
+): SolveSchedulesResult {
+  if (items.length === 0) {
+    return { solutions: [], capped: false, timedOut: false, itemOrder: [] };
+  }
+
+  const {
+    meetingsByCrn,
+    facultyByCrn,
+    scheduleTypeByCrn,
+    seatsByCrn,
+    bundleMembersMerged,
+  } = mergePackMapsForSolve(items, packs);
+
+  const rawLists: ScheduleCandidate[][] = items.map((item) => {
     const key = courseSolvePackCourseKey(item.subject, item.courseNumber);
     return candidateListForPlannerItem(item, packs[key], bundleMembersMerged);
   });
+  const candidateLists = sortCandidateListsPreferPrevious(
+    items,
+    rawLists,
+    opts.previousSelections,
+  );
 
   return runSolveSearch({
     items,

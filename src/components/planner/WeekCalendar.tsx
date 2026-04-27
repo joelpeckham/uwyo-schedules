@@ -20,6 +20,10 @@ import {
 } from "@/lib/planner/constants";
 import { filterFeasibleSwapGhosts } from "@/lib/planner/planner-swap-feasibility";
 import {
+  ghostViewportRect,
+  pickCourseSwapSnap,
+} from "@/lib/planner/course-swap-snap";
+import {
   everyPlannerItemHasSolvePack,
   plannerItemsAdmitAtLeastOneSchedule,
 } from "@/lib/planner/solve-schedules-core";
@@ -46,7 +50,6 @@ import {
   Minus,
   MousePointerClick,
   Pin,
-  Plus,
   X,
   ZoomIn,
 } from "lucide-react";
@@ -110,7 +113,7 @@ const SCHEDULE_HELP: readonly {
   {
     Icon: Ban,
     label: "Busy times",
-    body: "Use “Mark busy time” and drag on a day column, or “Add busy…” for exact times. Busy blocks are respected while the planner finds a best-fit week. Two fingers still pan and zoom the week.",
+    body: "Turn on “Mark busy time” and drag on a day column to block time. Tap a busy block to fine-tune times or add a label. Busy blocks are respected while the planner finds a best-fit week. Two fingers still pan and zoom the week.",
   },
 ] as const;
 
@@ -218,40 +221,6 @@ type DragSessionState = {
   snapped: SwapGhostMeeting | null;
   floatStyle: { left: number; top: number; width: number; height: number };
 };
-
-function distPointToRect(
-  px: number,
-  py: number,
-  r: { left: number; top: number; width: number; height: number },
-): number {
-  const cx = Math.max(r.left, Math.min(px, r.left + r.width));
-  const cy = Math.max(r.top, Math.min(py, r.top + r.height));
-  return Math.hypot(px - cx, py - cy);
-}
-
-function ghostViewportRect(
-  g: SwapGhostMeeting,
-  dayStrip: HTMLDivElement,
-  gridHeightPx: number,
-  startMin: number,
-  totalMin: number,
-  visibleDayIndices: readonly number[],
-): { left: number; top: number; width: number; height: number } | null {
-  const colOffset = visibleDayIndices.indexOf(g.dayIndex);
-  if (colOffset < 0) return null;
-  const col = dayStrip.children[colOffset] as HTMLElement | undefined;
-  if (!col) return null;
-  const cr = col.getBoundingClientRect();
-  const topPx = ((g.startMinutes - startMin) / totalMin) * gridHeightPx;
-  const rawH = ((g.endMinutes - g.startMinutes) / totalMin) * gridHeightPx;
-  const heightPx = Math.max(8, rawH);
-  return {
-    left: cr.left + 2,
-    top: cr.top + topPx,
-    width: Math.max(0, cr.width - 4),
-    height: heightPx,
-  };
-}
 
 function buildFloatStyle(
   strip: HTMLDivElement | null,
@@ -431,28 +400,26 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   );
 
   const pickCourseSnap = useCallback(
-    (clientX: number, clientY: number, ghosts: SwapGhostMeeting[]) => {
+    (
+      clientX: number,
+      clientY: number,
+      ghosts: SwapGhostMeeting[],
+      sourceBlock: CalendarBlock,
+    ) => {
       const strip = dayStripRef.current;
-      if (!strip || ghosts.length === 0) return null;
-      let best: SwapGhostMeeting | null = null;
-      let bestD = SNAP_MAX_DIST_PX + 1;
-      for (const g of ghosts) {
-        const r = ghostViewportRect(
-          g,
-          strip,
-          gridHeightPx,
-          startMin,
-          totalMin,
-          visibleDayIndices,
-        );
-        if (!r || r.width <= 0) continue;
-        const d = distPointToRect(clientX, clientY, r);
-        if (d < bestD) {
-          bestD = d;
-          best = g;
-        }
-      }
-      return bestD <= SNAP_MAX_DIST_PX ? best : null;
+      if (!strip) return null;
+      return pickCourseSwapSnap(
+        clientX,
+        clientY,
+        ghosts,
+        sourceBlock,
+        strip,
+        gridHeightPx,
+        startMin,
+        totalMin,
+        visibleDayIndices,
+        SNAP_MAX_DIST_PX,
+      );
     },
     [gridHeightPx, startMin, totalMin, visibleDayIndices],
   );
@@ -622,15 +589,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     return out;
   }, []);
 
-  const openAddBusyDialog = useCallback(() => {
-    setEditingBlackoutId(null);
-    setFormDayIndex(0);
-    setFormStartMin(9 * 60);
-    setFormEndMin(10 * 60);
-    setFormLabel("");
-    setBusyDialogOpen(true);
-  }, []);
-
   const openEditBlackout = useCallback((item: PlannerBlackoutItemV1) => {
     setEditingBlackoutId(item.id);
     setFormDayIndex(item.dayIndex);
@@ -641,6 +599,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   }, []);
 
   const commitBusyForm = useCallback(() => {
+    if (!editingBlackoutId) {
+      setBusyDialogOpen(false);
+      return;
+    }
     const body = clampInterval({
       dayIndex: formDayIndex,
       start: formStartMin,
@@ -651,23 +613,17 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       setBusyDialogOpen(false);
       return;
     }
-    const newId =
-      globalThis.crypto?.randomUUID?.() ?? `b${Date.now().toString(36)}`;
     const next: PlannerBlackoutItemV1 = {
-      id: editingBlackoutId ?? newId,
+      id: editingBlackoutId,
       dayIndex: body.dayIndex,
       start: body.start,
       end: body.end,
       label: body.label,
     };
-    if (editingBlackoutId) {
-      setBlackouts((prev) => ({
-        v: 1,
-        items: prev.items.map((i) => (i.id === editingBlackoutId ? next : i)),
-      }));
-    } else {
-      setBlackouts((prev) => ({ v: 1, items: [...prev.items, next] }));
-    }
+    setBlackouts((prev) => ({
+      v: 1,
+      items: prev.items.map((i) => (i.id === editingBlackoutId ? next : i)),
+    }));
     setBusyDialogOpen(false);
   }, [
     editingBlackoutId,
@@ -963,6 +919,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           lastCoursePointerRef.current.x,
           lastCoursePointerRef.current.y,
           ghosts,
+          b,
         );
         const next = finalizeCourseDragSession({
           block: b,
@@ -983,7 +940,12 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         e.preventDefault();
         const sess = courseDragSessionRef.current;
         if (!sess) return;
-        const snapped = pickCourseSnap(e.clientX, e.clientY, sess.ghosts);
+        const snapped = pickCourseSnap(
+          e.clientX,
+          e.clientY,
+          sess.ghosts,
+          sess.block,
+        );
         const next = finalizeCourseDragSession({
           block: sess.block,
           pointerId: sess.pointerId,
@@ -1114,7 +1076,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     <section
       id="planner-week-calendar"
       className={cn(
-        "scroll-mt-20 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm",
+        "scroll-mt-20 min-w-0 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm",
         courseDragSession && "select-none",
       )}
       aria-labelledby="planner-week-calendar-heading"
@@ -1192,15 +1154,15 @@ export function WeekCalendar({ onBlockActivate }: Props) {
             Finding the best week…
           </p>
         ) : null}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-3">
           <h2
             id="planner-week-calendar-heading"
             className="font-heading min-w-0 text-lg font-medium text-foreground"
           >
             Weekly schedule
           </h2>
-          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-y-2 overflow-x-auto overflow-y-visible pb-1 [scrollbar-width:thin] sm:flex-wrap sm:justify-end sm:overflow-visible sm:pb-0">
-            <div className="flex shrink-0 flex-nowrap items-center gap-2 sm:flex-wrap">
+          <div className="flex w-full min-w-0 flex-1 flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-end md:gap-x-3 md:gap-y-2">
+            <div className="flex min-w-0 w-full flex-wrap items-center gap-2 md:w-auto">
               <Button
                 type="button"
                 variant="outline"
@@ -1214,7 +1176,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               </Button>
               {copyStatus === "ok" ? (
                 <span
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+                  className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
                   aria-live="polite"
                 >
                   <Check
@@ -1227,7 +1189,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               ) : null}
               {copyStatus === "err" ? (
                 <span
-                  className="inline-flex items-center gap-1.5 text-xs text-destructive"
+                  className="inline-flex min-w-0 items-center gap-1.5 text-xs text-destructive"
                   aria-live="polite"
                 >
                   <AlertCircle className="size-3.5 shrink-0" aria-hidden />
@@ -1235,9 +1197,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 </span>
               ) : null}
             </div>
-            <div
-              className="flex h-9 min-w-0 max-w-full shrink-0 items-center justify-between gap-3 sm:ml-2 sm:max-w-full sm:border-l sm:border-border sm:pl-3"
-            >
+            <div className="flex h-9 min-w-0 w-full items-center justify-start gap-3 md:w-auto">
               <Label
                 htmlFor="exclude-full-toggle"
                 className="cursor-pointer text-sm leading-snug text-foreground"
@@ -1254,7 +1214,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 }}
               />
             </div>
-            <div className="flex shrink-0 flex-nowrap items-center gap-2 sm:ml-2 sm:flex-wrap sm:border-l sm:border-border sm:pl-3">
+            <div className="flex min-w-0 w-full flex-wrap items-center gap-2 md:w-auto">
               <Button
                 type="button"
                 variant={markBusyMode ? "default" : "outline"}
@@ -1269,18 +1229,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               >
                 Mark busy time
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                className="h-9 touch-manipulation"
-                onClick={openAddBusyDialog}
-              >
-                <Plus className="mr-1.5 size-4 shrink-0" aria-hidden />
-                Add busy…
-              </Button>
             </div>
-            <div className="flex shrink-0 items-center gap-1 sm:ml-2 sm:border-l sm:border-border sm:pl-3">
+            <div className="flex min-w-0 w-full flex-wrap items-center gap-1 md:w-auto">
               <Button
                 type="button"
                 variant="outline"
@@ -1435,11 +1385,11 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                   className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
                   onClick={() => scrollToId("planner-week-calendar-toolbar")}
                 >
-                  Add busy times
+                  Mark busy times
                 </button>
                 <span className="text-muted-foreground">
                   {" "}
-                  only if something should stay free.
+                  on the week (toolbar) if something should stay free.
                 </span>
               </li>
             )}
@@ -1624,7 +1574,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                               <div
                                 key={`ghost-${g.crn}-${g.meetingId}-${g.dayIndex}-${g.startMinutes}`}
                                 className={cn(
-                                  "pointer-events-none absolute left-0.5 right-0.5 z-[15] rounded-md border border-dashed border-muted-foreground/50 bg-muted/25",
+                                  "pointer-events-none absolute left-0.5 right-0.5 z-[30] rounded-md border border-dashed border-muted-foreground/50 bg-muted/25",
                                   isSnap &&
                                     "border-primary/70 bg-primary/10 ring-1 ring-primary/40",
                                 )}
@@ -1817,9 +1767,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       <Dialog open={busyDialogOpen} onOpenChange={setBusyDialogOpen}>
         <DialogContent className="max-h-[min(32rem,90vh)] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {editingBlackoutId ? "Edit busy time" : "Add busy time"}
-            </DialogTitle>
+            <DialogTitle>Edit busy time</DialogTitle>
             <DialogDescription>
               Block times you are not available (work, commute, etc.). The
               planner avoids these intervals when building your week.
@@ -1913,9 +1861,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               >
                 Remove
               </Button>
-            ) : (
-              <span className="hidden sm:block" />
-            )}
+            ) : null}
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
               <Button
                 type="button"

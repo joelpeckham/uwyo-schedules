@@ -25,6 +25,7 @@ import {
   courseSolvePackCourseKey,
   everyPlannerItemHasSolvePack,
   plannerItemsAdmitAtLeastOneSchedule,
+  scheduleSolutionStillValidForItems,
   solveSchedulesFromPacks,
   type CourseSolvePack,
   type ScheduleSolution,
@@ -397,11 +398,31 @@ export function PlannerProvider({
         return;
       }
 
+      const blackoutIv = blackoutsDocToTimeIntervals(blackoutsRef.current);
+      const prevSol = solutionsRef.current[0] ?? null;
+      const prevSelections = prevSol?.selections ?? null;
+
       if (everyPlannerItemHasSolvePack(rows, packs)) {
+        if (
+          prevSol &&
+          scheduleSolutionStillValidForItems(rows, packs, prevSol, {
+            requireOpenSections: requireOpen,
+            blackoutIntervals: blackoutIv,
+          })
+        ) {
+          if (myGen !== recalcGenRef.current) return;
+          setSyncError(null);
+          setSolutions([prevSol]);
+          setSolutionsCapped(false);
+          setSolutionsTimedOut(false);
+          return;
+        }
+
         const result = solveSchedulesFromPacks(rows, packs, {
           requireOpenSections: requireOpen,
-          blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
+          blackoutIntervals: blackoutIv,
           maxSolutions: PLANNER_MAX_SOLUTIONS,
+          previousSelections: prevSelections,
         });
         if (myGen !== recalcGenRef.current) return;
         setSyncError(null);
@@ -420,9 +441,22 @@ export function PlannerProvider({
       if (myGen !== recalcGenRef.current) return;
       setSyncError(null);
       const sols = res.result.solutions;
-      setSolutions(sols);
-      setSolutionsCapped(res.result.capped);
-      setSolutionsTimedOut(res.result.timedOut);
+      if (
+        prevSol &&
+        everyPlannerItemHasSolvePack(rows, packs) &&
+        scheduleSolutionStillValidForItems(rows, packs, prevSol, {
+          requireOpenSections: requireOpen,
+          blackoutIntervals: blackoutIv,
+        })
+      ) {
+        setSolutions([prevSol]);
+        setSolutionsCapped(false);
+        setSolutionsTimedOut(false);
+      } else {
+        setSolutions(sols);
+        setSolutionsCapped(res.result.capped);
+        setSolutionsTimedOut(res.result.timedOut);
+      }
     } finally {
       recalcDepthRef.current -= 1;
       if (recalcDepthRef.current === 0) setIsRecalculatingSolutions(false);

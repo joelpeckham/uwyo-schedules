@@ -6,8 +6,10 @@ import {
   hasAnyOverlap,
   intervalsOverlap,
   meetingRowToIntervals,
+  scheduleSolutionStillValidForItems,
   solveSchedulesFromPacks,
   type CourseSolvePack,
+  type ScheduleSolution,
 } from "./solve-schedules-core";
 
 describe("intervalsOverlap", () => {
@@ -480,5 +482,117 @@ describe("solveSchedulesFromPacks", () => {
     });
     expect(r.solutions).toHaveLength(1);
     expect(r.solutions[0]!.selections[2]!.anchorCrn).toBe("L2");
+  });
+});
+
+describe("scheduleSolutionStillValidForItems", () => {
+  it("returns true for the current solve result", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A1",
+            linkedBundleId: null,
+            crns: ["A1"],
+          },
+        ],
+        meetingsByCrn: {
+          A1: [{ dayIndex: 0, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: {},
+        seatsByCrn: {
+          A1: { seatsAvailable: 3, openSection: true },
+        },
+      }),
+      [courseSolvePackCourseKey("MATH", "2000")]: basePack("MATH", "2000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "B1",
+            linkedBundleId: null,
+            crns: ["B1"],
+          },
+        ],
+        meetingsByCrn: {
+          B1: [{ dayIndex: 0, start: 700, end: 760 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: {},
+        seatsByCrn: {
+          B1: { seatsAvailable: 2, openSection: true },
+        },
+      }),
+    };
+    const items = [
+      itemStub({ id: 1, subject: "CS", courseNumber: "1000" }),
+      itemStub({ id: 2, subject: "MATH", courseNumber: "2000" }),
+    ];
+    const sol = solveSchedulesFromPacks(items, packs, {
+      requireOpenSections: false,
+    }).solutions[0]!;
+    expect(
+      scheduleSolutionStillValidForItems(items, packs, sol, {
+        requireOpenSections: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when a pin excludes the solution’s section", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A1",
+            linkedBundleId: null,
+            crns: ["A1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A2",
+            linkedBundleId: null,
+            crns: ["A2"],
+          },
+        ],
+        meetingsByCrn: {
+          A1: [{ dayIndex: 0, start: 600, end: 660 }],
+          A2: [{ dayIndex: 1, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: {
+          A1: "Lecture",
+          A2: "Lecture",
+        },
+        seatsByCrn: {
+          A1: { seatsAvailable: 3, openSection: true },
+          A2: { seatsAvailable: 3, openSection: true },
+        },
+      }),
+    };
+    const solution: ScheduleSolution = {
+      score: 0,
+      selections: {
+        1: {
+          selectionKind: "single_crn",
+          anchorCrn: "A2",
+          linkedBundleId: null,
+        },
+      },
+    };
+    const items = [
+      itemStub({
+        id: 1,
+        subject: "CS",
+        courseNumber: "1000",
+        sectionPins: { v: 1, byType: { lecture: "A1" } },
+      }),
+    ];
+    expect(
+      scheduleSolutionStillValidForItems(items, packs, solution, {
+        requireOpenSections: false,
+      }),
+    ).toBe(false);
   });
 });
