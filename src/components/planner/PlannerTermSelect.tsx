@@ -46,7 +46,7 @@ export function PlannerTermSelect({
         <SelectContent>
           {terms.map((t) => (
             <SelectItem key={t.code} value={t.code}>
-              {`${t.description} (${t.code})`}
+              {t.description}
             </SelectItem>
           ))}
         </SelectContent>

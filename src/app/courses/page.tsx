@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createDb } from "@/db/index";
-import { getLatestTermCode } from "@/lib/planner/data";
+import { getLatestTermRow } from "@/lib/terms/labels";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
   listSubjectsForTermCached,
@@ -21,8 +21,8 @@ export const metadata: Metadata = {
 
 export default async function CoursesIndexPage() {
   const db = createDb();
-  const latest = await getLatestTermCode(db);
-  if (!latest) {
+  const termRow = await getLatestTermRow(db);
+  if (!termRow) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
         <h1 className="font-heading text-3xl font-medium text-foreground">
@@ -36,7 +36,7 @@ export default async function CoursesIndexPage() {
     );
   }
 
-  const subjects = await listSubjectsForTermCached(latest);
+  const subjects = await listSubjectsForTermCached(termRow.code);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:max-w-[90rem]">
@@ -44,9 +44,8 @@ export default async function CoursesIndexPage() {
         Courses by subject
       </h1>
       <p className="mt-3 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">
-        Subjects for term{" "}
-        <span className="font-mono text-foreground">{latest}</span>. Pick a
-        subject to browse course numbers and titles from the UW course catalog.
+        Subjects for {termRow.description}. Pick a subject to browse course numbers
+        and titles from the UW course catalog.
       </p>
       <ul className="mt-8 columns-1 gap-3 sm:columns-2 lg:columns-3">
         {subjects.map((s) => (

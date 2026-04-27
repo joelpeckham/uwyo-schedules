@@ -1,4 +1,5 @@
 import { revalidateTag } from "next/cache";
+import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 import { SEO_BANNER_DATA_TAG } from "@/lib/seo/cache-tags";
 import { BannerSsbClient } from "./client";
 import {
@@ -46,7 +47,8 @@ export async function scrapeFullTermToDatabase(
 
   const terms = await client.getTerms();
   const termRow = terms.find((t) => t.code === termCode);
-  const termDescription = termRow?.description ?? termCode;
+  const termDescription =
+    decodeHtmlEntities(termRow?.description) ?? termCode;
 
   const subjects = await client.getAllSubjects(termCode);
   const byCrn = new Map<string, BannerSectionRow>();

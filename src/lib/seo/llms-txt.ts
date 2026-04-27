@@ -86,8 +86,8 @@ export function buildLlmsFullTxt(
 - \`/courses/{subject}\` — Courses for a subject (subject is a path segment; see site for encoding).
 - \`/courses/{subject}/{number}\` — Course detail (number is typically lowercase in URLs).
 - \`/terms\` — Term list.
-- \`/terms/{termCode}\` — Single term overview.
-- \`/terms/{termCode}/{subject}\` — Subjects/courses for that term.
+- \`/terms/{termCode}\` — Single term overview. URLs use the Banner term code; page titles and headings use the human name (e.g. Fall 2026).
+- \`/terms/{termCode}/{subject}\` — Subjects/courses for that term; same code vs. display name as above.
 - \`/about\`, \`/faq\` — Editorial pages.
 
 ${instructorNote}

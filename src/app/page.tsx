@@ -10,7 +10,7 @@ import { HomeOrgFaqJsonLd } from "@/components/seo/HomeOrgFaqJsonLd";
 import { LandingFooter } from "@/components/seo/LandingFooter";
 import { SiteChrome } from "@/components/seo/SiteChrome";
 import { createDb } from "@/db/index";
-import { getLatestTermCode } from "@/lib/planner/data";
+import { getLatestTermRow } from "@/lib/terms/labels";
 import { absoluteUrl } from "@/lib/seo/site";
 
 export const metadata: Metadata = {
@@ -37,7 +37,7 @@ export default async function Page({
   }
 
   const db = createDb();
-  const latest = await getLatestTermCode(db);
+  const latestTerm = await getLatestTermRow(db);
 
   return (
     <>
@@ -47,10 +47,10 @@ export default async function Page({
         <PlannerPreview />
         <HowItWorks />
         <LaramieCallout />
-        <TopSubjects latestTermCode={latest} />
+        <TopSubjects latestTerm={latestTerm} />
         <LandingFaq />
       </SiteChrome>
-      <LandingFooter latestTermCode={latest} />
+      <LandingFooter latestTerm={latestTerm} />
     </>
   );
 }

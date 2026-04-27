@@ -29,6 +29,19 @@ describe("mapSectionRowToGraph", () => {
     expect(g!.section.subject).toBe("PHYS");
     expect(g!.meetings.length).toBeGreaterThan(0);
   });
+
+  it("decodes HTML entities in Banner prose fields", () => {
+    const row = {
+      courseReferenceNumber: "1",
+      subject: "MATH",
+      courseNumber: "1000",
+      courseTitle: "Waves &amp; Optics",
+      subjectDescription: "Math &amp; stat",
+    } as BannerSectionRow;
+    const g = mapSectionRowToGraph("202610", row);
+    expect(g?.section.courseTitle).toBe("Waves & Optics");
+    expect(g?.section.subjectDescription).toBe("Math & stat");
+  });
 });
 
 describe("linkedData OR/AND semantics (fixture 08)", () => {

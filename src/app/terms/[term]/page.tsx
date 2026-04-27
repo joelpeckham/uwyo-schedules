@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createDb } from "@/db/index";
-import * as schema from "@/db/schema";
 import { listTerms } from "@/lib/planner/data";
+import { getTermDescriptionByCode } from "@/lib/terms/labels";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
@@ -11,7 +11,6 @@ import {
   listSubjectsForTermCached,
   subjectToPathSegment,
 } from "@/lib/seo/queries";
-import { eq } from "drizzle-orm";
 
 type Props = { params: Promise<{ term: string }> };
 
@@ -26,13 +25,14 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { term } = await params;
   const canonical = `/terms/${encodeURIComponent(term)}`;
+  const label = (await getTermDescriptionByCode(term)) ?? term;
   return {
-    title: `Term ${term}`,
-    description: `Browse University of Wyoming subjects for term ${term}.`,
+    title: label,
+    description: `Browse University of Wyoming subjects for ${label}.`,
     alternates: { canonical },
     openGraph: {
       url: absoluteUrl(canonical),
-      title: `Term ${term} · uwyoschedule`,
+      title: `${label} · uwyoschedule`,
     },
   };
 }
@@ -43,12 +43,7 @@ export default async function TermPage({ params }: Props) {
   const terms = await listTerms(db);
   if (!terms.some((t) => t.code === term)) notFound();
 
-  const [termRow] = await db
-    .select({ description: schema.terms.description })
-    .from(schema.terms)
-    .where(eq(schema.terms.code, term))
-    .limit(1);
-  const description = termRow?.description ?? term;
+  const description = (await getTermDescriptionByCode(term)) ?? term;
 
   const subjects = await listSubjectsForTermCached(term);
   const canonicalPath = `/terms/${encodeURIComponent(term)}`;
@@ -56,8 +51,8 @@ export default async function TermPage({ params }: Props) {
   const collectionJson = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    name: `${description} (${term})`,
-    description: `University of Wyoming subjects for term ${term}.`,
+    name: description,
+    description: `University of Wyoming subjects for ${description}.`,
     url: absoluteUrl(canonicalPath),
     isPartOf: { "@type": "WebSite", name: "uwyoschedule", url: absoluteUrl("/") },
   };
@@ -69,13 +64,12 @@ export default async function TermPage({ params }: Props) {
         items={[
           { name: "Home", href: "/" },
           { name: "Terms", href: "/terms" },
-          { name: term, href: canonicalPath },
+          { name: description, href: canonicalPath },
         ]}
       />
       <h1 className="mt-4 font-heading text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
         {description}
       </h1>
-      <p className="mt-2 font-mono text-sm text-muted-foreground">{term}</p>
       <ul className="mt-8 columns-1 gap-3 sm:columns-2 lg:columns-3">
         {subjects.map((s) => (
           <li

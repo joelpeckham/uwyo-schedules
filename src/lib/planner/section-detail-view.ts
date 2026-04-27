@@ -1,4 +1,5 @@
 import { parseBannerClock } from "@/lib/planner/banner-time";
+import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 
 const DAY_FIELDS = [
   ["monday", "Mon"],
@@ -40,7 +41,9 @@ export function stringField(
   key: string,
 ): string | undefined {
   const v = r[key];
-  if (typeof v === "string" && v.trim() !== "") return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    return decodeHtmlEntities(v) ?? v;
+  }
   return undefined;
 }
 

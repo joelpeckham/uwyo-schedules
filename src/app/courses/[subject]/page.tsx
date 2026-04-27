@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createDb } from "@/db/index";
-import { getLatestTermCode } from "@/lib/planner/data";
+import { getLatestTermRow } from "@/lib/terms/labels";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
@@ -31,9 +31,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { subject: seg } = await params;
   const code = pathSegmentToSubject(seg);
   const canonical = `/courses/${subjectToPathSegment(code)}`;
+  const { createDb } = await import("@/db/index");
+  const { getLatestTermRow: latestTerm } = await import("@/lib/terms/labels");
+  const db = createDb();
+  const termRow = await latestTerm(db);
+  const termPhrase = termRow?.description
+    ? termRow.description
+    : "the latest available term";
   return {
     title: `${code} courses`,
-    description: `University of Wyoming ${code} courses for the latest term — titles, numbers, and section counts.`,
+    description: `University of Wyoming ${code} courses for ${termPhrase} — titles, numbers, and section counts.`,
     alternates: { canonical },
     openGraph: {
       url: absoluteUrl(canonical),
@@ -46,10 +53,10 @@ export default async function SubjectCoursesPage({ params }: Props) {
   const { subject: seg } = await params;
   const subject = pathSegmentToSubject(seg);
   const db = createDb();
-  const latest = await getLatestTermCode(db);
-  if (!latest) notFound();
+  const termRow = await getLatestTermRow(db);
+  if (!termRow) notFound();
 
-  const courses = await listCoursesForSubjectAndTermCached(latest, subject);
+  const courses = await listCoursesForSubjectAndTermCached(termRow.code, subject);
   if (courses.length === 0) notFound();
 
   const canonicalPath = `/courses/${subjectToPathSegment(subject)}`;
@@ -57,7 +64,7 @@ export default async function SubjectCoursesPage({ params }: Props) {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     name: `${subject} courses at the University of Wyoming`,
-    description: `Browse ${subject} courses from the UW course catalog (term ${latest}).`,
+    description: `Browse ${subject} courses from the UW course catalog for ${termRow.description}.`,
     url: absoluteUrl(canonicalPath),
     isPartOf: { "@type": "WebSite", name: "uwyoschedule", url: absoluteUrl("/") },
   };
@@ -76,8 +83,8 @@ export default async function SubjectCoursesPage({ params }: Props) {
         {subject} courses
       </h1>
       <p className="mt-3 max-w-prose text-pretty text-sm text-muted-foreground sm:text-base">
-        Term <span className="font-mono text-foreground">{latest}</span>.
-        Open a course for section-level meeting times and instructors.
+        {termRow.description}. Open a course for section-level meeting times and
+        instructors.
       </p>
       <div className="mt-8 overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[36rem] border-collapse text-left text-sm">

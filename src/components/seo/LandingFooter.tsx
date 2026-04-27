@@ -18,9 +18,9 @@ function subjectHref(code: string) {
 }
 
 export function LandingFooter({
-  latestTermCode,
+  latestTerm,
 }: {
-  latestTermCode: string | null;
+  latestTerm: { code: string; description: string } | null;
 }) {
   return (
     <footer className="border-t border-border bg-muted/15 px-4 py-10 sm:px-6">
@@ -63,12 +63,12 @@ export function LandingFooter({
           <Link className="hover:text-primary hover:underline" href="/terms">
             Terms
           </Link>
-          {latestTermCode ? (
+          {latestTerm ? (
             <Link
               className="hover:text-primary hover:underline"
-              href={`/terms/${encodeURIComponent(latestTermCode)}`}
+              href={`/terms/${encodeURIComponent(latestTerm.code)}`}
             >
-              Current term ({latestTermCode})
+              {latestTerm.description}
             </Link>
           ) : null}
         </div>

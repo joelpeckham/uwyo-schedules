@@ -2,6 +2,7 @@ import { createDb } from "@/db/index";
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { canonicalAggregateCourseTitle } from "@/lib/catalog/canonicalCourseTitleSql";
+import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, max, sql } from "drizzle-orm";
 
 /** URL path segment for Banner subject (e.g. `MATH` → `math`). */
@@ -80,8 +81,8 @@ export async function listCoursesForSubjectAndTerm(
   return rows.map((r) => ({
     subject: r.subject,
     courseNumber: r.courseNumber,
-    subjectCourse: r.subjectCourse,
-    title: r.title,
+    subjectCourse: decodeHtmlEntities(r.subjectCourse),
+    title: decodeHtmlEntities(r.title),
     sectionCount: r.sectionCount,
     creditHours: r.creditHours,
   }));
@@ -130,7 +131,7 @@ export async function getCourseSeoDetail(
         eq(schema.sections.courseNumber, num),
       ),
     );
-  const title = titleRow[0]?.title ?? null;
+  const title = decodeHtmlEntities(titleRow[0]?.title ?? null);
 
   const termRows = await db
     .select({
@@ -153,10 +154,11 @@ export async function getCourseSeoDetail(
   return {
     subject: subj,
     courseNumber: num,
-    title: title ?? termRows[0]?.termDescription ?? null,
+    title:
+      title ?? decodeHtmlEntities(termRows[0]?.termDescription ?? null) ?? null,
     terms: termRows.map((t) => ({
       termCode: t.termCode,
-      termDescription: t.termDescription,
+      termDescription: decodeHtmlEntities(t.termDescription) ?? t.termDescription,
       sectionCount: t.sectionCount,
       lastUpdated: t.lastUpdated,
     })),
@@ -187,10 +189,12 @@ function formatMeetingRow(m: typeof schema.sectionMeetings.$inferSelect): string
   const dayPart = days.length > 0 ? days.join("") : "—";
   const time =
     m.beginTime && m.endTime ? `${m.beginTime}–${m.endTime}` : "Time TBA";
+  const b = decodeHtmlEntities(m.building);
+  const rm = decodeHtmlEntities(m.room);
+  const bd = decodeHtmlEntities(m.buildingDescription);
+  const cd = decodeHtmlEntities(m.campusDescription);
   const place =
-    m.building && m.room
-      ? `${m.building} ${m.room}`
-      : (m.buildingDescription ?? m.campusDescription ?? "");
+    b && rm ? `${b} ${rm}` : (bd ?? cd ?? "");
   return [dayPart, time, place].filter(Boolean).join(" · ");
 }
 
@@ -266,8 +270,9 @@ export async function listSectionTableRowsForCourseTerm(
   const facultyByCrn = new Map<string, string[]>();
   for (const f of faculty) {
     if (!f.name) continue;
+    const decoded = decodeHtmlEntities(f.name) ?? f.name;
     const list = facultyByCrn.get(f.crn) ?? [];
-    list.push(f.name);
+    list.push(decoded);
     facultyByCrn.set(f.crn, list);
   }
 
@@ -279,8 +284,8 @@ export async function listSectionTableRowsForCourseTerm(
     return {
       crn: s.crn,
       termCode,
-      courseTitle: s.courseTitle,
-      scheduleTypeDescription: s.scheduleTypeDescription,
+      courseTitle: decodeHtmlEntities(s.courseTitle),
+      scheduleTypeDescription: decodeHtmlEntities(s.scheduleTypeDescription),
       seatsAvailable: s.seatsAvailable,
       enrollment: s.enrollment,
       maximumEnrollment: s.maximumEnrollment,
@@ -320,8 +325,9 @@ export async function listInstructorsForSeo(
 
   const out: InstructorIndexRow[] = [];
   for (const r of rows) {
-    const name = r.displayName?.trim();
-    if (!name) continue;
+    const raw = r.displayName?.trim();
+    if (!raw) continue;
+    const name = decodeHtmlEntities(raw) ?? raw;
     const slug = slugifyInstructorName(name);
     if (!slug) continue;
     out.push({ slug, displayName: name, sectionCount: r.sectionCount });
@@ -335,7 +341,7 @@ export async function listSectionsForInstructorDisplayName(
   displayName: string,
   limit = 200,
 ) {
-  const rows = await db
+  const raw = await db
     .select({
       termCode: schema.sections.termCode,
       crn: schema.sections.crn,
@@ -344,6 +350,7 @@ export async function listSectionsForInstructorDisplayName(
       subjectCourse: schema.sections.subjectCourse,
       courseTitle: schema.sections.courseTitle,
       scheduleTypeDescription: schema.sections.scheduleTypeDescription,
+      termDescription: schema.terms.description,
     })
     .from(schema.sectionFaculty)
     .innerJoin(
@@ -353,9 +360,24 @@ export async function listSectionsForInstructorDisplayName(
         eq(schema.sections.crn, schema.sectionFaculty.sectionCrn),
       ),
     )
+    .innerJoin(
+      schema.terms,
+      eq(schema.terms.code, schema.sections.termCode),
+    )
     .where(eq(schema.sectionFaculty.displayName, displayName))
     .orderBy(desc(schema.sections.termCode), asc(schema.sections.crn))
     .limit(limit);
+
+  const rows = raw.map((r) => ({
+    termCode: r.termCode,
+    crn: r.crn,
+    subject: r.subject,
+    courseNumber: r.courseNumber,
+    subjectCourse: decodeHtmlEntities(r.subjectCourse),
+    courseTitle: decodeHtmlEntities(r.courseTitle),
+    scheduleTypeDescription: decodeHtmlEntities(r.scheduleTypeDescription),
+    termDescription: decodeHtmlEntities(r.termDescription) ?? r.termDescription,
+  }));
 
   return { displayName, rows };
 }

@@ -85,7 +85,7 @@ export default async function InstructorPage({ params }: Props) {
               className="rounded-md border border-border bg-card px-3 py-2"
             >
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="font-mono text-muted-foreground">{r.termCode}</span>
+                <span className="text-muted-foreground">{r.termDescription}</span>
                 <Link
                   className="font-mono font-medium text-primary underline-offset-4 hover:underline"
                   href={`/courses/${encodeURIComponent(subjectToPathSegment(r.subject))}/${encodeURIComponent(r.courseNumber.toLowerCase())}`}

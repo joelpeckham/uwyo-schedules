@@ -7,6 +7,7 @@ import type {
   sectionMeetings,
   sections,
 } from "@/db/schema";
+import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 import type {
   BannerMeetingFaculty,
   BannerSectionAttribute,
@@ -46,6 +47,11 @@ function str(v: unknown): string | null {
   return String(v);
 }
 
+/** Coerce to string, then decode HTML entities (Banner prose fields). */
+function dstr(v: unknown): string | null {
+  return decodeHtmlEntities(str(v));
+}
+
 /** Map one Banner section row + term into Drizzle insert shapes. */
 export function mapSectionRowToGraph(
   termCode: string,
@@ -73,19 +79,19 @@ export function mapSectionRowToGraph(
     crn,
     subject,
     courseNumber,
-    sequenceNumber: str(row.sequenceNumber),
-    subjectDescription: str(row.subjectDescription),
-    courseTitle: str(row.courseTitle),
-    subjectCourse: str(row.subjectCourse),
-    scheduleTypeDescription: str(row.scheduleTypeDescription),
-    partOfTerm: str(row.partOfTerm),
-    campusDescription: str(row.campusDescription),
-    instructionalMethod: str(row.instructionalMethod),
-    instructionalMethodDescription: str(row.instructionalMethodDescription),
+    sequenceNumber: dstr(row.sequenceNumber),
+    subjectDescription: dstr(row.subjectDescription),
+    courseTitle: dstr(row.courseTitle),
+    subjectCourse: dstr(row.subjectCourse),
+    scheduleTypeDescription: dstr(row.scheduleTypeDescription),
+    partOfTerm: dstr(row.partOfTerm),
+    campusDescription: dstr(row.campusDescription),
+    instructionalMethod: dstr(row.instructionalMethod),
+    instructionalMethodDescription: dstr(row.instructionalMethodDescription),
     creditHours: num(row.creditHours),
     creditHourHigh: num(row.creditHourHigh),
     creditHourLow: num(row.creditHourLow),
-    creditHourIndicator: str(row.creditHourIndicator),
+    creditHourIndicator: dstr(row.creditHourIndicator),
     enrollment: num(row.enrollment),
     maximumEnrollment: num(row.maximumEnrollment),
     seatsAvailable: num(row.seatsAvailable),
@@ -93,11 +99,11 @@ export function mapSectionRowToGraph(
     waitCount: num(row.waitCount),
     waitAvailable: num(row.waitAvailable),
     openSection: open,
-    crossList: str(row.crossList),
+    crossList: dstr(row.crossList),
     crossListCapacity: num(row.crossListCapacity),
     crossListCount: num(row.crossListCount),
     crossListAvailable: num(row.crossListAvailable),
-    linkIdentifier: str(row.linkIdentifier),
+    linkIdentifier: dstr(row.linkIdentifier),
     isSectionLinked: bool(row.isSectionLinked),
     bannerRowId: typeof row.id === "number" ? row.id : null,
     rawJson: row as object,
@@ -113,8 +119,8 @@ export function mapSectionRowToGraph(
         termCode,
         sectionCrn: crn,
         sortOrder: idx,
-        beginTime: str(mt.beginTime),
-        endTime: str(mt.endTime),
+        beginTime: dstr(mt.beginTime),
+        endTime: dstr(mt.endTime),
         monday: bool(mt.monday),
         tuesday: bool(mt.tuesday),
         wednesday: bool(mt.wednesday),
@@ -122,19 +128,19 @@ export function mapSectionRowToGraph(
         friday: bool(mt.friday),
         saturday: bool(mt.saturday),
         sunday: bool(mt.sunday),
-        building: str(mt.building),
-        buildingDescription: str(mt.buildingDescription),
-        room: str(mt.room),
-        campus: str(mt.campus),
-        campusDescription: str(mt.campusDescription),
-        startDate: str(mt.startDate),
-        endDate: str(mt.endDate),
-        meetingScheduleType: str(mt.meetingScheduleType),
-        meetingType: str(mt.meetingType),
-        meetingTypeDescription: str(mt.meetingTypeDescription),
+        building: dstr(mt.building),
+        buildingDescription: dstr(mt.buildingDescription),
+        room: dstr(mt.room),
+        campus: dstr(mt.campus),
+        campusDescription: dstr(mt.campusDescription),
+        startDate: dstr(mt.startDate),
+        endDate: dstr(mt.endDate),
+        meetingScheduleType: dstr(mt.meetingScheduleType),
+        meetingType: dstr(mt.meetingType),
+        meetingTypeDescription: dstr(mt.meetingTypeDescription),
         hoursWeek: num(mt.hoursWeek),
         creditHourSession: num(mt.creditHourSession),
-        category: str(block.category),
+        category: dstr(block.category),
         rawJson: block as object,
       });
     });
@@ -149,8 +155,8 @@ export function mapSectionRowToGraph(
         sectionCrn: crn,
         sortOrder: idx,
         bannerId: str(f.bannerId),
-        displayName: str(f.displayName),
-        emailAddress: str(f.emailAddress),
+        displayName: dstr(f.displayName),
+        emailAddress: dstr(f.emailAddress),
         primaryIndicator: bool(f.primaryIndicator),
         rawJson: f as object,
       });
@@ -165,7 +171,7 @@ export function mapSectionRowToGraph(
         termCode,
         sectionCrn: crn,
         code: a.code,
-        description: str(a.description),
+        description: dstr(a.description),
         isZtcAttribute: bool(a.isZTCAttribute),
         rawJson: a as object,
       });
@@ -180,7 +186,7 @@ export function courseKey(subject: string, courseNumber: string): string {
 }
 
 function isLectureLikeScheduleRow(r: BannerSectionRow): boolean {
-  const d = str(r.scheduleTypeDescription)?.toLowerCase() ?? "";
+  const d = decodeHtmlEntities(str(r.scheduleTypeDescription))?.toLowerCase() ?? "";
   return d.includes("lecture") || d === "lec" || d.includes("lec ");
 }
 

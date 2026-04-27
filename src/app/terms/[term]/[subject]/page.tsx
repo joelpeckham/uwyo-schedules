@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createDb } from "@/db/index";
 import { listTerms } from "@/lib/planner/data";
+import { getTermDescriptionByCode } from "@/lib/terms/labels";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
@@ -18,13 +19,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { term, subject: seg } = await params;
   const subject = pathSegmentToSubject(seg);
   const canonical = `/terms/${encodeURIComponent(term)}/${encodeURIComponent(subjectToPathSegment(subject))}`;
+  const label = (await getTermDescriptionByCode(term)) ?? term;
   return {
-    title: `${subject} · term ${term}`,
-    description: `University of Wyoming ${subject} courses for term ${term}.`,
+    title: `${subject} · ${label}`,
+    description: `University of Wyoming ${subject} courses for ${label}.`,
     alternates: { canonical },
     openGraph: {
       url: absoluteUrl(canonical),
-      title: `${subject} · term ${term} · uwyoschedule`,
+      title: `${subject} · ${label} · uwyoschedule`,
     },
   };
 }
@@ -39,12 +41,13 @@ export default async function TermSubjectPage({ params }: Props) {
   const courses = await listCoursesForSubjectAndTermCached(term, subject);
   if (courses.length === 0) notFound();
 
+  const label = (await getTermDescriptionByCode(term)) ?? term;
   const canonicalPath = `/terms/${encodeURIComponent(term)}/${encodeURIComponent(subjectToPathSegment(subject))}`;
   const collectionJson = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    name: `${subject} courses — term ${term}`,
-    description: `University of Wyoming ${subject} courses for term ${term}.`,
+    name: `${subject} courses — ${label}`,
+    description: `University of Wyoming ${subject} courses for ${label}.`,
     url: absoluteUrl(canonicalPath),
     isPartOf: { "@type": "WebSite", name: "uwyoschedule", url: absoluteUrl("/") },
   };
@@ -56,12 +59,12 @@ export default async function TermSubjectPage({ params }: Props) {
         items={[
           { name: "Home", href: "/" },
           { name: "Terms", href: "/terms" },
-          { name: term, href: `/terms/${encodeURIComponent(term)}` },
+          { name: label, href: `/terms/${encodeURIComponent(term)}` },
           { name: subject, href: canonicalPath },
         ]}
       />
       <h1 className="mt-4 font-heading text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
-        {subject} · term {term}
+        {subject} — {label}
       </h1>
       <p className="mt-3 max-w-prose text-sm text-muted-foreground sm:text-base">
         Evergreen course pages (all terms) live under{" "}

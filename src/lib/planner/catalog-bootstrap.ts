@@ -1,5 +1,6 @@
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
+import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 
 export type PlannerTermUiStateRow = typeof schema.plannerTermUiState.$inferSelect;
@@ -114,7 +115,14 @@ export async function loadPlannerCatalogBootstrap(
     );
 
   const sectionByCrn = new Map<string, (typeof sectionRows)[number]>();
-  for (const r of sectionRows) sectionByCrn.set(r.crn, r);
+  for (const r of sectionRows) {
+    sectionByCrn.set(r.crn, {
+      ...r,
+      scheduleTypeDescription: decodeHtmlEntities(r.scheduleTypeDescription),
+      sequenceNumber: decodeHtmlEntities(r.sequenceNumber),
+      subjectCourse: decodeHtmlEntities(r.subjectCourse),
+    });
+  }
 
   const courseSectionCrns = new Set(sectionRows.map((r) => r.crn));
   const allCrns = new Set<string>([...displayCrns, ...courseSectionCrns]);
@@ -210,11 +218,18 @@ export async function loadPlannerCatalogBootstrap(
           inArray(schema.sections.crn, missingSectionCrns),
         ),
       );
-    for (const r of extra) sectionByCrn.set(r.crn, r);
+    for (const r of extra) {
+      sectionByCrn.set(r.crn, {
+        ...r,
+        scheduleTypeDescription: decodeHtmlEntities(r.scheduleTypeDescription),
+        sequenceNumber: decodeHtmlEntities(r.sequenceNumber),
+        subjectCourse: decodeHtmlEntities(r.subjectCourse),
+      });
+    }
   }
 
   const meetingCrnList = [...sectionByCrn.keys()];
-  const meetings =
+  const meetingRaw =
     meetingCrnList.length === 0
       ? []
       : await db
@@ -242,6 +257,15 @@ export async function loadPlannerCatalogBootstrap(
               inArray(schema.sectionMeetings.sectionCrn, meetingCrnList),
             ),
           );
+  const meetings = meetingRaw.map((m) => ({
+    ...m,
+    beginTime: decodeHtmlEntities(m.beginTime),
+    endTime: decodeHtmlEntities(m.endTime),
+    meetingScheduleType: decodeHtmlEntities(m.meetingScheduleType),
+    building: decodeHtmlEntities(m.building),
+    buildingDescription: decodeHtmlEntities(m.buildingDescription),
+    room: decodeHtmlEntities(m.room),
+  }));
 
   const facultyRows =
     meetingCrnList.length === 0
@@ -271,8 +295,9 @@ export async function loadPlannerCatalogBootstrap(
   const facultyByCrn: Record<string, string> = {};
   const namesByCrn = new Map<string, string[]>();
   for (const r of facultyRows) {
-    const name = r.displayName?.trim();
-    if (!name) continue;
+    const rawName = r.displayName?.trim();
+    if (!rawName) continue;
+    const name = decodeHtmlEntities(rawName) ?? rawName;
     const list = namesByCrn.get(r.sectionCrn) ?? [];
     list.push(name);
     namesByCrn.set(r.sectionCrn, list);

@@ -45,9 +45,6 @@ export default async function TermsIndexPage() {
             >
               {t.description}
             </Link>
-            <span className="ml-2 font-mono text-sm text-muted-foreground">
-              {t.code}
-            </span>
           </li>
         ))}
       </ul>

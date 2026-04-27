@@ -1,7 +1,7 @@
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { canonicalAggregateCourseTitle } from "@/lib/catalog/canonicalCourseTitleSql";
-import { and, asc, desc, eq, inArray, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { bannerClockToMinutes } from "./banner-time";
 import {
   CALENDAR_HOUR_COUNT,
@@ -12,6 +12,7 @@ import {
   type PlannerItemSelection,
   type SelectionKind,
 } from "./resolve-display-crns";
+import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 import { escapeIlikePattern } from "./search-escape";
 import {
   normalizeMeetingScheduleType,
@@ -98,13 +99,17 @@ export async function getLatestTermCode(db: Database): Promise<string | null> {
 }
 
 export async function listTerms(db: Database): Promise<TermOption[]> {
-  return db
+  const rows = await db
     .select({
       code: schema.terms.code,
       description: schema.terms.description,
     })
     .from(schema.terms)
     .orderBy(desc(schema.terms.code));
+  return rows.map((t) => ({
+    code: t.code,
+    description: decodeHtmlEntities(t.description) ?? t.description,
+  }));
 }
 
 export async function listPlannerItems(
@@ -176,7 +181,13 @@ export async function searchCourses(
     )
     .orderBy(schema.courses.subject, schema.courses.courseNumber)
     .limit(limit);
-  return rows as CourseSearchRow[];
+  return rows.map((r) => ({
+    termCode: r.termCode,
+    subject: r.subject,
+    courseNumber: r.courseNumber,
+    subjectCourse: decodeHtmlEntities(r.subjectCourse),
+    previewTitle: decodeHtmlEntities(r.previewTitle),
+  }));
 }
 
 export async function listSectionsForCourse(
@@ -185,7 +196,7 @@ export async function listSectionsForCourse(
   subject: string,
   courseNumber: string,
 ) {
-  return db
+  const raw = await db
     .select({
       crn: schema.sections.crn,
       sequenceNumber: schema.sections.sequenceNumber,
@@ -203,6 +214,14 @@ export async function listSectionsForCourse(
       ),
     )
     .orderBy(schema.sections.crn);
+  return raw.map((r) => ({
+    crn: r.crn,
+    sequenceNumber: decodeHtmlEntities(r.sequenceNumber),
+    courseTitle: decodeHtmlEntities(r.courseTitle),
+    scheduleTypeDescription: decodeHtmlEntities(r.scheduleTypeDescription),
+    subjectCourse: decodeHtmlEntities(r.subjectCourse),
+    isSectionLinked: r.isSectionLinked,
+  }));
 }
 
 export type LinkedBundleOption = {
@@ -300,9 +319,11 @@ async function loadSectionLabels(
     );
   const map = new Map<string, string>();
   for (const r of rows) {
-    const code = r.subjectCourse ?? "";
-    const seq = r.sequenceNumber ? ` #${r.sequenceNumber}` : "";
-    const st = r.scheduleTypeDescription ?? "";
+    const code = decodeHtmlEntities(r.subjectCourse) ?? r.subjectCourse ?? "";
+    const seq = r.sequenceNumber
+      ? ` #${decodeHtmlEntities(r.sequenceNumber) ?? r.sequenceNumber}`
+      : "";
+    const st = decodeHtmlEntities(r.scheduleTypeDescription) ?? r.scheduleTypeDescription ?? "";
     map.set(
       r.crn,
       [code + seq, st].filter(Boolean).join(" — ") || `CRN ${r.crn}`,
@@ -334,7 +355,14 @@ export async function getSectionDetail(
       ),
     )
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  return {
+    ...row,
+    sequenceNumber: decodeHtmlEntities(row.sequenceNumber),
+    courseTitle: decodeHtmlEntities(row.courseTitle),
+    subjectCourse: decodeHtmlEntities(row.subjectCourse),
+    scheduleTypeDescription: decodeHtmlEntities(row.scheduleTypeDescription),
+  };
 }
 
 export async function buildCalendarBlocks(
@@ -402,8 +430,9 @@ export async function buildCalendarBlocks(
     for (const r of facultyRows) {
       const name = r.displayName?.trim();
       if (!name) continue;
+      const decoded = decodeHtmlEntities(name) ?? name;
       const list = namesByCrn.get(r.sectionCrn) ?? [];
-      list.push(name);
+      list.push(decoded);
       namesByCrn.set(r.sectionCrn, list);
     }
     for (const [crn, names] of namesByCrn) {
@@ -427,7 +456,10 @@ export async function buildCalendarBlocks(
     );
   const scheduleTypeByCrn = new Map<string, string | null>();
   for (const r of schedRows) {
-    scheduleTypeByCrn.set(r.crn, r.scheduleTypeDescription);
+    scheduleTypeByCrn.set(
+      r.crn,
+      decodeHtmlEntities(r.scheduleTypeDescription) ?? r.scheduleTypeDescription,
+    );
   }
 
   const windowStart = CALENDAR_START_HOUR * 60;
@@ -450,9 +482,13 @@ export async function buildCalendarBlocks(
       const clipEnd = Math.min(end, windowEnd);
       if (clipEnd <= clipStart) continue;
 
-      const sub =
-        [m.buildingDescription ?? m.building, m.room].filter(Boolean).join(" ") ||
-        "";
+      const bPart =
+        decodeHtmlEntities(m.buildingDescription) ??
+        m.buildingDescription ??
+        decodeHtmlEntities(m.building) ??
+        m.building;
+      const room = decodeHtmlEntities(m.room) ?? m.room;
+      const sub = [bPart, room].filter(Boolean).join(" ") || "";
       const facultyRaw = facultyByCrn.get(m.sectionCrn)?.trim() ?? "";
       const instructorSublabel =
         facultyRaw.length > 0 ? facultyRaw : null;
@@ -526,8 +562,11 @@ export async function getSectionMeetingContextForSwap(
   return {
     subject: row.subject,
     courseNumber: row.courseNumber,
-    scheduleTypeDescription: row.scheduleTypeDescription,
-    meetingScheduleType: row.meetingScheduleType,
+    scheduleTypeDescription:
+      decodeHtmlEntities(row.scheduleTypeDescription) ??
+      row.scheduleTypeDescription,
+    meetingScheduleType:
+      decodeHtmlEntities(row.meetingScheduleType) ?? row.meetingScheduleType,
   };
 }
 

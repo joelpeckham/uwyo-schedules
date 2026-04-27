@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const canonical = `/courses/${subjectToPathSegment(detail.subject)}/${encodeURIComponent(detail.courseNumber.toLowerCase())}`;
   const latestTerm = detail.terms[0];
   const sectionHint = latestTerm
-    ? `${latestTerm.sectionCount} section(s) in ${latestTerm.termDescription} (${latestTerm.termCode}).`
+    ? `${latestTerm.sectionCount} section(s) in ${latestTerm.termDescription}.`
     : "";
   return {
     title: `${detail.subject} ${detail.courseNumber} — ${title}`,
@@ -75,6 +75,7 @@ export default async function CourseDetailPage({ params }: Props) {
 
   const displayTitle =
     detail.title ?? `${detail.subject} ${detail.courseNumber}`;
+  const primaryTermName = detail.terms[0]?.termDescription;
   const canonicalPath = `/courses/${subjectToPathSegment(detail.subject)}/${encodeURIComponent(detail.courseNumber.toLowerCase())}`;
 
   const courseJson = {
@@ -114,7 +115,9 @@ export default async function CourseDetailPage({ params }: Props) {
           id="sections-latest"
           className="font-heading text-xl font-medium text-foreground"
         >
-          Sections ({primaryTerm})
+          {primaryTermName
+            ? `Sections — ${primaryTermName}`
+            : "Sections"}
         </h2>
         <div className="mt-4 overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[48rem] border-collapse text-left text-xs sm:text-sm">
@@ -170,14 +173,12 @@ export default async function CourseDetailPage({ params }: Props) {
             {detail.terms.slice(1).map((t) => (
               <li key={t.termCode}>
                 <Link
-                  className="font-mono text-primary underline-offset-4 hover:underline"
+                  className="text-primary underline-offset-4 hover:underline"
                   href={`/terms/${encodeURIComponent(t.termCode)}/${encodeURIComponent(subjectToPathSegment(detail.subject))}`}
                 >
-                  {t.termCode}
+                  {t.termDescription}
                 </Link>
-                <span className="ml-2">
-                  — {t.termDescription} · {t.sectionCount} section(s)
-                </span>
+                <span className="ml-2">· {t.sectionCount} section(s)</span>
               </li>
             ))}
           </ul>

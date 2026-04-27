@@ -4,11 +4,11 @@ import { listSubjectsForTermCached, subjectToPathSegment } from "@/lib/seo/queri
 const TOP_N = 18;
 
 export async function TopSubjects({
-  latestTermCode,
+  latestTerm,
 }: {
-  latestTermCode: string | null;
+  latestTerm: { code: string; description: string } | null;
 }) {
-  if (!latestTermCode) {
+  if (!latestTerm) {
     return (
       <section
         className="border-b border-border px-4 py-12 sm:px-6"
@@ -30,7 +30,7 @@ export async function TopSubjects({
     );
   }
 
-  const subjects = await listSubjectsForTermCached(latestTermCode);
+  const subjects = await listSubjectsForTermCached(latestTerm.code);
   const ranked = [...subjects]
     .sort((a, b) => b.sectionCount - a.sectionCount)
     .slice(0, TOP_N);
@@ -52,8 +52,7 @@ export async function TopSubjects({
           Popular subjects this term
         </h2>
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-          By section count in{" "}
-          <span className="font-mono text-foreground">{latestTermCode}</span>.
+          By section count in <span className="text-foreground">{latestTerm.description}</span>.
         </p>
         <ul className="mt-8 flex flex-wrap gap-2">
           {ranked.map((s) => (
