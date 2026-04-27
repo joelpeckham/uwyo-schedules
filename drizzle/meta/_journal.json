@@ -36,6 +36,13 @@
       "when": 1777300000000,
       "tag": "0004_planner_term_blackouts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777400000000,
+      "tag": "0005_planner_section_pins",
+      "breakpoints": true
     }
   ]
 }

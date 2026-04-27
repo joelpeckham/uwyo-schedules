@@ -452,8 +452,8 @@ export function CourseManager({ termCode }: Props) {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {item.selectionKind === "unresolved"
-                    ? "Sections follow the schedule you are viewing"
-                    : "Sections were pinned from an earlier planner version"}
+                    ? "The week preview picks sections for you; pin a lecture, lab, or discussion from the calendar to hold just that slice."
+                    : "This course uses fixed CRNs from an earlier pick. Remove it from the list if you want to start fresh with automatic sections."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

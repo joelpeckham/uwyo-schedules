@@ -8,6 +8,10 @@ import type { PlannerItemSelection } from "./resolve-display-crns-shared";
 import { resolveDisplayCrnsSync } from "./resolve-display-crns-shared";
 import { loadOrderedMembersForBundleIds } from "./resolve-display-crns";
 import {
+  filterCandidatesBySectionPins,
+  parseSectionPinsJson,
+} from "./section-pins";
+import {
   courseSolvePackCourseKey,
   eligibleForStandaloneSingleCrn,
   meetingRowToIntervals,
@@ -101,12 +105,25 @@ async function enumerateCandidatesForItem(
   membersByBundleId: Map<number, string[]>,
 ): Promise<ScheduleCandidate[]> {
   if (item.selectionKind === "unresolved") {
-    return enumerateUnresolvedCandidatesForCourse(
+    const list = await enumerateUnresolvedCandidatesForCourse(
       db,
       termCode,
       item.subject,
       item.courseNumber,
     );
+    const pins = parseSectionPinsJson(item.sectionPins);
+    if (Object.keys(pins.byType).length === 0) return list;
+    const sections = await listSectionsForCourse(
+      db,
+      termCode,
+      item.subject,
+      item.courseNumber,
+    );
+    const scheduleTypeByCrn = new Map<string, string | null>();
+    for (const s of sections) {
+      scheduleTypeByCrn.set(s.crn, s.scheduleTypeDescription);
+    }
+    return filterCandidatesBySectionPins(list, pins, scheduleTypeByCrn);
   }
 
   if (item.anchorCrn == null) return [];

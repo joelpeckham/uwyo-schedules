@@ -245,6 +245,10 @@ export const plannerItems = pgTable(
     instructorPrefs: jsonb("instructor_prefs")
       .notNull()
       .default(sql`'{"v":1,"primary":[]}'::jsonb`),
+    /** Per schedule-type pins while `selection_kind` is `unresolved` — `{ v:1, byType: { [key]: crn } }`. */
+    sectionPins: jsonb("section_pins")
+      .notNull()
+      .default(sql`'{"v":1,"byType":{}}'::jsonb`),
   },
   (t) => [
     index("planner_items_session_term_idx").on(t.sessionId, t.termCode),

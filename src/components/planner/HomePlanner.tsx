@@ -10,7 +10,6 @@ import type { PlannerItemRow } from "@/lib/planner/data";
 import { parseBlackoutsJson } from "@/lib/planner/blackouts";
 import { CourseManager } from "./CourseManager";
 import { PlannerProvider } from "./PlannerContext";
-import { SchedulePager } from "./SchedulePager";
 import { SectionJsonModal } from "./SectionJsonModal";
 import { WeekCalendar } from "./WeekCalendar";
 
@@ -63,8 +62,9 @@ export function HomePlanner({
             Your week
           </h1>
           <p className="mt-2 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Add courses, set optional instructor preferences, and page through
-            valid weekly schedules. Tap a block for section details.
+            Add courses, set optional instructor preferences, and watch the best
+            conflict-free week update as you go. Pin sections you like, drag a
+            block to try same-type alternatives, or tap for details.
           </p>
         </div>
 
@@ -82,8 +82,6 @@ export function HomePlanner({
             initialTermUiState={
               termUiState
                 ? {
-                    lastSolutionIndex: termUiState.lastSolutionIndex,
-                    favoriteSolutionIndex: termUiState.favoriteSolutionIndex,
                     blackouts: parseBlackoutsJson(termUiState.blackouts),
                   }
                 : null
@@ -94,7 +92,6 @@ export function HomePlanner({
                 <CourseManager key={termCode} termCode={termCode} />
               </div>
               <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
-                <SchedulePager />
                 <WeekCalendar onBlockActivate={onBlockActivate} />
               </div>
             </div>

@@ -1,7 +1,14 @@
 "use client";
 
-import type { CalendarBlock } from "@/lib/planner/data";
 import {
+  collectDisplayCrnsForItems,
+  listSameTypeSwapGhostsFromCatalog,
+  resolvePlannerSwapClient,
+} from "@/lib/planner/client/derive";
+import { parseSectionPinsJson } from "@/lib/planner/section-pins";
+import type { CalendarBlock, SwapGhostMeeting } from "@/lib/planner/data";
+import {
+  blackoutsDocToTimeIntervals,
   clampInterval,
   snapIntervalEndpoints,
   type PlannerBlackoutItemV1,
@@ -11,6 +18,7 @@ import {
   CALENDAR_HOUR_COUNT,
   CALENDAR_START_HOUR,
 } from "@/lib/planner/constants";
+import { filterFeasibleSwapGhosts } from "@/lib/planner/planner-swap-feasibility";
 import { cn } from "@/lib/utils";
 import {
   useCallback,
@@ -19,14 +27,19 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
+  ArrowLeftRight,
   Ban,
   CircleHelp,
+  Copy,
+  Hand,
+  Loader2,
   Minus,
-  Move,
   MousePointerClick,
+  Pin,
   Plus,
   X,
   ZoomIn,
@@ -58,12 +71,12 @@ const HOUR_RANGE_HELP =
 const GESTURE_TIP_STORAGE_KEY = "uwyo.planner.weekCalTipDismissed";
 
 const SCHEDULE_HELP: readonly {
-  readonly Icon: typeof Move;
+  readonly Icon: typeof Hand;
   readonly label: string;
   readonly body: string;
 }[] = [
   {
-    Icon: Move,
+    Icon: Hand,
     label: "Pan the week",
     body: "On touch, use two fingers to pan: up, down, and side to side.",
   },
@@ -75,12 +88,22 @@ const SCHEDULE_HELP: readonly {
   {
     Icon: MousePointerClick,
     label: "Open details",
-    body: "Tap a block to read section details.",
+    body: "Tap a block (without dragging) to read section details.",
+  },
+  {
+    Icon: Pin,
+    label: "Pin one slice",
+    body: "When a course is on auto-pick, tap the pin on a lecture, lab, or discussion block to hold just that piece; other parts of the same course can still move. Tap again on the same block to unpin.",
+  },
+  {
+    Icon: ArrowLeftRight,
+    label: "Try another time",
+    body: "Drag a section to preview other same-type meeting times that still fit your week, busy blocks, and filters; release on a highlighted slot to switch.",
   },
   {
     Icon: Ban,
     label: "Busy times",
-    body: "Use “Mark busy time” and drag on a day column, or “Add busy…” for exact times. Busy blocks are avoided when paging schedules. Two fingers still pan and zoom the week.",
+    body: "Use “Mark busy time” and drag on a day column, or “Add busy…” for exact times. Busy blocks are respected while the planner finds a best-fit week. Two fingers still pan and zoom the week.",
   },
 ] as const;
 
@@ -167,8 +190,117 @@ function clientYToMinutes(
   return startMin + frac * totalMin;
 }
 
+const DRAG_THRESHOLD_PX = 6;
+const SNAP_MAX_DIST_PX = 72;
+
+function scrollToId(id: string) {
+  document.getElementById(id)?.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
+type DragSessionState = {
+  block: CalendarBlock;
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  grabDx: number;
+  grabDy: number;
+  ghosts: SwapGhostMeeting[];
+  snapped: SwapGhostMeeting | null;
+  floatStyle: { left: number; top: number; width: number; height: number };
+};
+
+function distPointToRect(
+  px: number,
+  py: number,
+  r: { left: number; top: number; width: number; height: number },
+): number {
+  const cx = Math.max(r.left, Math.min(px, r.left + r.width));
+  const cy = Math.max(r.top, Math.min(py, r.top + r.height));
+  return Math.hypot(px - cx, py - cy);
+}
+
+function ghostViewportRect(
+  g: SwapGhostMeeting,
+  dayStrip: HTMLDivElement,
+  gridHeightPx: number,
+  startMin: number,
+  totalMin: number,
+  visibleDayIndices: readonly number[],
+): { left: number; top: number; width: number; height: number } | null {
+  const colOffset = visibleDayIndices.indexOf(g.dayIndex);
+  if (colOffset < 0) return null;
+  const col = dayStrip.children[colOffset] as HTMLElement | undefined;
+  if (!col) return null;
+  const cr = col.getBoundingClientRect();
+  const topPx = ((g.startMinutes - startMin) / totalMin) * gridHeightPx;
+  const rawH = ((g.endMinutes - g.startMinutes) / totalMin) * gridHeightPx;
+  const heightPx = Math.max(8, rawH);
+  return {
+    left: cr.left + 2,
+    top: cr.top + topPx,
+    width: Math.max(0, cr.width - 4),
+    height: heightPx,
+  };
+}
+
+function buildFloatStyle(
+  strip: HTMLDivElement | null,
+  sess: {
+    snapped: SwapGhostMeeting | null;
+    ghosts: SwapGhostMeeting[];
+    clientX: number;
+    clientY: number;
+    grabDx: number;
+    grabDy: number;
+  },
+  gridHeightPx: number,
+  startMin: number,
+  totalMin: number,
+  visibleDayIndices: readonly number[],
+): { left: number; top: number; width: number; height: number } {
+  if (strip && sess.snapped && sess.ghosts.length > 0) {
+    const r = ghostViewportRect(
+      sess.snapped,
+      strip,
+      gridHeightPx,
+      startMin,
+      totalMin,
+      visibleDayIndices,
+    );
+    if (r && r.width > 0) return r;
+  }
+  return {
+    left: sess.clientX - sess.grabDx,
+    top: sess.clientY - sess.grabDy,
+    width: 120,
+    height: 48,
+  };
+}
+
 export function WeekCalendar({ onBlockActivate }: Props) {
-  const { calendarBlocks: blocks, blackouts, setBlackouts } = usePlanner();
+  const {
+    calendarBlocks: blocks,
+    blackouts,
+    setBlackouts,
+    catalog,
+    plannerItems,
+    effectivePlannerItems,
+    solutions,
+    requireOpenSections,
+    setRequireOpenSections,
+    recalculateSolutions,
+    isRecalculatingSolutions,
+    syncError,
+    clearSyncError,
+    infeasibilityHints,
+    mergedPackConstraintMaps,
+    applyPlannerItemSelection,
+    setSectionPinFromDrag,
+    toggleSectionPin,
+  } = usePlanner();
   const [markBusyMode, setMarkBusyMode] = useState(false);
   const [busyDialogOpen, setBusyDialogOpen] = useState(false);
   const [editingBlackoutId, setEditingBlackoutId] = useState<string | null>(null);
@@ -192,13 +324,36 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       /* private mode or blocked */
     }
   }, []);
-  const dragSessionRef = useRef<{
+  const blackoutDragRef = useRef<{
     dayIndex: number;
     columnEl: HTMLElement;
     pointerId: number;
     startClientY: number;
     anchorMinutes: number;
   } | null>(null);
+
+  const [copyStatus, setCopyStatus] = useState<"idle" | "ok" | "err">("idle");
+  const [swapError, setSwapError] = useState<string | null>(null);
+  const [courseDragSession, setCourseDragSession] =
+    useState<DragSessionState | null>(null);
+  const [, startSwapTransition] = useTransition();
+  const dayStripRef = useRef<HTMLDivElement | null>(null);
+  const courseDragGenRef = useRef(0);
+  const courseDragActiveRef = useRef(false);
+  const courseDragSessionRef = useRef<DragSessionState | null>(null);
+  const coursePointerDownRef = useRef<{
+    block: CalendarBlock;
+    clientX: number;
+    clientY: number;
+    pointerId: number;
+  } | null>(null);
+  const courseGrabOffsetRef = useRef({ dx: 0, dy: 0 });
+  const capturedCourseBlockElRef = useRef<HTMLElement | null>(null);
+  const lastCoursePointerRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    courseDragSessionRef.current = courseDragSession;
+  }, [courseDragSession]);
 
   const visibleDayIndices = useMemo(
     () => visibleDayIndicesMerged(blocks, blackouts.items),
@@ -236,6 +391,60 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   const clampRowPx = useCallback(
     (v: number) => Math.min(MAX_HOUR_ROW_PX, Math.max(v, minRowPx)),
     [minRowPx],
+  );
+
+  const rowPx = hourRowPx ?? Math.max(44, minRowPx);
+  const gridHeightPx = hourCount * rowPx;
+
+  const endCourseDrag = useCallback(() => {
+    courseDragGenRef.current += 1;
+    courseDragActiveRef.current = false;
+    courseDragSessionRef.current = null;
+    coursePointerDownRef.current = null;
+    capturedCourseBlockElRef.current = null;
+    setCourseDragSession(null);
+  }, []);
+
+  const finalizeCourseDragSession = useCallback(
+    (s: Omit<DragSessionState, "floatStyle">): DragSessionState => ({
+      ...s,
+      floatStyle: buildFloatStyle(
+        dayStripRef.current,
+        s,
+        gridHeightPx,
+        startMin,
+        totalMin,
+        visibleDayIndices,
+      ),
+    }),
+    [gridHeightPx, startMin, totalMin, visibleDayIndices],
+  );
+
+  const pickCourseSnap = useCallback(
+    (clientX: number, clientY: number, ghosts: SwapGhostMeeting[]) => {
+      const strip = dayStripRef.current;
+      if (!strip || ghosts.length === 0) return null;
+      let best: SwapGhostMeeting | null = null;
+      let bestD = SNAP_MAX_DIST_PX + 1;
+      for (const g of ghosts) {
+        const r = ghostViewportRect(
+          g,
+          strip,
+          gridHeightPx,
+          startMin,
+          totalMin,
+          visibleDayIndices,
+        );
+        if (!r || r.width <= 0) continue;
+        const d = distPointToRect(clientX, clientY, r);
+        if (d < bestD) {
+          bestD = d;
+          best = g;
+        }
+      }
+      return bestD <= SNAP_MAX_DIST_PX ? best : null;
+    },
+    [gridHeightPx, startMin, totalMin, visibleDayIndices],
   );
 
   useLayoutEffect(() => {
@@ -289,10 +498,25 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     };
 
     const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        const down = coursePointerDownRef.current;
+        const cap = capturedCourseBlockElRef.current;
+        if (cap && down) {
+          try {
+            cap.releasePointerCapture(down.pointerId);
+          } catch {
+            /* ignore */
+          }
+        }
+        capturedCourseBlockElRef.current = null;
+        if (down) endCourseDrag();
+      }
+      if (courseDragSessionRef.current) return;
       if (e.touches.length === 2) beginTwoFinger(e);
     };
 
     const onTouchMove = (e: TouchEvent) => {
+      if (courseDragSessionRef.current) return;
       if (e.touches.length !== 2) return;
       if (!twoFingerRef.current) beginTwoFinger(e);
 
@@ -374,10 +598,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       if (headerEl) removeTouch(headerEl);
       vEl.removeEventListener("wheel", onWheel);
     };
-  }, [clampRowPx]);
-
-  const rowPx = hourRowPx ?? Math.max(44, minRowPx);
-  const gridHeightPx = hourCount * rowPx;
+  }, [clampRowPx, endCourseDrag]);
 
   const timeQuarterOptions = useMemo(() => {
     const out: { value: number; label: string }[] = [];
@@ -458,7 +679,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   const endDragToBlackout = useCallback(
     (clientY: number) => {
-      const sess = dragSessionRef.current;
+      const sess = blackoutDragRef.current;
       if (!sess) return;
       const rawEnd = clientYToMinutes(
         clientY,
@@ -486,7 +707,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           label: undefined,
         });
       }
-      dragSessionRef.current = null;
+      blackoutDragRef.current = null;
       setDragPreview(null);
       if (body.end - body.start < 30) return;
       const id =
@@ -524,7 +745,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         startMin,
         totalMin,
       );
-      dragSessionRef.current = {
+      blackoutDragRef.current = {
         dayIndex,
         columnEl: col,
         pointerId: e.pointerId,
@@ -537,7 +758,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   const onDayColumnPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
-      const sess = dragSessionRef.current;
+      const sess = blackoutDragRef.current;
       if (!sess || e.pointerId !== sess.pointerId) return;
       const rawEnd = clientYToMinutes(
         e.clientY,
@@ -560,7 +781,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   const onDayColumnPointerUp = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
-      const sess = dragSessionRef.current;
+      const sess = blackoutDragRef.current;
       if (!sess || e.pointerId !== sess.pointerId) return;
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
@@ -574,14 +795,14 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   const onDayColumnPointerCancel = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
-      const sess = dragSessionRef.current;
+      const sess = blackoutDragRef.current;
       if (!sess || e.pointerId !== sess.pointerId) return;
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
       } catch {
         /* ignore */
       }
-      dragSessionRef.current = null;
+      blackoutDragRef.current = null;
       setDragPreview(null);
     },
     [],
@@ -598,9 +819,252 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) / 1.08));
   }, [clampRowPx, minRowPx]);
 
+  const displayWeekCrns = useMemo(
+    () => collectDisplayCrnsForItems(effectivePlannerItems, catalog),
+    [effectivePlannerItems, catalog],
+  );
+
+  const copyCrns = useCallback(async () => {
+    if (displayWeekCrns.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(displayWeekCrns.join("\n"));
+      setCopyStatus("ok");
+      window.setTimeout(() => setCopyStatus("idle"), 2000);
+    } catch {
+      setCopyStatus("err");
+      window.setTimeout(() => setCopyStatus("idle"), 2500);
+    }
+  }, [displayWeekCrns]);
+
+  useEffect(() => {
+    if (!courseDragSession) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") endCourseDrag();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [courseDragSession, endCourseDrag]);
+
+  const onCourseBlockPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>, block: CalendarBlock) => {
+      if (e.button !== 0) return;
+      setSwapError(null);
+      const el = e.currentTarget;
+      const br = el.getBoundingClientRect();
+      courseGrabOffsetRef.current = {
+        dx: e.clientX - br.left,
+        dy: e.clientY - br.top,
+      };
+      coursePointerDownRef.current = {
+        block,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        pointerId: e.pointerId,
+      };
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        return;
+      }
+      capturedCourseBlockElRef.current = el;
+    },
+    [],
+  );
+
+  const onCourseBlockPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const down = coursePointerDownRef.current;
+      if (!down || e.pointerId !== down.pointerId) return;
+
+      lastCoursePointerRef.current = { x: e.clientX, y: e.clientY };
+
+      const dx = e.clientX - down.clientX;
+      const dy = e.clientY - down.clientY;
+      const dist = Math.hypot(dx, dy);
+
+      if (!courseDragActiveRef.current && dist >= DRAG_THRESHOLD_PX) {
+        e.preventDefault();
+        courseDragActiveRef.current = true;
+        courseDragGenRef.current += 1;
+        const b = down.block;
+        const item = effectivePlannerItems.find((r) => r.id === b.plannerItemId);
+        if (!item) {
+          endCourseDrag();
+          return;
+        }
+        const raw = listSameTypeSwapGhostsFromCatalog(catalog, {
+          subject: b.subject,
+          courseNumber: b.courseNumber,
+          excludeSectionCrn: b.sectionCrn,
+          sourceScheduleTypeKey: b.sectionScheduleTypeKey,
+          sourceMeetingScheduleType: b.meetingScheduleType,
+        });
+        const ghosts = filterFeasibleSwapGhosts({
+          catalog,
+          draggedBlock: b,
+          draggedPlannerItem: item,
+          otherEffectiveItems: effectivePlannerItems,
+          blackoutIntervals: blackoutsDocToTimeIntervals(blackouts),
+          requireOpenSections,
+          seatsByCrn: mergedPackConstraintMaps.seatsByCrn,
+          facultyByCrn: mergedPackConstraintMaps.facultyByCrn,
+          scheduleTypeByCrn: mergedPackConstraintMaps.scheduleTypeByCrn,
+          rawGhosts: raw,
+        });
+        const snapped = pickCourseSnap(
+          lastCoursePointerRef.current.x,
+          lastCoursePointerRef.current.y,
+          ghosts,
+        );
+        const next = finalizeCourseDragSession({
+          block: b,
+          pointerId: e.pointerId,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          grabDx: courseGrabOffsetRef.current.dx,
+          grabDy: courseGrabOffsetRef.current.dy,
+          ghosts,
+          snapped,
+        });
+        courseDragSessionRef.current = next;
+        setCourseDragSession(next);
+        return;
+      }
+
+      if (courseDragActiveRef.current && e.pointerId === down.pointerId) {
+        e.preventDefault();
+        const sess = courseDragSessionRef.current;
+        if (!sess) return;
+        const snapped = pickCourseSnap(e.clientX, e.clientY, sess.ghosts);
+        const next = finalizeCourseDragSession({
+          block: sess.block,
+          pointerId: sess.pointerId,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          grabDx: sess.grabDx,
+          grabDy: sess.grabDy,
+          ghosts: sess.ghosts,
+          snapped,
+        });
+        courseDragSessionRef.current = next;
+        setCourseDragSession(next);
+      }
+    },
+    [
+      blackouts,
+      catalog,
+      effectivePlannerItems,
+      endCourseDrag,
+      finalizeCourseDragSession,
+      mergedPackConstraintMaps.facultyByCrn,
+      mergedPackConstraintMaps.scheduleTypeByCrn,
+      mergedPackConstraintMaps.seatsByCrn,
+      pickCourseSnap,
+      requireOpenSections,
+    ],
+  );
+
+  const onCourseBlockPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const down = coursePointerDownRef.current;
+      if (!down || e.pointerId !== down.pointerId) return;
+
+      const dx = e.clientX - down.clientX;
+      const dy = e.clientY - down.clientY;
+      const dist = Math.hypot(dx, dy);
+
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+
+      const session = courseDragSessionRef.current;
+      const wasDrag = courseDragActiveRef.current;
+
+      coursePointerDownRef.current = null;
+      capturedCourseBlockElRef.current = null;
+
+      if (wasDrag && session && e.pointerId === session.pointerId) {
+        const { snapped, block } = session;
+        if (snapped && snapped.crn !== block.sectionCrn) {
+          endCourseDrag();
+          const baseItem = plannerItems.find(
+            (r) => r.id === block.plannerItemId,
+          );
+          const item = effectivePlannerItems.find(
+            (r) => r.id === block.plannerItemId,
+          );
+          if (!item || !baseItem) return;
+          startSwapTransition(() => {
+            const res = resolvePlannerSwapClient(item, {
+              targetCrn: snapped.crn,
+              sourceSectionCrn: block.sectionCrn,
+              sourceMeetingId: block.meetingId,
+            }, catalog);
+            if (!res.ok) {
+              setSwapError(res.error);
+              return;
+            }
+            if (baseItem.selectionKind === "unresolved") {
+              setSectionPinFromDrag(
+                block.plannerItemId,
+                block.sectionScheduleTypeKey,
+                snapped.crn,
+              );
+            } else {
+              applyPlannerItemSelection(block.plannerItemId, {
+                selectionKind: res.selectionKind,
+                anchorCrn: res.anchorCrn,
+                linkedBundleId: res.linkedBundleId,
+              });
+            }
+          });
+          return;
+        }
+        endCourseDrag();
+        return;
+      }
+
+      if (dist < DRAG_THRESHOLD_PX) {
+        onBlockActivate(down.block);
+      }
+    },
+    [
+      applyPlannerItemSelection,
+      catalog,
+      effectivePlannerItems,
+      plannerItems,
+      setSectionPinFromDrag,
+      endCourseDrag,
+      onBlockActivate,
+    ],
+  );
+
+  const onCourseBlockPointerCancel = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (coursePointerDownRef.current?.pointerId !== e.pointerId) return;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      coursePointerDownRef.current = null;
+      endCourseDrag();
+    },
+    [endCourseDrag],
+  );
+
+  const showNoSchedulesHelp =
+    solutions.length === 0 && plannerItems.length > 0;
+  const busyCount = blackouts.items.length;
+
   return (
     <section
-      className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm"
+      className={cn(
+        "overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm",
+        courseDragSession && "select-none",
+      )}
       aria-labelledby="planner-week-calendar-heading"
     >
       {isWeekdaysOnlyView ? (
@@ -637,6 +1101,30 @@ export function WeekCalendar({ onBlockActivate }: Props) {
             </Button>
           </div>
         ) : null}
+        {syncError ? (
+          <div
+            className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
+            {syncError}
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => clearSyncError()}
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+        {isRecalculatingSolutions ? (
+          <p
+            className="mb-3 flex items-center gap-2 text-sm text-muted-foreground"
+            aria-live="polite"
+          >
+            <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
+            Finding the best week…
+          </p>
+        ) : null}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
           <h2
             id="planner-week-calendar-heading"
@@ -647,13 +1135,50 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               type="button"
+              variant="outline"
+              size="sm"
+              className="touch-manipulation"
+              disabled={displayWeekCrns.length === 0}
+              onClick={() => void copyCrns()}
+            >
+              <Copy className="mr-1.5 size-4 shrink-0" aria-hidden />
+              Copy CRNs
+            </Button>
+            {copyStatus === "ok" ? (
+              <span className="text-xs text-muted-foreground" aria-live="polite">
+                Copied
+              </span>
+            ) : null}
+            {copyStatus === "err" ? (
+              <span className="text-xs text-destructive" aria-live="polite">
+                Copy failed
+              </span>
+            ) : null}
+            <div className="flex items-center gap-2 border-border sm:border-l sm:pl-2">
+              <input
+                id="open-only-week"
+                type="checkbox"
+                className="size-4 rounded border-border accent-primary"
+                checked={requireOpenSections}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setRequireOpenSections(next);
+                  void recalculateSolutions(next);
+                }}
+              />
+              <Label htmlFor="open-only-week" className="text-sm text-foreground">
+                Only sections with seats
+              </Label>
+            </div>
+            <Button
+              type="button"
               variant={markBusyMode ? "default" : "outline"}
               size="default"
               className="min-h-11 touch-manipulation"
               aria-pressed={markBusyMode}
               onClick={() => {
                 setMarkBusyMode((v) => !v);
-                dragSessionRef.current = null;
+                blackoutDragRef.current = null;
                 setDragPreview(null);
               }}
             >
@@ -738,7 +1263,143 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           </Dialog>
           </div>
         </div>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          Copy CRNs lists every CRN shown on your calendar this week (the current
+          best-fit schedule, including any slices you pinned).
+        </p>
       </div>
+
+      {showNoSchedulesHelp ? (
+        <div className="border-b border-border bg-muted/20 px-3 py-3 sm:px-4">
+          {infeasibilityHints.length > 0 ? (
+            <ul className="mb-3 list-inside list-disc space-y-2 text-sm text-foreground">
+              {infeasibilityHints.map((h, i) => (
+                <li key={i}>{h}</li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="font-medium text-foreground">Nothing fits yet — try this</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            One or more of these usually unlocks a valid week:
+          </p>
+          <ul className="mt-2 list-inside list-disc space-y-2 text-sm text-foreground">
+            {requireOpenSections ? (
+              <li>
+                <button
+                  type="button"
+                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
+                  onClick={() => {
+                    setRequireOpenSections(false);
+                    void recalculateSolutions(false);
+                    document.getElementById("open-only-week")?.focus();
+                  }}
+                >
+                  Turn off “only sections with seats”
+                </button>
+                <span className="text-muted-foreground">
+                  {" "}
+                  (then turn it back on if you need open seats only).
+                </span>
+              </li>
+            ) : (
+              <li>
+                <button
+                  type="button"
+                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
+                  onClick={() =>
+                    document.getElementById("open-only-week")?.focus()
+                  }
+                >
+                  Try “only sections with seats”
+                </button>
+                <span className="text-muted-foreground">
+                  {" "}
+                  — sometimes the opposite helps.
+                </span>
+              </li>
+            )}
+            {busyCount > 0 ? (
+              <li>
+                <button
+                  type="button"
+                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
+                  onClick={() => scrollToId("planner-week-calendar-toolbar")}
+                >
+                  Edit or remove busy times
+                </button>
+                <span className="text-muted-foreground">
+                  {" "}
+                  ({busyCount} on your calendar)
+                </span>
+                {" · "}
+                <button
+                  type="button"
+                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
+                  onClick={() => setBlackouts({ v: 1, items: [] })}
+                >
+                  Clear all busy times
+                </button>
+              </li>
+            ) : (
+              <li>
+                <button
+                  type="button"
+                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
+                  onClick={() => scrollToId("planner-week-calendar-toolbar")}
+                >
+                  Add busy times
+                </button>
+                <span className="text-muted-foreground">
+                  {" "}
+                  only if something should stay free.
+                </span>
+              </li>
+            )}
+            <li>
+              <button
+                type="button"
+                className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
+                onClick={() => scrollToId("planner-courses")}
+              >
+                Relax instructor choices
+              </button>
+              <span className="text-muted-foreground">
+                {" "}
+                (pick “Any” or expand Advanced for labs/discussions).
+              </span>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
+                onClick={() => scrollToId("planner-courses")}
+              >
+                Remove a course
+              </button>
+              <span className="text-muted-foreground">
+                {" "}
+                if you added more than you need this term.
+              </span>
+            </li>
+          </ul>
+        </div>
+      ) : null}
+
+      {swapError ? (
+        <div
+          className="border-b border-border px-3 py-2 text-xs text-destructive sm:px-4"
+          role="alert"
+        >
+          {swapError}
+          <button
+            type="button"
+            className="ml-2 underline"
+            onClick={() => setSwapError(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
       <div ref={hScrollRef} className="overflow-x-auto">
         <div
@@ -781,7 +1442,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 ))}
               </div>
 
-              <div className="flex min-w-0 flex-1">
+              <div ref={dayStripRef} className="flex min-w-0 flex-1">
                 {visibleDayIndices.map((dayIndex) => (
                   <div
                     key={dayIndex}
@@ -852,6 +1513,39 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                         aria-hidden
                       />
                     ) : null}
+                    {courseDragSession
+                      ? courseDragSession.ghosts
+                          .filter((g) => g.dayIndex === dayIndex)
+                          .map((g) => {
+                            const topPx =
+                              ((g.startMinutes - startMin) / totalMin) *
+                              gridHeightPx;
+                            const rawH =
+                              ((g.endMinutes - g.startMinutes) / totalMin) *
+                              gridHeightPx;
+                            const heightPx = Math.max(8, rawH);
+                            const sn = courseDragSession.snapped;
+                            const isSnap =
+                              !!sn &&
+                              sn.crn === g.crn &&
+                              sn.meetingId === g.meetingId &&
+                              sn.dayIndex === g.dayIndex &&
+                              sn.startMinutes === g.startMinutes &&
+                              sn.endMinutes === g.endMinutes;
+                            return (
+                              <div
+                                key={`ghost-${g.crn}-${g.meetingId}-${g.dayIndex}-${g.startMinutes}`}
+                                className={cn(
+                                  "pointer-events-none absolute left-0.5 right-0.5 z-[15] rounded-md border border-dashed border-muted-foreground/50 bg-muted/25",
+                                  isSnap &&
+                                    "border-primary/70 bg-primary/10 ring-1 ring-primary/40",
+                                )}
+                                style={{ top: topPx, height: heightPx }}
+                                aria-hidden
+                              />
+                            );
+                          })
+                      : null}
                     {blocks
                       .filter((b) => b.dayIndex === dayIndex)
                       .map((b) => {
@@ -884,14 +1578,32 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                           tier === "none"
                             ? "truncate"
                             : "line-clamp-2 min-h-0 break-words";
+                        const rowItem = plannerItems.find(
+                          (r) => r.id === b.plannerItemId,
+                        );
+                        const showPin = rowItem?.selectionKind === "unresolved";
+                        const pinsDoc = rowItem
+                          ? parseSectionPinsJson(rowItem.sectionPins)
+                          : parseSectionPinsJson(null);
+                        const isPinnedThisBlock =
+                          pinsDoc.byType[b.sectionScheduleTypeKey] ===
+                          b.sectionCrn;
+                        const dimSource =
+                          !!courseDragSession &&
+                          courseDragSession.block.key === b.key &&
+                          (courseDragSession.ghosts.length > 0 ||
+                            courseDragSession.snapped != null);
                         return (
-                          <button
+                          <div
                             key={b.key}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             title={titleAttr}
+                            aria-label={titleAttr}
                             className={cn(
-                              "touch-none absolute left-0.5 right-0.5 z-[20] overflow-hidden rounded-md border border-border bg-card text-left shadow-sm active:scale-[0.99]",
+                              "touch-none absolute left-0.5 right-0.5 z-[20] cursor-pointer overflow-hidden rounded-md border border-border bg-card text-left shadow-sm outline-none active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                               "flex min-h-0 flex-col justify-start gap-0.5 border-l-[4px]",
+                              dimSource && "opacity-35",
                             )}
                             style={{
                               top: topPx,
@@ -902,8 +1614,59 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                               paddingLeft: Math.min(10, pad + 4),
                               paddingRight: Math.min(8, pad + 2),
                             }}
-                            onClick={() => onBlockActivate(b)}
+                            onPointerDown={(e) =>
+                              onCourseBlockPointerDown(e, b)
+                            }
+                            onPointerMove={onCourseBlockPointerMove}
+                            onPointerUp={onCourseBlockPointerUp}
+                            onPointerCancel={onCourseBlockPointerCancel}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onBlockActivate(b);
+                              }
+                            }}
                           >
+                            {showPin ? (
+                              <span
+                                className="pointer-events-auto absolute right-0.5 top-0.5 z-30"
+                                onPointerDown={(e) => e.stopPropagation()}
+                              >
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="icon"
+                                  className="size-6 touch-manipulation shadow-sm"
+                                  aria-label={
+                                    isPinnedThisBlock
+                                      ? `Unpin this ${b.subject} ${b.courseNumber} meeting`
+                                      : `Pin this ${b.subject} ${b.courseNumber} meeting`
+                                  }
+                                  title={
+                                    isPinnedThisBlock
+                                      ? "Unpin (same button)"
+                                      : "Pin this meeting type"
+                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSectionPin(
+                                      b.plannerItemId,
+                                      b.sectionScheduleTypeKey,
+                                      b.sectionCrn,
+                                    );
+                                  }}
+                                >
+                                  <Pin
+                                    className={cn(
+                                      "size-3.5",
+                                      isPinnedThisBlock &&
+                                        "fill-primary text-primary",
+                                    )}
+                                    aria-hidden
+                                  />
+                                </Button>
+                              </span>
+                            ) : null}
                             <span
                               className={cn(
                                 "min-w-0 font-mono font-medium leading-tight text-foreground",
@@ -929,13 +1692,36 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                                 {loc}
                               </span>
                             ) : null}
-                          </button>
+                          </div>
                         );
                       })}
                   </div>
                 ))}
               </div>
             </div>
+            {courseDragSession ? (
+              <div
+                className="pointer-events-none fixed z-[60] overflow-hidden rounded-md border border-border bg-card/95 py-1.5 pr-1 pl-2 shadow-lg backdrop-blur-sm"
+                style={{
+                  left: courseDragSession.floatStyle.left,
+                  top: courseDragSession.floatStyle.top,
+                  width: courseDragSession.floatStyle.width,
+                  height: courseDragSession.floatStyle.height,
+                  borderLeftWidth: 4,
+                  borderLeftColor: courseDragSession.block.color,
+                }}
+                aria-hidden
+              >
+                <span className="line-clamp-3 font-mono text-[10px] font-medium leading-tight text-foreground">
+                  {courseDragSession.block.label}
+                </span>
+                {courseDragSession.block.sublabel.trim() ? (
+                  <span className="line-clamp-2 font-mono text-[9px] text-muted-foreground">
+                    {courseDragSession.block.sublabel}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -947,8 +1733,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               {editingBlackoutId ? "Edit busy time" : "Add busy time"}
             </DialogTitle>
             <DialogDescription>
-              Block times you are not available (work, commute, etc.). Valid
-              schedules skip these intervals.
+              Block times you are not available (work, commute, etc.). The
+              planner avoids these intervals when building your week.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-1">

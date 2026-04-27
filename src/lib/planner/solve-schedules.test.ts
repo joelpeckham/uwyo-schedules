@@ -115,6 +115,7 @@ function itemStub(
     anchorCrn: null,
     linkedBundleId: null,
     instructorPrefs: { v: 1, primary: [] },
+    sectionPins: { v: 1, byType: {} },
     ...overrides,
   } as PlannerItemRow;
 }

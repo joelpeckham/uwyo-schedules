@@ -4,6 +4,10 @@ import { parseInstructorPrefs } from "./instructor-prefs";
 import type { PlannerItemSelection, ResolvedPlannerSelection } from "./resolve-display-crns-shared";
 import { resolveDisplayCrnsSync } from "./resolve-display-crns-shared";
 import { bannerClockToMinutes } from "./banner-time";
+import {
+  filterCandidatesBySectionPins,
+  parseSectionPinsJson,
+} from "./section-pins";
 import { normalizeScheduleTypeKey } from "./swap-helpers";
 
 const DAY_FIELDS = [
@@ -216,7 +220,7 @@ function scoreCandidate(
   return score;
 }
 
-function allCrnsHaveSeats(
+export function allCrnsHaveOpenSeats(
   crns: string[],
   seatsByCrn: Map<string, { seatsAvailable: number | null; openSection: boolean | null }>,
 ): boolean {
@@ -386,7 +390,7 @@ export function runSolveSearch(params: {
     const list = candidateLists[itemIndex]!;
 
     for (const cand of list) {
-      if (requireOpenSections && !allCrnsHaveSeats(cand.crns, seatsByCrn)) {
+      if (requireOpenSections && !allCrnsHaveOpenSeats(cand.crns, seatsByCrn)) {
         continue;
       }
       if (
@@ -428,7 +432,15 @@ function candidateListForPlannerItem(
   bundleMembersMerged: Map<number, string[]>,
 ): ScheduleCandidate[] {
   if (item.selectionKind === "unresolved") {
-    return pack?.candidates ?? [];
+    const base = pack?.candidates ?? [];
+    const pins = parseSectionPinsJson(item.sectionPins);
+    const scheduleTypeByCrn = new Map<string, string | null>();
+    if (pack?.scheduleTypeByCrn) {
+      for (const [crn, st] of Object.entries(pack.scheduleTypeByCrn)) {
+        scheduleTypeByCrn.set(crn, st ?? null);
+      }
+    }
+    return filterCandidatesBySectionPins(base, pins, scheduleTypeByCrn);
   }
   if (item.anchorCrn == null) return [];
   if (item.selectionKind === "single_crn") {

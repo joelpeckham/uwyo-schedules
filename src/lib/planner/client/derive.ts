@@ -15,7 +15,11 @@ import type {
   ClientLinkedBundleRow,
   PlannerCatalogJson,
 } from "./catalog-types";
-import type { PlannerItemSelection, SelectionKind } from "../resolve-display-crns-shared";
+import type {
+  PlannerItemSelection,
+  ResolvedPlannerSelection,
+  SelectionKind,
+} from "../resolve-display-crns-shared";
 import {
   resolveDisplayCrnsSync,
   resolveDisplayCrnsWithMemberMap,
@@ -268,12 +272,7 @@ export function resolvePlannerSwapClient(
     sourceMeetingId: number;
   },
   catalog: PlannerCatalogJson,
-): { ok: false; error: string } | {
-  ok: true;
-  selectionKind: SelectionKind;
-  anchorCrn: string;
-  linkedBundleId: number | null;
-} {
+): { ok: false; error: string } | ({ ok: true } & ResolvedPlannerSelection) {
   const meeting = catalog.meetings.find(
     (m) =>
       m.sectionCrn === params.sourceSectionCrn && m.id === params.sourceMeetingId,

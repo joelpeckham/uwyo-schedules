@@ -30,6 +30,8 @@ import {
   type PlannerBlackoutsDocV1,
 } from "@/lib/planner/blackouts";
 import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
+import { parseSectionPinsJson } from "@/lib/planner/section-pins";
+import { normalizeScheduleTypeKey } from "@/lib/planner/swap-helpers";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import {
   getSectionDetail,
@@ -190,6 +192,7 @@ export async function solveSchedulesAction(
     const items = await listPlannerItems(db, sessionId, termCode);
     const result = await solveSchedulesForTerm(db, termCode, items, {
       requireOpenSections,
+      maxSolutions: 1,
     });
     return { ok: true, result };
   } catch (e) {
@@ -458,7 +461,32 @@ async function assertPlannerRowPersistable(
     if (row.anchorCrn != null || row.linkedBundleId != null) {
       return { ok: false, error: "Unresolved planner row must not have a section." };
     }
+    const pins = parseSectionPinsJson(row.sectionPins);
+    if (Object.keys(pins.byType).length === 0) return { ok: true };
+    const sections = await listSectionsForCourse(
+      db,
+      termCode,
+      row.subject,
+      row.courseNumber,
+    );
+    const byCrn = new Map(sections.map((s) => [s.crn, s]));
+    for (const [typeKey, pinnedCrn] of Object.entries(pins.byType)) {
+      const sec = byCrn.get(pinnedCrn);
+      if (!sec) {
+        return { ok: false, error: "Pinned section is not part of this course." };
+      }
+      if (normalizeScheduleTypeKey(sec.scheduleTypeDescription) !== typeKey) {
+        return { ok: false, error: "Pinned section does not match schedule type." };
+      }
+    }
     return { ok: true };
+  }
+  const pinsOnResolved = parseSectionPinsJson(row.sectionPins);
+  if (Object.keys(pinsOnResolved.byType).length > 0) {
+    return {
+      ok: false,
+      error: "Section pins are only valid while the course uses automatic sections.",
+    };
   }
   if (row.anchorCrn == null) {
     return { ok: false, error: "Resolved planner row is missing a section." };
@@ -547,6 +575,7 @@ export async function syncPlannerStateAction(
               if (!pr.ok) throw new Error(pr.error);
               return pr.value;
             })(),
+            sectionPins: parseSectionPinsJson(row.sectionPins),
           })
           .where(
             and(
