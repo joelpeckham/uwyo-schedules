@@ -16,13 +16,13 @@ import { absoluteUrl } from "@/lib/seo/site";
 export const metadata: Metadata = {
   title: "uwyoschedule — University of Wyoming class schedule planner",
   description:
-    "Plan a University of Wyoming class schedule that fits your life. From course list to a conflict-free week in minutes—then open the planner to build yours.",
+    "Plan a University of Wyoming class schedule that fits your life. Add courses from the live catalog and watch a best conflict-free week stay in sync in the planner—pins, same-type swaps, and busy times included.",
   alternates: { canonical: "/" },
   openGraph: {
     url: absoluteUrl("/"),
     title: "uwyoschedule — University of Wyoming class schedule planner",
     description:
-      "Plan a UW class schedule that fits your life. Browse courses, then build a conflict-free week in the planner.",
+      "Plan a UW class schedule that fits your life. Browse courses, then open the planner for a live-updating conflict-free week.",
   },
 };
 

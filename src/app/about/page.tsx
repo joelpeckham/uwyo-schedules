@@ -42,9 +42,10 @@ export default function AboutPage() {
         </p>
         <p className="mt-4 text-pretty text-base leading-relaxed text-muted-foreground">
           This site is not affiliated with the University of Wyoming. We read
-          the public UW course catalog, cache it for speed, and run a solver on top
-          so you can page through conflict-free schedules, set instructor
-          preferences, and respect real-life busy times.
+          the public UW course catalog, cache it for speed, and run a solver that
+          keeps a best conflict-free week in sync as your list, instructor
+          preferences, and busy times change—then you refine with pins and
+          same-type swaps on the calendar.
         </p>
         <p className="mt-4 text-pretty text-base leading-relaxed text-muted-foreground">
           When something matters for registration — prerequisites, linked labs,

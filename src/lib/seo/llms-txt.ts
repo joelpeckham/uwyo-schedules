@@ -19,12 +19,12 @@ export function buildLlmsTxt(
 ): string {
   const lines: string[] = [
     "# uwyoschedule",
-    "> Independent University of Wyoming class schedule planner for UW students: search UW course catalog data, combine sections, and page through conflict-free weekly schedules. Not an official UW product; does not register you for classes.",
+    "> Independent University of Wyoming class schedule planner for UW students: search UW course catalog data, combine sections, and keep a best conflict-free week in sync with optional preferences, busy times, pins, and same-type swaps. Not an official UW product; does not register you for classes.",
     "",
     "## Key pages",
     "",
     `- [Home](${u("/", siteUrl)}): Marketing landing and entry to the planner.`,
-    `- [Planner](${u("/planner", siteUrl)}): Interactive term picker, course bag, schedule solver, and week calendar.`,
+    `- [Planner](${u("/planner", siteUrl)}): Interactive term picker, course bag, solver-backed week calendar (live best-fit week, pins, same-type swaps).`,
     `- [Courses](${u("/courses", siteUrl)}): Browse courses by subject (stable catalog URLs).`,
     `- [Terms](${u("/terms", siteUrl)}): Browse terms available in the app.`,
     `- [About](${u("/about", siteUrl)}): Scope, independence from UW, and how we use UW course catalog data.`,
@@ -69,11 +69,12 @@ export function buildLlmsFullTxt(
     : "Instructor profile URLs are not published in the sitemap by default.";
 
   return `# uwyoschedule — full context for AI systems
-> Same product summary as /llms.txt: an independent UW student planner built on cached UW course catalog data, with a solver for conflict-free schedules. Not official UW; planning only, not registration.
+> Same product summary as /llms.txt: an independent UW student planner built on cached UW course catalog data, with a solver that keeps a best conflict-free week in sync as the course list and constraints change. Not official UW; planning only, not registration.
 
 ## Product behavior
 
-- Users pick a term, add courses (and sections where needed), set optional instructor preferences and busy-time blackouts, then request valid weekly schedules.
+- Users pick a term, add courses (and sections where needed), set optional instructor preferences and busy-time blackouts; the planner continuously resolves a scored best-fit week (not a browsable list of full schedules).
+- Section pins and same-type drag swaps on the week calendar refine that week without leaving the conflict-free constraint.
 - Linked lecture/lab or discussion sections from the catalog are treated as combined choices so incompatible splits are avoided.
 - Seat counts and meetings reflect our last ingest; they can drift from the live catalog until the next sync.
 

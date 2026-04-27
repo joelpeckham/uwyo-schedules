@@ -13,13 +13,13 @@ import { absoluteUrl } from "@/lib/seo/site";
 export const metadata: Metadata = {
   title: "Schedule planner",
   description:
-    "Pick UW courses, set preferences, page through every conflict-free weekly schedule from the UW course catalog.",
+    "Pick UW courses, set optional preferences and busy times, and watch a best conflict-free week stay in sync—pin sections or drag for same-type alternatives on the calendar.",
   alternates: { canonical: "/planner" },
   openGraph: {
     url: absoluteUrl("/planner"),
     title: "Schedule planner · uwyoschedule",
     description:
-      "Pick UW courses, set preferences, page through every conflict-free weekly schedule.",
+      "Pick UW courses and preferences; the planner keeps a best conflict-free week in sync as you pin sections or try same-type alternatives.",
   },
 };
 

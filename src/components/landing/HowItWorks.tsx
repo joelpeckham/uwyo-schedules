@@ -12,8 +12,8 @@ const steps = [
     icon: SlidersHorizontal,
   },
   {
-    title: "Page through valid weeks",
-    body: "We generate every conflict-free weekly schedule so you can compare options without spreadsheet gymnastics.",
+    title: "See a week that fits",
+    body: "The planner continuously scores a conflict-free week against your list, busy times, and preferences. Pin what you like or drag a block to try same-type alternatives—no spreadsheet gymnastics.",
     icon: CalendarCheck2,
   },
 ] as const;

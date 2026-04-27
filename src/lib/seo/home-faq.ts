@@ -33,11 +33,11 @@ export const HOME_FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "What are busy-time blackouts?",
     answer:
-      "You can block times when you are not available (work, practice, childcare). The planner only returns weekly schedules that avoid those windows across all of your sections.",
+      "You can block times when you are not available (work, practice, childcare). Your weekly schedule avoids those windows across all of your sections while the planner stays in sync.",
   },
   {
     question: "Does the planner work on a phone?",
     answer:
-      "Yes. The interface is touch-friendly: you can pick terms, add courses, page through valid schedules, and open section details from the calendar.",
+      "Yes. The interface is touch-friendly: you can pick a term, add courses, watch the week view update, pin sections or try same-type alternatives, and open section details from the calendar.",
   },
 ];

@@ -17,9 +17,10 @@ export function HeroSection() {
           Build a UW class schedule that fits your life.
         </h1>
         <p className="mt-6 max-w-prose text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl">
-          From course list to class schedule, in minutes. Pick your classes—we
-          generate every conflict-free weekly schedule from the live UW course
-          catalog.
+          From course list to class schedule, in minutes. Add your courses from
+          the live UW catalog; the planner keeps a best conflict-free week in
+          sync as you refine it with preferences, busy times, and the week
+          view.
         </p>
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <Link
