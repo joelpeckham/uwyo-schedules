@@ -7,8 +7,8 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
-  getCourseSeoDetailCached,
-  listSectionTableRowsForCourseTermCached,
+  getCourseSeoDetailForSeo,
+  listSectionTableRowsForCourseTermForSeo,
   pathSegmentToSubject,
   subjectToPathSegment,
 } from "@/lib/seo/queries";
@@ -32,9 +32,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { subject: seg, number } = await params;
   const subject = pathSegmentToSubject(seg);
   const num = number.trim();
-  const detail = await getCourseSeoDetailCached(subject, num);
+  const detail = await getCourseSeoDetailForSeo(subject, num);
   if (!detail) {
-    return { title: "Course not found" };
+    return {
+      title: "Course not found",
+      robots: { index: false, follow: false },
+    };
   }
   const title = detail.title ?? `${detail.subject} ${detail.courseNumber}`;
   const canonical = `/courses/${subjectToPathSegment(detail.subject)}/${encodeURIComponent(detail.courseNumber.toLowerCase())}`;
@@ -58,7 +61,7 @@ export default async function CourseDetailPage({ params }: Props) {
   const { subject: seg, number } = await params;
   const subject = pathSegmentToSubject(seg);
   const num = number.trim();
-  const detail = await getCourseSeoDetailCached(subject, num);
+  const detail = await getCourseSeoDetailForSeo(subject, num);
   if (!detail) notFound();
 
   const db = createDb();
@@ -67,7 +70,7 @@ export default async function CourseDetailPage({ params }: Props) {
   if (!primaryTerm) notFound();
 
   const sectionRows =
-    (await listSectionTableRowsForCourseTermCached(
+    (await listSectionTableRowsForCourseTermForSeo(
       primaryTerm,
       detail.subject,
       detail.courseNumber,

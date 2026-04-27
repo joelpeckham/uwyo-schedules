@@ -3,7 +3,7 @@
  * `siteUrl` must have no trailing slash (same as SITE_URL).
  */
 
-export type LlmsTxtOptions = {
+type LlmsTxtOptions = {
   /** When true, mention /instructors/* SEO pages (matches sitemap when SEO_INSTRUCTOR_PAGES is on). */
   includeInstructorPages: boolean;
 };

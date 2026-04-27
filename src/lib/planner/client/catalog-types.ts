@@ -12,7 +12,7 @@ export type ClientCatalogSection = {
   subjectCourse: string | null;
 };
 
-export type ClientCatalogMeeting = {
+type ClientCatalogMeeting = {
   id: number;
   sectionCrn: string;
   beginTime: string | null;

@@ -18,7 +18,7 @@ export function normalizeMeetingScheduleType(
   return t.length > 0 ? t : null;
 }
 
-export type LinkedBundleOptionPick = {
+type LinkedBundleOptionPick = {
   id: number;
   bundleIndex: number;
   memberCrns: string[];

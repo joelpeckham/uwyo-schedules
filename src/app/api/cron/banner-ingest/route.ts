@@ -39,7 +39,12 @@ export async function GET(request: NextRequest) {
     },
   ]);
 
-  const res = NextResponse.json({ started: true, mode });
+  const res = NextResponse.json({
+    started: true,
+    mode,
+    note:
+      "Workflow was scheduled; ingest runs asynchronously. Check deployment logs for completion.",
+  });
   res.headers.set("X-Robots-Tag", "noindex, nofollow");
   return res;
 }

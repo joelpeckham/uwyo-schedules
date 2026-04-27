@@ -8,7 +8,7 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
-  listSubjectsForTermCached,
+  listSubjectsForTermForSeo,
   subjectToPathSegment,
 } from "@/lib/seo/queries";
 
@@ -45,7 +45,7 @@ export default async function TermPage({ params }: Props) {
 
   const description = (await getTermDescriptionByCode(term)) ?? term;
 
-  const subjects = await listSubjectsForTermCached(term);
+  const subjects = await listSubjectsForTermForSeo(term);
   const canonicalPath = `/terms/${encodeURIComponent(term)}`;
 
   const collectionJson = {

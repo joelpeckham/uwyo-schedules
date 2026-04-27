@@ -1,7 +1,5 @@
 import type { InferInsertModel } from "drizzle-orm";
 import type {
-  linkedBundleMembers,
-  linkedBundles,
   sectionAttributes,
   sectionFaculty,
   sectionMeetings,
@@ -15,13 +13,10 @@ import type {
   LinkedSectionsResponse,
 } from "./types";
 
-export type NewSection = InferInsertModel<typeof sections>;
-export type NewMeeting = InferInsertModel<typeof sectionMeetings>;
-export type NewFaculty = InferInsertModel<typeof sectionFaculty>;
-export type NewAttribute = InferInsertModel<typeof sectionAttributes>;
-export type NewLinkedBundle = InferInsertModel<typeof linkedBundles>;
-export type NewLinkedMember = InferInsertModel<typeof linkedBundleMembers>;
-
+type NewSection = InferInsertModel<typeof sections>;
+type NewMeeting = InferInsertModel<typeof sectionMeetings>;
+type NewFaculty = InferInsertModel<typeof sectionFaculty>;
+type NewAttribute = InferInsertModel<typeof sectionAttributes>;
 export type SectionGraph = {
   section: NewSection;
   meetings: NewMeeting[];

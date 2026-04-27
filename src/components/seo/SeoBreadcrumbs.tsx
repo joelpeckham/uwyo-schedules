@@ -2,7 +2,7 @@ import Link from "next/link";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { absoluteUrl } from "@/lib/seo/site";
 
-export type Crumb = { name: string; href: string };
+type Crumb = { name: string; href: string };
 
 export function SeoBreadcrumbs({ items }: { items: Crumb[] }) {
   if (items.length === 0) return null;

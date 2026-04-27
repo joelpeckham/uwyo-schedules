@@ -2,6 +2,14 @@ import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import type { PlannerCatalogJson } from "./client/catalog-types";
+import type { PlannerItemRow } from "./data";
+import { listPlannerItems } from "./data";
+import {
+  loadOrderedMembersForBundleIds,
+  type PlannerItemSelection,
+  resolveDisplayCrnsWithMemberMap,
+} from "./resolve-display-crns";
 
 export type PlannerTermUiStateRow = typeof schema.plannerTermUiState.$inferSelect;
 
@@ -22,14 +30,6 @@ async function loadPlannerTermUiState(
     .limit(1);
   return row ?? null;
 }
-import type { PlannerCatalogJson } from "./client/catalog-types";
-import type { PlannerItemRow } from "./data";
-import { listPlannerItems } from "./data";
-import {
-  loadOrderedMembersForBundleIds,
-  type PlannerItemSelection,
-  resolveDisplayCrnsWithMemberMap,
-} from "./resolve-display-crns";
 
 /**
  * Loads planner items plus all catalog data needed to derive calendar blocks and

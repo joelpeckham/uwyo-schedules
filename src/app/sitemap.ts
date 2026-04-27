@@ -11,6 +11,8 @@ import {
   subjectToPathSegment,
 } from "@/lib/seo/queries";
 
+export const revalidate = 3600;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const db = createDb();
   const base = SITE_URL;

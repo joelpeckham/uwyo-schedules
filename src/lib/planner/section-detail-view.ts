@@ -11,7 +11,7 @@ const DAY_FIELDS = [
   ["sunday", "Sun"],
 ] as const;
 
-export type ParsedSectionResult =
+type ParsedSectionResult =
   | { ok: true; root: Record<string, unknown> }
   | { ok: false; message: string };
 

@@ -18,6 +18,12 @@ import {
   CALENDAR_HOUR_COUNT,
   CALENDAR_START_HOUR,
 } from "@/lib/planner/constants";
+import type { PlannerItemRow } from "@/lib/planner/data";
+
+const CALENDAR_HOUR_AXIS = Array.from(
+  { length: CALENDAR_END_HOUR - CALENDAR_START_HOUR + 1 },
+  (_, i) => CALENDAR_START_HOUR + i,
+);
 import { filterFeasibleSwapGhosts } from "@/lib/planner/planner-swap-feasibility";
 import {
   ghostViewportRect,
@@ -279,6 +285,13 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     setSectionPinFromDrag,
     toggleSectionPin,
   } = usePlanner();
+
+  const plannerItemsById = useMemo(() => {
+    const m = new Map<number, PlannerItemRow>();
+    for (const r of plannerItems) m.set(r.id, r);
+    return m;
+  }, [plannerItems]);
+
   const [markBusyMode, setMarkBusyMode] = useState(false);
   const [busyDialogOpen, setBusyDialogOpen] = useState(false);
   const [editingBlackoutId, setEditingBlackoutId] = useState<string | null>(null);
@@ -311,6 +324,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   } | null>(null);
 
   const [copyStatus, setCopyStatus] = useState<"idle" | "ok" | "err">("idle");
+  const copyStatusTimerRef = useRef<number | null>(null);
   const [swapError, setSwapError] = useState<string | null>(null);
   const [courseDragSession, setCourseDragSession] =
     useState<DragSessionState | null>(null);
@@ -773,8 +787,14 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     [],
   );
 
-  const hours: number[] = [];
-  for (let h = CALENDAR_START_HOUR; h <= CALENDAR_END_HOUR; h++) hours.push(h);
+  useEffect(() => {
+    return () => {
+      if (copyStatusTimerRef.current) {
+        clearTimeout(copyStatusTimerRef.current);
+        copyStatusTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const zoomCalendarIn = useCallback(() => {
     setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) * 1.08));
@@ -791,13 +811,23 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   const copyCrns = useCallback(async () => {
     if (displayWeekCrns.length === 0) return;
+    if (copyStatusTimerRef.current) {
+      clearTimeout(copyStatusTimerRef.current);
+      copyStatusTimerRef.current = null;
+    }
     try {
       await navigator.clipboard.writeText(displayWeekCrns.join("\n"));
       setCopyStatus("ok");
-      window.setTimeout(() => setCopyStatus("idle"), 2000);
+      copyStatusTimerRef.current = window.setTimeout(() => {
+        copyStatusTimerRef.current = null;
+        setCopyStatus("idle");
+      }, 2000);
     } catch {
       setCopyStatus("err");
-      window.setTimeout(() => setCopyStatus("idle"), 2500);
+      copyStatusTimerRef.current = window.setTimeout(() => {
+        copyStatusTimerRef.current = null;
+        setCopyStatus("idle");
+      }, 2500);
     }
   }, [displayWeekCrns]);
 
@@ -813,7 +843,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   const pinDragGlobalFeasibleFromPinnedCrnForBlock = useCallback(
     (b: CalendarBlock) => {
       if (
-        plannerItems.find((r) => r.id === b.plannerItemId)?.selectionKind !==
+        plannerItemsById.get(b.plannerItemId)?.selectionKind !==
         "unresolved"
       ) {
         return undefined;
@@ -842,7 +872,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         });
       };
     },
-    [plannerItems, solvePacks, requireOpenSections, blackouts],
+    [plannerItems, plannerItemsById, solvePacks, requireOpenSections, blackouts],
   );
 
   const onCourseBlockPointerDown = useCallback(
@@ -970,9 +1000,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       mergedPackConstraintMaps.seatsByCrn,
       pickCourseSnap,
       pinDragGlobalFeasibleFromPinnedCrnForBlock,
-      plannerItems,
       requireOpenSections,
-      solvePacks,
     ],
   );
 
@@ -1001,9 +1029,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         const { snapped, block } = session;
         if (snapped && snapped.crn !== block.sectionCrn) {
           endCourseDrag();
-          const baseItem = plannerItems.find(
-            (r) => r.id === block.plannerItemId,
-          );
+          const baseItem = plannerItemsById.get(block.plannerItemId);
           const item = effectivePlannerItems.find(
             (r) => r.id === block.plannerItemId,
           );
@@ -1046,7 +1072,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       applyPlannerItemSelection,
       catalog,
       effectivePlannerItems,
-      plannerItems,
+      plannerItemsById,
       setSectionPinFromDrag,
       endCourseDrag,
       onBlockActivate,
@@ -1468,7 +1494,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               style={{ minWidth: `max(100%, ${gridMinWidthRem}rem)` }}
             >
               <div className="flex w-14 shrink-0 flex-col border-r border-border bg-muted/20">
-                {hours.map((h) => (
+                {CALENDAR_HOUR_AXIS.map((h) => (
                   <div
                     key={h}
                     className="flex items-start justify-end pr-1.5 font-mono text-[10px] leading-tight text-muted-foreground"
@@ -1495,7 +1521,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                     onPointerCancel={onDayColumnPointerCancel}
                   >
                     <div className="pointer-events-none absolute inset-0 flex flex-col">
-                      {hours.map((h) => (
+                      {CALENDAR_HOUR_AXIS.map((h) => (
                         <div
                           key={h}
                           className="border-b border-border/80"
@@ -1615,9 +1641,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                           tier === "none"
                             ? "truncate"
                             : "line-clamp-2 min-h-0 break-words";
-                        const rowItem = plannerItems.find(
-                          (r) => r.id === b.plannerItemId,
-                        );
+                        const rowItem = plannerItemsById.get(b.plannerItemId);
                         const showPin = rowItem?.selectionKind === "unresolved";
                         const pinsDoc = rowItem
                           ? parseSectionPinsJson(rowItem.sectionPins)

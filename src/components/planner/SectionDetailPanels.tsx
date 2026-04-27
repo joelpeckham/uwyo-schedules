@@ -32,8 +32,8 @@ function DefinitionList({ items }: { items: DlItem[] }) {
   if (rows.length === 0) return null;
   return (
     <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,9rem)_1fr]">
-      {rows.map(({ label, value }) => (
-        <div key={label} className="contents">
+      {rows.map(({ label, value }, idx) => (
+        <div key={`${label}-${idx}`} className="contents">
           <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
           <dd className="font-mono text-xs text-foreground wrap-break-word sm:text-sm">
             {typeof value === "boolean" ? (value ? "Yes" : "No") : value}

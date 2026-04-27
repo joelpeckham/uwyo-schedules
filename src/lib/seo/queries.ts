@@ -422,13 +422,16 @@ export async function listAllDistinctCourseKeys(
   }));
 }
 
-/** DB entry points used by SEO routes (no `"use cache"` here: keeps builds compatible without `cacheComponents`). */
-export async function listSubjectsForTermCached(termCode: string) {
+/**
+ * Route helpers: open a fresh DB client per call.
+ * (Not Next.js `use cache` / `cacheTag`; name avoids implying framework-level caching.)
+ */
+export async function listSubjectsForTermForSeo(termCode: string) {
   const db = createDb();
   return listSubjectsForTerm(db, termCode);
 }
 
-export async function listCoursesForSubjectAndTermCached(
+export async function listCoursesForSubjectAndTermForSeo(
   termCode: string,
   subject: string,
 ) {
@@ -436,12 +439,15 @@ export async function listCoursesForSubjectAndTermCached(
   return listCoursesForSubjectAndTerm(db, termCode, subject);
 }
 
-export async function getCourseSeoDetailCached(subject: string, courseNumber: string) {
+export async function getCourseSeoDetailForSeo(
+  subject: string,
+  courseNumber: string,
+) {
   const db = createDb();
   return getCourseSeoDetail(db, subject, courseNumber);
 }
 
-export async function listSectionTableRowsForCourseTermCached(
+export async function listSectionTableRowsForCourseTermForSeo(
   termCode: string,
   subject: string,
   courseNumber: string,
@@ -450,15 +456,12 @@ export async function listSectionTableRowsForCourseTermCached(
   return listSectionTableRowsForCourseTerm(db, termCode, subject, courseNumber);
 }
 
-export async function listInstructorsForSeoCached(minSections = 3) {
+export async function listInstructorsIndexForSeo(minSections = 3) {
   const db = createDb();
   return listInstructorsForSeo(db, minSections);
 }
 
-export async function listSectionsForInstructorDisplayNameCached(
-  displayName: string,
-  _slug: string,
-) {
+export async function listSectionsForInstructorForSeo(displayName: string) {
   const db = createDb();
   return listSectionsForInstructorDisplayName(db, displayName);
 }

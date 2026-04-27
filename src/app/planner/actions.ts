@@ -37,6 +37,8 @@ import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
 import { parseSectionPinsJson } from "@/lib/planner/section-pins";
 import { normalizeScheduleTypeKey } from "@/lib/planner/swap-helpers";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
+import { catalogActionClientKey } from "@/lib/planner/catalog-action-client-key";
+import { takeCatalogActionRateLimit } from "@/lib/planner/catalog-action-rate-limit";
 import {
   getSectionDetail,
   listLinkedBundleOptions,
@@ -284,7 +286,10 @@ export async function savePlannerBlackoutsAction(input: {
   try {
     const sessionId = await requireSessionId();
     if (!input.termCode?.trim()) return { ok: false, error: "Missing term." };
-    if (Array.isArray(input.items) && input.items.length > MAX_PLANNER_BLACKOUTS) {
+    if (!Array.isArray(input.items)) {
+      return { ok: false, error: "Invalid busy-time list." };
+    }
+    if (input.items.length > MAX_PLANNER_BLACKOUTS) {
       return {
         ok: false,
         error: `At most ${MAX_PLANNER_BLACKOUTS} busy-time blocks.`,
@@ -380,6 +385,9 @@ export async function searchCoursesAction(
   termCode: string,
   query: string,
 ): Promise<CourseSearchRow[]> {
+  if (!takeCatalogActionRateLimit(await catalogActionClientKey())) {
+    return [];
+  }
   const db = createDb();
   return searchCourses(db, termCode, query);
 }
@@ -389,6 +397,9 @@ export async function listSectionsForCourseAction(
   subject: string,
   courseNumber: string,
 ) {
+  if (!takeCatalogActionRateLimit(await catalogActionClientKey())) {
+    return [];
+  }
   const db = createDb();
   return listSectionsForCourse(db, termCode, subject, courseNumber);
 }
@@ -397,6 +408,9 @@ export async function listLinkedBundleOptionsAction(
   termCode: string,
   anchorCrn: string,
 ) {
+  if (!takeCatalogActionRateLimit(await catalogActionClientKey())) {
+    return [];
+  }
   const db = createDb();
   return listLinkedBundleOptions(db, termCode, anchorCrn);
 }
@@ -408,6 +422,9 @@ export async function getSectionDetailAction(
   rawJson: unknown;
   title: string;
 } | null> {
+  if (!takeCatalogActionRateLimit(await catalogActionClientKey())) {
+    return null;
+  }
   const db = createDb();
   const r = await getSectionDetail(db, termCode, crn);
   if (!r) return null;

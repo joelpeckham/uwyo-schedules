@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import type { ParsedLinkedBundle } from "./mappers";
@@ -46,9 +46,6 @@ export async function replaceTermData(
   }
 
   await db.transaction(async (tx) => {
-    await tx
-      .delete(schema.linkedBundles)
-      .where(eq(schema.linkedBundles.termCode, termCode));
     await tx
       .delete(schema.sectionAttributes)
       .where(eq(schema.sectionAttributes.termCode, termCode));
@@ -107,24 +104,66 @@ export async function replaceTermData(
       if (part.length) await tx.insert(schema.sectionAttributes).values(part);
     }
 
+    /** Preserve `linked_bundles.id` across ingests so `planner_items.linked_bundle_id` stays valid. */
+    const retainedBundleIds: number[] = [];
+
     for (const b of linkedBundles) {
-      const [ins] = await tx
-        .insert(schema.linkedBundles)
-        .values({
-          termCode,
-          anchorCrn: b.anchorCrn,
-          bundleIndex: b.bundleIndex,
-        })
-        .returning({ id: schema.linkedBundles.id });
-      if (!ins) continue;
+      const [existing] = await tx
+        .select({ id: schema.linkedBundles.id })
+        .from(schema.linkedBundles)
+        .where(
+          and(
+            eq(schema.linkedBundles.termCode, termCode),
+            eq(schema.linkedBundles.anchorCrn, b.anchorCrn),
+            eq(schema.linkedBundles.bundleIndex, b.bundleIndex),
+          ),
+        )
+        .limit(1);
+
+      let bundleId: number;
+      if (existing) {
+        bundleId = existing.id;
+        await tx
+          .delete(schema.linkedBundleMembers)
+          .where(eq(schema.linkedBundleMembers.bundleId, bundleId));
+      } else {
+        const [ins] = await tx
+          .insert(schema.linkedBundles)
+          .values({
+            termCode,
+            anchorCrn: b.anchorCrn,
+            bundleIndex: b.bundleIndex,
+          })
+          .returning({ id: schema.linkedBundles.id });
+        if (!ins) continue;
+        bundleId = ins.id;
+      }
+
+      retainedBundleIds.push(bundleId);
+
       const members = b.memberCrns.map((crn, position) => ({
-        bundleId: ins.id,
+        bundleId,
         crn,
         position,
       }));
       for (const part of chunk(members, BATCH)) {
         if (part.length) await tx.insert(schema.linkedBundleMembers).values(part);
       }
+    }
+
+    if (retainedBundleIds.length === 0) {
+      await tx
+        .delete(schema.linkedBundles)
+        .where(eq(schema.linkedBundles.termCode, termCode));
+    } else {
+      await tx
+        .delete(schema.linkedBundles)
+        .where(
+          and(
+            eq(schema.linkedBundles.termCode, termCode),
+            notInArray(schema.linkedBundles.id, retainedBundleIds),
+          ),
+        );
     }
   });
 }

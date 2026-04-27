@@ -4,7 +4,7 @@ import { createDb } from "@/db/index";
 import { getLatestTermRow } from "@/lib/terms/labels";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
-  listSubjectsForTermCached,
+  listSubjectsForTermForSeo,
   subjectToPathSegment,
 } from "@/lib/seo/queries";
 
@@ -36,7 +36,7 @@ export default async function CoursesIndexPage() {
     );
   }
 
-  const subjects = await listSubjectsForTermCached(termRow.code);
+  const subjects = await listSubjectsForTermForSeo(termRow.code);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:max-w-[90rem]">

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listSubjectsForTermCached, subjectToPathSegment } from "@/lib/seo/queries";
+import { listSubjectsForTermForSeo, subjectToPathSegment } from "@/lib/seo/queries";
 
 const TOP_N = 18;
 
@@ -30,7 +30,7 @@ export async function TopSubjects({
     );
   }
 
-  const subjects = await listSubjectsForTermCached(latestTerm.code);
+  const subjects = await listSubjectsForTermForSeo(latestTerm.code);
   const ranked = [...subjects]
     .sort((a, b) => b.sectionCount - a.sectionCount)
     .slice(0, TOP_N);

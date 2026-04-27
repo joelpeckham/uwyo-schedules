@@ -259,7 +259,18 @@ function mergeIntoMeetingsMap(
   from: Record<string, TimeInterval[]>,
 ): void {
   for (const [k, v] of Object.entries(from)) {
-    if (!target.has(k)) target.set(k, v);
+    if (target.has(k)) {
+      if (
+        process.env.NODE_ENV === "development" &&
+        JSON.stringify(target.get(k)) !== JSON.stringify(v)
+      ) {
+        console.warn(
+          `[solve-pack] merge conflict for meetings CRN ${k}; keeping first pack`,
+        );
+      }
+      continue;
+    }
+    target.set(k, v);
   }
 }
 
@@ -268,7 +279,18 @@ function mergeIntoFacultyMap(
   from: CourseSolvePack["facultyByCrn"],
 ): void {
   for (const [k, v] of Object.entries(from)) {
-    if (!target.has(k)) target.set(k, v);
+    if (target.has(k)) {
+      if (
+        process.env.NODE_ENV === "development" &&
+        JSON.stringify(target.get(k)) !== JSON.stringify(v)
+      ) {
+        console.warn(
+          `[solve-pack] merge conflict for faculty CRN ${k}; keeping first pack`,
+        );
+      }
+      continue;
+    }
+    target.set(k, v);
   }
 }
 
@@ -277,7 +299,15 @@ function mergeIntoScheduleMap(
   from: Record<string, string | null>,
 ): void {
   for (const [k, v] of Object.entries(from)) {
-    if (!target.has(k)) target.set(k, v);
+    if (target.has(k)) {
+      if (process.env.NODE_ENV === "development" && target.get(k) !== v) {
+        console.warn(
+          `[solve-pack] merge conflict for schedule type CRN ${k}; keeping first pack`,
+        );
+      }
+      continue;
+    }
+    target.set(k, v);
   }
 }
 
@@ -286,7 +316,18 @@ function mergeIntoSeatsMap(
   from: CourseSolvePack["seatsByCrn"],
 ): void {
   for (const [k, v] of Object.entries(from)) {
-    if (!target.has(k)) target.set(k, v);
+    if (target.has(k)) {
+      if (
+        process.env.NODE_ENV === "development" &&
+        JSON.stringify(target.get(k)) !== JSON.stringify(v)
+      ) {
+        console.warn(
+          `[solve-pack] merge conflict for seats CRN ${k}; keeping first pack`,
+        );
+      }
+      continue;
+    }
+    target.set(k, v);
   }
 }
 
@@ -297,7 +338,18 @@ function mergeBundleMembers(
   for (const [idStr, members] of Object.entries(from)) {
     const id = Number(idStr);
     if (!Number.isFinite(id)) continue;
-    if (!target.has(id)) target.set(id, members);
+    if (target.has(id)) {
+      if (
+        process.env.NODE_ENV === "development" &&
+        JSON.stringify(target.get(id)) !== JSON.stringify(members)
+      ) {
+        console.warn(
+          `[solve-pack] merge conflict for bundle members id ${id}; keeping first pack`,
+        );
+      }
+      continue;
+    }
+    target.set(id, members);
   }
 }
 
@@ -339,6 +391,7 @@ export function runSolveSearch(params: {
   const blackoutIntervals = params.blackoutIntervals ?? [];
   const maxSolutions = params.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const started = Date.now();
 
   const indices = items.map((_, i) => i);
   indices.sort(
@@ -404,6 +457,10 @@ export function runSolveSearch(params: {
     const list = candidateLists[itemIndex]!;
 
     for (const cand of list) {
+      if (Date.now() - started > timeoutMs) {
+        timedOut = true;
+        return;
+      }
       if (requireOpenSections && !allCrnsHaveOpenSeats(cand.crns, seatsByCrn)) {
         continue;
       }
@@ -427,7 +484,6 @@ export function runSolveSearch(params: {
     }
   }
 
-  const started = Date.now();
   dfs(0);
 
   solutions.sort((a, b) => b.score - a.score);

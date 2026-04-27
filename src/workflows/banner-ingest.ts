@@ -21,7 +21,9 @@ async function listBannerTermsStep(): Promise<{
   if (!primaryCode) {
     throw new Error("BANNER_PRIMARY_TERM_CODE is not set");
   }
-  console.log("[banner-ingest] listBannerTermsStep");
+  if (process.env.DEBUG_INGEST === "1") {
+    console.log("[banner-ingest] listBannerTermsStep");
+  }
   const client = new BannerSsbClient(origin);
   await client.warmTermSelection();
   await client.selectTermAndLoadClassSearch(primaryCode);
@@ -35,7 +37,9 @@ async function scrapeFullTermStep(args: {
   includeLinked: boolean;
 }) {
   "use step";
-  console.log("[banner-ingest] scrapeFullTermStep", args);
+  if (process.env.DEBUG_INGEST === "1") {
+    console.log("[banner-ingest] scrapeFullTermStep", args);
+  }
   const db = createDb();
   return scrapeFullTermToDatabase(db, args.termCode, args.hotRun, {
     includeLinked: args.includeLinked,

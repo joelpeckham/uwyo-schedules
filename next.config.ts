@@ -2,9 +2,13 @@ import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
-  // Playwright uses 127.0.0.1; phone-on-LAN uses the machine’s LAN IP. Next dev
-  // blocks cross-origin HMR to other origins without this.
-  allowedDevOrigins: ["127.0.0.1", "192.168.4.92"],
+  // Playwright uses 127.0.0.1; optional DEV_LAN_ORIGIN for phone-on-LAN HMR.
+  allowedDevOrigins: [
+    "127.0.0.1",
+    ...(process.env.DEV_LAN_ORIGIN?.trim()
+      ? [process.env.DEV_LAN_ORIGIN.trim()]
+      : []),
+  ],
   async headers() {
     const security = [
       {

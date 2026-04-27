@@ -110,17 +110,17 @@ export function CourseManager({ termCode }: Props) {
   }, [runSearch]);
 
   useEffect(() => {
-    void recalculateSolutions();
-  }, [recalculateSolutions, termCode]);
-
-  useEffect(() => {
     if (!picked) {
-      setPrefetchPackPending(false);
-      setPrefetchPackError(null);
+      queueMicrotask(() => {
+        setPrefetchPackPending(false);
+        setPrefetchPackError(null);
+      });
       return;
     }
-    setPrefetchPackPending(true);
-    setPrefetchPackError(null);
+    queueMicrotask(() => {
+      setPrefetchPackPending(true);
+      setPrefetchPackError(null);
+    });
     let cancelled = false;
     void (async () => {
       const res = await prefetchCourseSolvePackAction(

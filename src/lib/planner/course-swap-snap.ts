@@ -4,7 +4,7 @@ import {
 } from "@/lib/planner/constants";
 import type { CalendarBlock, SwapGhostMeeting } from "@/lib/planner/data";
 
-export function distPointToRect(
+function distPointToRect(
   px: number,
   py: number,
   r: { left: number; top: number; width: number; height: number },

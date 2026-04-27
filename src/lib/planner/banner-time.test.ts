@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import {
-  bannerClockToMinutes,
-  minutesToDecimalHour,
-  parseBannerClock,
-} from "./banner-time";
+import { bannerClockToMinutes, parseBannerClock } from "./banner-time";
+
+function minutesToDecimalHour(minutes: number): number {
+  return minutes / 60;
+}
 
 describe("parseBannerClock", () => {
   it("parses 4-digit afternoon time", () => {

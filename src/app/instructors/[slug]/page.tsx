@@ -6,8 +6,8 @@ import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { SiteChrome } from "@/components/seo/SiteChrome";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
-  listInstructorsForSeoCached,
-  listSectionsForInstructorDisplayNameCached,
+  listInstructorsIndexForSeo,
+  listSectionsForInstructorForSeo,
   subjectToPathSegment,
 } from "@/lib/seo/queries";
 
@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!enabled) {
     return { title: "Instructors", robots: { index: false, follow: false } };
   }
-  const index = await listInstructorsForSeoCached(3);
+  const index = await listInstructorsIndexForSeo(3);
   const row = index.find((r) => r.slug === slug);
   const canonical = `/instructors/${encodeURIComponent(slug)}`;
   return {
@@ -31,6 +31,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       ? `Sections associated with ${row.displayName} in the UW course catalog cached by uwyoschedule.`
       : "Instructor index.",
     alternates: { canonical },
+    robots: row ? undefined : { index: false, follow: false },
     openGraph: row
       ? { url: absoluteUrl(canonical), title: `${row.displayName} · uwyoschedule` }
       : undefined,
@@ -41,14 +42,11 @@ export default async function InstructorPage({ params }: Props) {
   if (!enabled) notFound();
 
   const { slug } = await params;
-  const index = await listInstructorsForSeoCached(3);
+  const index = await listInstructorsIndexForSeo(3);
   const row = index.find((r) => r.slug === slug);
   if (!row) notFound();
 
-  const { rows } = await listSectionsForInstructorDisplayNameCached(
-    row.displayName,
-    slug,
-  );
+  const { rows } = await listSectionsForInstructorForSeo(row.displayName);
 
   const canonicalPath = `/instructors/${encodeURIComponent(slug)}`;
   const personJson = {

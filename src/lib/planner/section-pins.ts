@@ -31,10 +31,6 @@ export function parseSectionPinsJson(raw: unknown): PlannerSectionPinsDocV1 {
   return { v: SECTION_PINS_DOC_VERSION, byType };
 }
 
-export function serializeSectionPinsJson(doc: PlannerSectionPinsDocV1): unknown {
-  return doc;
-}
-
 /**
  * Keep only candidates that include every pinned CRN and whose pinned CRN's
  * schedule type matches the pin key (normalized).

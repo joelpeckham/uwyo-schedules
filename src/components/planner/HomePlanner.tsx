@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ensurePlannerSessionAction } from "@/app/planner/actions";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import type { PlannerTermUiStateRow } from "@/lib/planner/catalog-bootstrap";
@@ -43,10 +43,10 @@ export function HomePlanner({
     });
   }, [hasSessionCookie, router]);
 
-  const onBlockActivate = (block: CalendarBlock) => {
+  const onBlockActivate = useCallback((block: CalendarBlock) => {
     setModalCrn(block.sectionCrn);
     setModalOpen(true);
-  };
+  }, []);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">

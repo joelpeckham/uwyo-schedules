@@ -101,7 +101,7 @@ export function clampInterval(
   };
 }
 
-export function snapMinutes(n: number): number {
+function snapMinutes(n: number): number {
   return Math.round(n / SNAP_MINUTES) * SNAP_MINUTES;
 }
 

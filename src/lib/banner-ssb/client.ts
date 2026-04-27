@@ -76,7 +76,7 @@ export class BannerSsbClient {
       }
       return res;
     }
-    return fetch(url, { ...init, headers, redirect: "follow" });
+    throw new Error("Banner rawFetch: exhausted retries without returning a response");
   }
 
   private pathUrl(path: string): string {

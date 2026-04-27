@@ -24,7 +24,7 @@ export default function AboutPage() {
     author: uwyoschedulePublisher(),
     publisher: uwyoschedulePublisher(),
     mainEntityOfPage: absoluteUrl("/about"),
-    dateModified: new Date().toISOString().slice(0, 10),
+    dateModified: "2025-04-27",
   };
 
   return (

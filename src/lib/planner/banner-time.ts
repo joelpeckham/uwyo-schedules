@@ -30,8 +30,3 @@ export function bannerClockToMinutes(
   if (!t) return null;
   return t.hour * 60 + t.minute;
 }
-
-/** Fractional hour for layout, e.g. 9.5 = 9:30. */
-export function minutesToDecimalHour(minutes: number): number {
-  return minutes / 60;
-}

@@ -78,7 +78,7 @@ export function PlannerPreview() {
                 className="border-r bg-muted/20 py-1 text-[10px] text-muted-foreground"
                 style={{ height: DAY_H }}
               >
-                {HOURS.slice(0, -1).map((h, i) => (
+                {HOURS.slice(0, -1).map((h) => (
                   <div
                     key={h}
                     className="flex items-start justify-end pr-1 font-mono tabular-nums"

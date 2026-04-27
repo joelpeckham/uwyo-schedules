@@ -7,7 +7,7 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
-  listCoursesForSubjectAndTermCached,
+  listCoursesForSubjectAndTermForSeo,
   pathSegmentToSubject,
   subjectToPathSegment,
 } from "@/lib/seo/queries";
@@ -56,7 +56,7 @@ export default async function SubjectCoursesPage({ params }: Props) {
   const termRow = await getLatestTermRow(db);
   if (!termRow) notFound();
 
-  const courses = await listCoursesForSubjectAndTermCached(termRow.code, subject);
+  const courses = await listCoursesForSubjectAndTermForSeo(termRow.code, subject);
   if (courses.length === 0) notFound();
 
   const canonicalPath = `/courses/${subjectToPathSegment(subject)}`;

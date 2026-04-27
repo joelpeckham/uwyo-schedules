@@ -4,7 +4,6 @@ import {
   CALENDAR_START_HOUR,
 } from "../constants";
 import type { CalendarBlock, PlannerItemRow, SwapGhostMeeting } from "../data";
-import { swapPrefetchKey } from "../data";
 import {
   normalizeMeetingScheduleType,
   normalizeScheduleTypeKey,
@@ -20,10 +19,7 @@ import type {
   ResolvedPlannerSelection,
   SelectionKind,
 } from "../resolve-display-crns-shared";
-import {
-  resolveDisplayCrnsSync,
-  resolveDisplayCrnsWithMemberMap,
-} from "../resolve-display-crns-shared";
+import { resolveDisplayCrnsWithMemberMap } from "../resolve-display-crns-shared";
 
 const DAY_FIELDS = [
   "monday",
@@ -360,31 +356,4 @@ export function resolvePlannerSwapClient(
     anchorCrn: best.anchorCrn,
     linkedBundleId: best.bundleId,
   };
-}
-
-export function buildSwapGhostsPrefetchMapFromCatalog(
-  blocks: CalendarBlock[],
-  catalog: PlannerCatalogJson,
-): Record<string, SwapGhostMeeting[]> {
-  const unique = new Map<string, CalendarBlock>();
-  for (const b of blocks) {
-    const k = swapPrefetchKey(b.plannerItemId, b.sectionCrn, b.meetingId);
-    if (!unique.has(k)) unique.set(k, b);
-  }
-  const out: Record<string, SwapGhostMeeting[]> = {};
-  for (const b of unique.values()) {
-    const k = swapPrefetchKey(b.plannerItemId, b.sectionCrn, b.meetingId);
-    if (!b.sectionScheduleTypeKey) {
-      out[k] = [];
-      continue;
-    }
-    out[k] = listSameTypeSwapGhostsFromCatalog(catalog, {
-      subject: b.subject,
-      courseNumber: b.courseNumber,
-      excludeSectionCrn: b.sectionCrn,
-      sourceScheduleTypeKey: b.sectionScheduleTypeKey,
-      sourceMeetingScheduleType: b.meetingScheduleType,
-    });
-  }
-  return out;
 }

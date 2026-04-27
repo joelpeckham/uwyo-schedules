@@ -52,8 +52,29 @@ async function loadLinkedNonAnchorMemberCrns(
   return new Set(rows.map((r) => r.crn));
 }
 
+const ENUMERATE_CANDIDATES_CONCURRENCY = 4;
+
+async function mapWithConcurrency<T, R>(
+  inputs: readonly T[],
+  limit: number,
+  worker: (input: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(inputs.length);
+  let next = 0;
+  async function runWorker(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= inputs.length) return;
+      results[i] = await worker(inputs[i]!, i);
+    }
+  }
+  const n = Math.min(limit, Math.max(1, inputs.length));
+  await Promise.all(Array.from({ length: n }, () => runWorker()));
+  return results;
+}
+
 /** All registration options for one course as an unresolved wish-list row. */
-export async function enumerateUnresolvedCandidatesForCourse(
+async function enumerateUnresolvedCandidatesForCourse(
   db: Database,
   termCode: string,
   subject: string,
@@ -336,12 +357,11 @@ export async function solveSchedulesForTerm(
   ];
   const membersByBundleId = await loadOrderedMembersForBundleIds(db, bundleIds);
 
-  const candidateLists: ScheduleCandidate[][] = [];
-  for (const item of items) {
-    candidateLists.push(
-      await enumerateCandidatesForItem(db, termCode, item, membersByBundleId),
-    );
-  }
+  const candidateLists = await mapWithConcurrency(
+    items,
+    ENUMERATE_CANDIDATES_CONCURRENCY,
+    (item) => enumerateCandidatesForItem(db, termCode, item, membersByBundleId),
+  );
 
   const allCrns = new Set<string>();
   for (const list of candidateLists) {

@@ -161,7 +161,9 @@ export function PlannerProvider({
   /** Bumps on each recalc start so stale async/server results cannot overwrite newer solves. */
   const recalcGenRef = useRef(0);
   const solvePacksRef = useRef(solvePacks);
-  solvePacksRef.current = solvePacks;
+  useEffect(() => {
+    solvePacksRef.current = solvePacks;
+  }, [solvePacks]);
 
   const mergeSolvePack = useCallback((pack: CourseSolvePack) => {
     solvePacksRef.current = { ...solvePacksRef.current, [pack.courseKey]: pack };
@@ -174,16 +176,22 @@ export function PlannerProvider({
   }, [solutions]);
 
   useEffect(() => {
-    setPlannerItems(initialPlannerItems);
+    queueMicrotask(() => {
+      setPlannerItems(initialPlannerItems);
+    });
   }, [initialPlannerItems]);
 
   useEffect(() => {
-    setCatalog(initialCatalog);
+    queueMicrotask(() => {
+      setCatalog(initialCatalog);
+    });
   }, [initialCatalog]);
 
   useEffect(() => {
-    solvePacksRef.current = {};
-    setSolvePacks({});
+    queueMicrotask(() => {
+      solvePacksRef.current = {};
+      setSolvePacks({});
+    });
   }, [termCode]);
 
   const itemsRef = useRef(plannerItems);
@@ -292,6 +300,22 @@ export function PlannerProvider({
     }, BLACKOUT_PERSIST_DEBOUNCE_MS);
   }, [flushBlackoutPersist]);
 
+  const clearSyncError = useCallback(() => setSyncError(null), []);
+
+  const clearScheduleFeasibilityError = useCallback(
+    () => setScheduleFeasibilityError(null),
+    [],
+  );
+
+  const setPlannerItemsFromContext = useCallback(
+    (items: PlannerItemRow[]) => {
+      itemsRef.current = items;
+      setPlannerItems(items);
+      schedulePersist();
+    },
+    [schedulePersist],
+  );
+
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "hidden") {
@@ -368,9 +392,13 @@ export function PlannerProvider({
 
   const updatePlannerItem = useCallback(
     (id: number, patch: Partial<PlannerItemRow>) => {
-      setPlannerItems((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, ...patch } : r)),
-      );
+      setPlannerItems((prev) => {
+        const next = prev.map((r) =>
+          r.id === id ? { ...r, ...patch } : r,
+        );
+        itemsRef.current = next;
+        return next;
+      });
       schedulePersist();
     },
     [schedulePersist],
@@ -464,7 +492,9 @@ export function PlannerProvider({
   }, []);
 
   const recalculateSolutionsRef = useRef(recalculateSolutions);
-  recalculateSolutionsRef.current = recalculateSolutions;
+  useEffect(() => {
+    recalculateSolutionsRef.current = recalculateSolutions;
+  }, [recalculateSolutions]);
 
   const applyPlannerItemSelection = useCallback(
     (itemId: number, sel: ResolvedPlannerSelection) => {
@@ -652,14 +682,11 @@ export function PlannerProvider({
       effectivePlannerItems,
       calendarBlocks,
       syncError,
-      clearSyncError: () => setSyncError(null),
+      clearSyncError,
       scheduleFeasibilityError,
-      clearScheduleFeasibilityError: () => setScheduleFeasibilityError(null),
+      clearScheduleFeasibilityError,
       refreshCatalogFromServer,
-      setPlannerItems: (items) => {
-        setPlannerItems(items);
-        schedulePersist();
-      },
+      setPlannerItems: setPlannerItemsFromContext,
       removePlannerItem,
       updatePlannerItem,
       schedulePersist,
@@ -689,6 +716,9 @@ export function PlannerProvider({
       syncError,
       scheduleFeasibilityError,
       refreshCatalogFromServer,
+      clearSyncError,
+      clearScheduleFeasibilityError,
+      setPlannerItemsFromContext,
       removePlannerItem,
       updatePlannerItem,
       schedulePersist,

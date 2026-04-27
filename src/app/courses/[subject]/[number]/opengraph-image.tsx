@@ -1,5 +1,7 @@
 import { ImageResponse } from "next/og";
-import { getCourseSeoDetailCached, pathSegmentToSubject } from "@/lib/seo/queries";
+import { getCourseSeoDetailForSeo, pathSegmentToSubject } from "@/lib/seo/queries";
+
+export const revalidate = 3600;
 
 export const alt = "Course on uwyoschedule";
 export const size = { width: 1200, height: 630 };
@@ -10,7 +12,7 @@ type Props = { params: Promise<{ subject: string; number: string }> };
 export default async function Image({ params }: Props) {
   const { subject: seg, number } = await params;
   const subject = pathSegmentToSubject(seg);
-  const detail = await getCourseSeoDetailCached(subject, number.trim());
+  const detail = await getCourseSeoDetailForSeo(subject, number.trim());
   const line1 = detail
     ? `${detail.subject} ${detail.courseNumber}`
     : "Course";
