@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: row ? `${row.displayName} — sections` : "Instructor",
     description: row
-      ? `Sections associated with ${row.displayName} in the UW Banner data cached by uwyoschedule.`
+      ? `Sections associated with ${row.displayName} in the UW course catalog cached by uwyoschedule.`
       : "Instructor index.",
     alternates: { canonical },
     openGraph: row
@@ -74,8 +74,8 @@ export default async function InstructorPage({ params }: Props) {
           {row.displayName}
         </h1>
         <p className="mt-3 max-w-prose text-sm text-muted-foreground sm:text-base">
-          Sections in our Banner cache that list this instructor ({rows.length}{" "}
-          shown). Names and assignments can change in Banner; this is not an
+          Sections in our catalog cache that list this instructor ({rows.length}{" "}
+          shown). Names and assignments can change in the UW course catalog; this is not an
           official directory.
         </p>
         <ul className="mt-8 space-y-3 text-sm">

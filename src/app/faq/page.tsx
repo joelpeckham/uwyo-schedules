@@ -7,7 +7,7 @@ import { absoluteUrl } from "@/lib/seo/site";
 export const metadata: Metadata = {
   title: "FAQ",
   description:
-    "Frequently asked questions about uwyoschedule, Banner data freshness, registration, and how the planner works.",
+    "Frequently asked questions about uwyoschedule, catalog data freshness, registration, and how the planner works.",
   alternates: { canonical: "/faq" },
   openGraph: {
     url: absoluteUrl("/faq"),

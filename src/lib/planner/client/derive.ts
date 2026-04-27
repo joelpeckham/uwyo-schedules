@@ -69,6 +69,26 @@ export function resolveItemDisplayCrns(
   return resolveDisplayCrnsWithMemberMap(sel, membersByBundleId);
 }
 
+/** Unique CRNs for the current item selections (registration order follows `items`). */
+export function collectDisplayCrnsForItems(
+  items: PlannerItemRow[],
+  catalog: PlannerCatalogJson,
+): string[] {
+  if (items.length === 0) return [];
+  const membersByBundleId = buildMembersByBundleId(catalog.linkedBundleMembers);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    for (const crn of resolveItemDisplayCrns(item, membersByBundleId)) {
+      if (!seen.has(crn)) {
+        seen.add(crn);
+        out.push(crn);
+      }
+    }
+  }
+  return out;
+}
+
 export function buildCalendarBlocksFromCatalog(
   items: PlannerItemRow[],
   catalog: PlannerCatalogJson,

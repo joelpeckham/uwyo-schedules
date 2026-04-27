@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { PlannerItemRow } from "@/lib/planner/data";
 import type { PlannerCatalogJson } from "./catalog-types";
-import { listSameTypeSwapGhostsFromCatalog } from "./derive";
+import {
+  collectDisplayCrnsForItems,
+  listSameTypeSwapGhostsFromCatalog,
+} from "./derive";
 
 const minimalCatalog: PlannerCatalogJson = {
   sections: [
@@ -44,6 +48,29 @@ const minimalCatalog: PlannerCatalogJson = {
   linkedBundleMembers: [],
   facultyByCrn: {},
 };
+
+describe("collectDisplayCrnsForItems", () => {
+  it("returns unique anchor CRNs in planner item order", () => {
+    const items = [
+      {
+        id: 1,
+        selectionKind: "single_crn",
+        anchorCrn: "10001",
+        linkedBundleId: null,
+      },
+      {
+        id: 2,
+        selectionKind: "single_crn",
+        anchorCrn: "10002",
+        linkedBundleId: null,
+      },
+    ] as unknown as PlannerItemRow[];
+    expect(collectDisplayCrnsForItems(items, minimalCatalog)).toEqual([
+      "10001",
+      "10002",
+    ]);
+  });
+});
 
 describe("listSameTypeSwapGhostsFromCatalog", () => {
   it("returns ghosts for same schedule type excluding source CRN", () => {

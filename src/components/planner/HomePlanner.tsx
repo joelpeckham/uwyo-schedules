@@ -64,7 +64,7 @@ export function HomePlanner({
           </h1>
           <p className="mt-2 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">
             Add courses, set optional instructor preferences, and page through
-            valid weekly schedules. Tap a block for Banner section details.
+            valid weekly schedules. Tap a block for section details.
           </p>
         </div>
 

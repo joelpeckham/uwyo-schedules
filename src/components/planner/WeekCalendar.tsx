@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -23,9 +24,11 @@ import {
 import {
   Ban,
   CircleHelp,
+  Minus,
   Move,
   MousePointerClick,
   Plus,
+  X,
   ZoomIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,6 +55,8 @@ import { usePlanner } from "./PlannerContext";
 const HOUR_RANGE_HELP =
   "Zoom stops when 4 a.m. through 11 p.m. fill this view.";
 
+const GESTURE_TIP_STORAGE_KEY = "uwyo.planner.weekCalTipDismissed";
+
 const SCHEDULE_HELP: readonly {
   readonly Icon: typeof Move;
   readonly label: string;
@@ -70,7 +75,7 @@ const SCHEDULE_HELP: readonly {
   {
     Icon: MousePointerClick,
     label: "Open details",
-    body: "Tap a block to read section details from Banner.",
+    body: "Tap a block to read section details.",
   },
   {
     Icon: Ban,
@@ -176,6 +181,17 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     topPx: number;
     heightPx: number;
   } | null>(null);
+  const [showGestureTip, setShowGestureTip] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(GESTURE_TIP_STORAGE_KEY)) {
+        setShowGestureTip(true);
+      }
+    } catch {
+      /* private mode or blocked */
+    }
+  }, []);
   const dragSessionRef = useRef<{
     dayIndex: number;
     columnEl: HTMLElement;
@@ -574,6 +590,14 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   const hours: number[] = [];
   for (let h = CALENDAR_START_HOUR; h <= CALENDAR_END_HOUR; h++) hours.push(h);
 
+  const zoomCalendarIn = useCallback(() => {
+    setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) * 1.08));
+  }, [clampRowPx, minRowPx]);
+
+  const zoomCalendarOut = useCallback(() => {
+    setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) / 1.08));
+  }, [clampRowPx, minRowPx]);
+
   return (
     <section
       className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm"
@@ -585,7 +609,34 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           a selected course or busy time uses that day.
         </p>
       ) : null}
-      <div className="border-b border-border p-3 sm:p-4">
+      <div className="border-b border-border p-3 sm:p-4" id="planner-week-calendar-toolbar">
+        {showGestureTip ? (
+          <div className="mb-3 flex gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+            <p className="min-w-0 flex-1 leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Tip:</span> On touch,
+              use two fingers to pan the week; pinch to zoom. On a trackpad or
+              mouse, hold <kbd className="rounded border border-border bg-background px-1 font-mono text-xs">Ctrl</kbd>{" "}
+              and scroll to zoom — or use + / − beside the help button.
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0 text-muted-foreground"
+              aria-label="Dismiss tip"
+              onClick={() => {
+                try {
+                  localStorage.setItem(GESTURE_TIP_STORAGE_KEY, "1");
+                } catch {
+                  /* ignore */
+                }
+                setShowGestureTip(false);
+              }}
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        ) : null}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
           <h2
             id="planner-week-calendar-heading"
@@ -617,6 +668,26 @@ export function WeekCalendar({ onBlockActivate }: Props) {
             >
               <Plus className="mr-1.5 size-4 shrink-0" aria-hidden />
               Add busy…
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="touch-manipulation"
+              aria-label="Zoom week view out"
+              onClick={zoomCalendarOut}
+            >
+              <Minus className="size-4" aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="touch-manipulation"
+              aria-label="Zoom week view in"
+              onClick={zoomCalendarIn}
+            >
+              <ZoomIn className="size-4" aria-hidden />
             </Button>
             <Dialog>
             <DialogTrigger asChild>

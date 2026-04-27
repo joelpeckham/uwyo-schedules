@@ -19,26 +19,26 @@ export function buildLlmsTxt(
 ): string {
   const lines: string[] = [
     "# uwyoschedule",
-    "> Independent University of Wyoming class schedule planner for UW students: search Banner catalog data, combine sections, and page through conflict-free weekly schedules. Not an official UW product; does not register you for classes.",
+    "> Independent University of Wyoming class schedule planner for UW students: search UW course catalog data, combine sections, and page through conflict-free weekly schedules. Not an official UW product; does not register you for classes.",
     "",
     "## Key pages",
     "",
     `- [Home](${u("/", siteUrl)}): Marketing landing and entry to the planner.`,
     `- [Planner](${u("/planner", siteUrl)}): Interactive term picker, course bag, schedule solver, and week calendar.`,
     `- [Courses](${u("/courses", siteUrl)}): Browse courses by subject (stable catalog URLs).`,
-    `- [Terms](${u("/terms", siteUrl)}): Browse Banner terms available in the app.`,
-    `- [About](${u("/about", siteUrl)}): Scope, independence from UW, and how we use Banner data.`,
+    `- [Terms](${u("/terms", siteUrl)}): Browse terms available in the app.`,
+    `- [About](${u("/about", siteUrl)}): Scope, independence from UW, and how we use UW course catalog data.`,
     `- [FAQ](${u("/faq", siteUrl)}): Data freshness, registration, linked sections, preferences, and mobile use.`,
     "",
     "## What we do not do",
     "",
     "- We are not affiliated with the University of Wyoming.",
-    "- We do not enroll you or replace WyoWeb/Banner registration.",
+    "- We do not enroll you or replace WyoWeb registration.",
     "- Always confirm CRN, prerequisites, seat counts, and linked labs in official UW systems before registering.",
     "",
     "## Data",
     "",
-    "Section and meeting data are ingested from the public UW Banner catalog (same system behind WyoWeb), cached for speed, and refreshed on a schedule. Details can change in Banner after our last sync.",
+    "Section and meeting data are ingested from the public UW course catalog, cached for speed, and refreshed on a schedule. Details can change in the catalog after our last sync.",
     "",
     "## Machine-readable discovery",
     "",
@@ -69,13 +69,13 @@ export function buildLlmsFullTxt(
     : "Instructor profile URLs are not published in the sitemap by default.";
 
   return `# uwyoschedule — full context for AI systems
-> Same product summary as /llms.txt: an independent UW student planner built on cached Banner catalog data, with a solver for conflict-free schedules. Not official UW; planning only, not registration.
+> Same product summary as /llms.txt: an independent UW student planner built on cached UW course catalog data, with a solver for conflict-free schedules. Not official UW; planning only, not registration.
 
 ## Product behavior
 
-- Users pick a Banner term, add courses (and sections where needed), set optional instructor preferences and busy-time blackouts, then request valid weekly schedules.
-- Linked lecture/lab or discussion sections from Banner are treated as combined choices so incompatible splits are avoided.
-- Seat counts and meetings reflect our last ingest; they can drift from live Banner until the next sync.
+- Users pick a term, add courses (and sections where needed), set optional instructor preferences and busy-time blackouts, then request valid weekly schedules.
+- Linked lecture/lab or discussion sections from the catalog are treated as combined choices so incompatible splits are avoided.
+- Seat counts and meetings reflect our last ingest; they can drift from the live catalog until the next sync.
 
 ## URL patterns (human-readable)
 

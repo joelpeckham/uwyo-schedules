@@ -82,6 +82,8 @@ type PlannerContextValue = {
   requireOpenSections: boolean;
   setRequireOpenSections: (v: boolean) => void;
   recalculateSolutions: (requireOpenOverride?: boolean) => Promise<void>;
+  /** True while a server or client solve is in progress (nested calls supported). */
+  isRecalculatingSolutions: boolean;
   /** Prefetched per-course solve payloads (client-side DFS when complete). */
   solvePacks: Record<string, CourseSolvePack>;
   mergeSolvePack: (pack: CourseSolvePack) => void;
@@ -135,6 +137,10 @@ export function PlannerProvider({
   const [solvePacks, setSolvePacks] = useState<Record<string, CourseSolvePack>>(
     {},
   );
+  const [isRecalculatingSolutions, setIsRecalculatingSolutions] = useState(false);
+  const recalcDepthRef = useRef(0);
+  /** Bumps on each recalc start so stale async/server results cannot overwrite newer solves. */
+  const recalcGenRef = useRef(0);
   const solvePacksRef = useRef(solvePacks);
   solvePacksRef.current = solvePacks;
 
@@ -368,52 +374,65 @@ export function PlannerProvider({
   );
 
   const recalculateSolutions = useCallback(async (requireOpenOverride?: boolean) => {
-    const requireOpen =
-      requireOpenOverride !== undefined
-        ? requireOpenOverride
-        : requireOpenRef.current;
-    const rows = itemsRef.current;
-    const packs = solvePacksRef.current;
+    const myGen = ++recalcGenRef.current;
+    recalcDepthRef.current += 1;
+    if (recalcDepthRef.current === 1) setIsRecalculatingSolutions(true);
+    try {
+      const requireOpen =
+        requireOpenOverride !== undefined
+          ? requireOpenOverride
+          : requireOpenRef.current;
+      const rows = itemsRef.current;
+      const packs = solvePacksRef.current;
 
-    if (rows.length === 0) {
-      setSyncError(null);
-      setSolutions([]);
-      setSolutionsCapped(false);
-      setSolutionsTimedOut(false);
-      setSolutionIndexState(0);
-      return;
-    }
+      if (rows.length === 0) {
+        if (myGen === recalcGenRef.current) {
+          setSyncError(null);
+          setSolutions([]);
+          setSolutionsCapped(false);
+          setSolutionsTimedOut(false);
+          setSolutionIndexState(0);
+        }
+        return;
+      }
 
-    if (everyPlannerItemHasSolvePack(rows, packs)) {
-      const result = solveSchedulesFromPacks(rows, packs, {
-        requireOpenSections: requireOpen,
-        blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
-      });
+      if (everyPlannerItemHasSolvePack(rows, packs)) {
+        const result = solveSchedulesFromPacks(rows, packs, {
+          requireOpenSections: requireOpen,
+          blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
+        });
+        if (myGen !== recalcGenRef.current) return;
+        setSyncError(null);
+        setSolutions(result.solutions);
+        setSolutionsCapped(result.capped);
+        setSolutionsTimedOut(result.timedOut);
+        setSolutionIndexState((prev) => {
+          if (result.solutions.length === 0) return 0;
+          return Math.min(Math.max(0, prev), result.solutions.length - 1);
+        });
+        return;
+      }
+
+      const res = await solveSchedulesAction(termRef.current, requireOpen);
+      if (myGen !== recalcGenRef.current) return;
+      if (!res.ok) {
+        setSyncError(res.error);
+        return;
+      }
+      if (myGen !== recalcGenRef.current) return;
       setSyncError(null);
-      setSolutions(result.solutions);
-      setSolutionsCapped(result.capped);
-      setSolutionsTimedOut(result.timedOut);
+      const sols = res.result.solutions;
+      setSolutions(sols);
+      setSolutionsCapped(res.result.capped);
+      setSolutionsTimedOut(res.result.timedOut);
       setSolutionIndexState((prev) => {
-        if (result.solutions.length === 0) return 0;
-        return Math.min(Math.max(0, prev), result.solutions.length - 1);
+        if (sols.length === 0) return 0;
+        return Math.min(Math.max(0, prev), sols.length - 1);
       });
-      return;
+    } finally {
+      recalcDepthRef.current -= 1;
+      if (recalcDepthRef.current === 0) setIsRecalculatingSolutions(false);
     }
-
-    const res = await solveSchedulesAction(termRef.current, requireOpen);
-    if (!res.ok) {
-      setSyncError(res.error);
-      return;
-    }
-    setSyncError(null);
-    const sols = res.result.solutions;
-    setSolutions(sols);
-    setSolutionsCapped(res.result.capped);
-    setSolutionsTimedOut(res.result.timedOut);
-    setSolutionIndexState((prev) => {
-      if (sols.length === 0) return 0;
-      return Math.min(Math.max(0, prev), sols.length - 1);
-    });
   }, []);
 
   const recalculateSolutionsRef = useRef(recalculateSolutions);
@@ -502,6 +521,7 @@ export function PlannerProvider({
       requireOpenSections,
       setRequireOpenSections,
       recalculateSolutions,
+      isRecalculatingSolutions,
       solvePacks,
       mergeSolvePack,
       blackouts,
@@ -526,6 +546,7 @@ export function PlannerProvider({
       favoriteSolutionIndex,
       requireOpenSections,
       recalculateSolutions,
+      isRecalculatingSolutions,
       solvePacks,
       mergeSolvePack,
       blackouts,

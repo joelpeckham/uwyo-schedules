@@ -28,6 +28,12 @@ export function PlannerTermSelect({
         value={termCode}
         onValueChange={(next) => {
           router.replace(`/planner?term=${encodeURIComponent(next)}`);
+          window.requestAnimationFrame(() => {
+            document.getElementById("planner")?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          });
         }}
       >
         <SelectTrigger

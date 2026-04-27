@@ -11,7 +11,7 @@ import {
 export const metadata: Metadata = {
   title: "UW courses by subject",
   description:
-    "Browse University of Wyoming Banner subjects for the latest term. Open a subject to see courses and section counts.",
+    "Browse University of Wyoming subjects for the latest term. Open a subject to see courses and section counts.",
   alternates: { canonical: "/courses" },
   openGraph: {
     url: absoluteUrl("/courses"),
@@ -46,7 +46,7 @@ export default async function CoursesIndexPage() {
       <p className="mt-3 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">
         Subjects for term{" "}
         <span className="font-mono text-foreground">{latest}</span>. Pick a
-        subject to browse course numbers and titles from the UW Banner catalog.
+        subject to browse course numbers and titles from the UW course catalog.
       </p>
       <ul className="mt-8 columns-1 gap-3 sm:columns-2 lg:columns-3">
         {subjects.map((s) => (

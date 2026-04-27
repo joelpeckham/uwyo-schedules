@@ -13,7 +13,7 @@ import { absoluteUrl } from "@/lib/seo/site";
 export const metadata: Metadata = {
   title: "Schedule planner",
   description:
-    "Pick UW courses, set preferences, page through every conflict-free weekly schedule from the Banner catalog.",
+    "Pick UW courses, set preferences, page through every conflict-free weekly schedule from the UW course catalog.",
   alternates: { canonical: "/planner" },
   openGraph: {
     url: absoluteUrl("/planner"),

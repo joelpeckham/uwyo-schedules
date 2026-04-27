@@ -74,7 +74,7 @@ export function LandingFooter({
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">
           Built for UW students. Not affiliated with the University of Wyoming.
-          Always confirm CRNs and requirements in Banner.
+          Always confirm CRNs and requirements in the UW course catalog.
         </p>
       </div>
     </footer>

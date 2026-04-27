@@ -37,12 +37,12 @@ export default function AboutPage() {
         <p className="mt-6 text-pretty text-base leading-relaxed text-muted-foreground">
           uwyoschedule helps UW students go from a course list to a weekly
           schedule that actually works, without the back-and-forth of juggling
-          Banner screens by hand. We are calm, focused, and built for Laramie —
+          catalog screens by hand. We are calm, focused, and built for Laramie —
           not generic ed-tech.
         </p>
         <p className="mt-4 text-pretty text-base leading-relaxed text-muted-foreground">
           This site is not affiliated with the University of Wyoming. We read
-          public Banner catalog data, cache it for speed, and run a solver on top
+          the public UW course catalog, cache it for speed, and run a solver on top
           so you can page through conflict-free schedules, set instructor
           preferences, and respect real-life busy times.
         </p>

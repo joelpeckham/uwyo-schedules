@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const canonical = `/terms/${encodeURIComponent(term)}`;
   return {
     title: `Term ${term}`,
-    description: `Browse University of Wyoming Banner subjects for term ${term}.`,
+    description: `Browse University of Wyoming subjects for term ${term}.`,
     alternates: { canonical },
     openGraph: {
       url: absoluteUrl(canonical),
@@ -57,7 +57,7 @@ export default async function TermPage({ params }: Props) {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     name: `${description} (${term})`,
-    description: `University of Wyoming Banner subjects for term ${term}.`,
+    description: `University of Wyoming subjects for term ${term}.`,
     url: absoluteUrl(canonicalPath),
     isPartOf: { "@type": "WebSite", name: "uwyoschedule", url: absoluteUrl("/") },
   };

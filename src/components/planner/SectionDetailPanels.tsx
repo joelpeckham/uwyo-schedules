@@ -138,7 +138,7 @@ export function SectionDetailPanels({ root }: Props) {
 
   const creditExpandItems: DlItem[] = [
     { label: "Credit hours", value: creditStr },
-    { label: "Credit range (Banner)", value: creditRangeLabel },
+    { label: "Credit range", value: creditRangeLabel },
     { label: "Credit indicator", value: creditInd },
   ];
 

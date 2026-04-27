@@ -1,6 +1,7 @@
 import { createDb } from "@/db/index";
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
+import { canonicalAggregateCourseTitle } from "@/lib/catalog/canonicalCourseTitleSql";
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, max, sql } from "drizzle-orm";
 
 /** URL path segment for Banner subject (e.g. `MATH` → `math`). */
@@ -54,7 +55,7 @@ export async function listCoursesForSubjectAndTerm(
       subject: schema.courses.subject,
       courseNumber: schema.courses.courseNumber,
       subjectCourse: schema.courses.subjectCourse,
-      title: max(schema.sections.courseTitle),
+      title: canonicalAggregateCourseTitle(),
       sectionCount: sql<number>`count(distinct ${schema.sections.crn})::int`,
       creditHours: max(schema.sections.creditHours),
     })
@@ -121,7 +122,7 @@ export async function getCourseSeoDetail(
   if (exists.length === 0) return null;
 
   const titleRow = await db
-    .select({ title: max(schema.sections.courseTitle) })
+    .select({ title: canonicalAggregateCourseTitle() })
     .from(schema.sections)
     .where(
       and(

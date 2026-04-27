@@ -32,7 +32,14 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type KeyboardEvent,
+} from "react";
 import { usePlanner } from "./PlannerContext";
 
 type Props = { termCode: string };
@@ -62,8 +69,6 @@ export function CourseManager({ termCode }: Props) {
     removePlannerItem,
     updatePlannerItem,
     recalculateSolutions,
-    syncError,
-    clearSyncError,
     solvePacks,
     mergeSolvePack,
   } = usePlanner();
@@ -77,6 +82,7 @@ export function CourseManager({ termCode }: Props) {
   const [prefetchPackError, setPrefetchPackError] = useState<string | null>(null);
 
   const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
+  const [searchActiveIndex, setSearchActiveIndex] = useState(-1);
 
   /** Bumps invalidate in-flight search responses after the user picks a course. */
   const searchSeqRef = useRef(0);
@@ -86,6 +92,7 @@ export function CourseManager({ termCode }: Props) {
     const q = searchQ.trim();
     if (q.length < 2) {
       setHits([]);
+      setSearchActiveIndex(-1);
       return;
     }
     const seq = ++searchSeqRef.current;
@@ -93,6 +100,7 @@ export function CourseManager({ termCode }: Props) {
       const rows = await searchCoursesAction(termCode, q);
       if (seq !== searchSeqRef.current) return;
       setHits(rows);
+      setSearchActiveIndex(rows.length > 0 ? 0 : -1);
     });
   }, [searchQ, termCode]);
 
@@ -161,6 +169,7 @@ export function CourseManager({ termCode }: Props) {
       setPicked(null);
       setHits([]);
       setSearchQ("");
+      setSearchActiveIndex(-1);
     },
     [termCode, refreshCatalogFromServer, recalculateSolutions],
   );
@@ -173,6 +182,7 @@ export function CourseManager({ termCode }: Props) {
   const onPickCourseFromSearch = useCallback(
     (h: CourseSearchRow) => {
       setError(null);
+      setSearchActiveIndex(-1);
       searchSeqRef.current += 1;
       setHits([]);
       const key = courseSolvePackCourseKey(h.subject, h.courseNumber);
@@ -254,8 +264,36 @@ export function CourseManager({ termCode }: Props) {
     [persistPrefs],
   );
 
+  const searchQueryLen = searchQ.trim().length;
+  const onSearchKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (hits.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSearchActiveIndex((i) => Math.min(hits.length - 1, Math.max(0, i + 1)));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSearchActiveIndex((prev) => (prev <= 0 ? 0 : prev - 1));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setSearchActiveIndex(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setSearchActiveIndex(hits.length - 1);
+      } else if (e.key === "Enter" && searchActiveIndex >= 0) {
+        e.preventDefault();
+        const row = hits[searchActiveIndex];
+        if (row) onPickCourseFromSearch(row);
+      }
+    },
+    [hits, onPickCourseFromSearch, searchActiveIndex],
+  );
+
   return (
-    <section className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+    <section
+      id="planner-courses"
+      className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm"
+    >
       <h2 className="font-heading text-lg font-medium text-foreground">
         Your courses
       </h2>
@@ -264,23 +302,14 @@ export function CourseManager({ termCode }: Props) {
         that fit together.
       </p>
 
-      {(error || syncError) && (
+      {error ? (
         <div
           className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           role="alert"
         >
-          {error ?? syncError}
-          {syncError ? (
-            <button
-              type="button"
-              className="ml-2 underline"
-              onClick={() => clearSyncError()}
-            >
-              Dismiss
-            </button>
-          ) : null}
+          {error}
         </div>
-      )}
+      ) : null}
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1 sm:min-w-48">
@@ -289,28 +318,58 @@ export function CourseManager({ termCode }: Props) {
           </Label>
           <Input
             id="course-search"
+            role="combobox"
+            aria-expanded={hits.length > 0}
+            aria-controls="course-search-listbox"
+            aria-activedescendant={
+              searchActiveIndex >= 0
+                ? `course-search-hit-${searchActiveIndex}`
+                : undefined
+            }
+            aria-autocomplete="list"
             value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
+            onChange={(e) => {
+              setSearchQ(e.target.value);
+              setSearchActiveIndex(-1);
+            }}
+            onKeyDown={onSearchKeyDown}
             placeholder="Subject or number"
             className="mt-1 min-h-11"
             autoComplete="off"
           />
+          {searchQueryLen > 0 && searchQueryLen < 2 ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Type at least 2 characters to search.
+            </p>
+          ) : null}
+          {searchQueryLen >= 2 && !pending && hits.length === 0 ? (
+            <p className="mt-1 text-xs text-muted-foreground" role="status">
+              No courses match that search.
+            </p>
+          ) : null}
           {hits.length > 0 ? (
             <ul
+              id="course-search-listbox"
               className="mt-1 max-h-48 overflow-auto rounded-md border border-border bg-background"
               role="listbox"
+              aria-label="Course search results"
             >
-              {hits.map((h) => (
-                <li key={`${h.subject}-${h.courseNumber}`} role="option">
+              {hits.map((h, idx) => (
+                <li key={`${h.subject}-${h.courseNumber}`} role="none">
                   <button
                     type="button"
+                    id={`course-search-hit-${idx}`}
+                    role="option"
+                    aria-selected={searchActiveIndex === idx}
                     className={cn(
                       "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/60",
                       picked?.subject === h.subject &&
                         picked?.courseNumber === h.courseNumber &&
                         "bg-muted",
+                      searchActiveIndex === idx && "bg-muted/80 ring-1 ring-ring/60",
                     )}
                     onClick={() => onPickCourseFromSearch(h)}
+                    onMouseEnter={() => setSearchActiveIndex(idx)}
                   >
                     <span className="font-mono text-foreground">
                       {h.subjectCourse ?? `${h.subject} ${h.courseNumber}`}
@@ -325,7 +384,12 @@ export function CourseManager({ termCode }: Props) {
           ) : null}
           {picked && prefetchPackPending ? (
             <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
-              Loading section data for this course…
+              Loading section data for this course… Add will turn on when ready.
+            </p>
+          ) : null}
+          {picked && !prefetchPackPending && !prefetchPackError && hasPackForPicked ? (
+            <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
+              Ready to add — press Add or wait for automatic add.
             </p>
           ) : null}
           {picked && prefetchPackError ? (
@@ -376,13 +440,20 @@ export function CourseManager({ termCode }: Props) {
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="font-mono text-sm font-medium text-foreground">
-                  {item.subject} {item.courseNumber}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-mono text-sm font-medium text-foreground">
+                    {item.subject} {item.courseNumber}
+                  </p>
+                  {pack && linkedRows.length > 0 ? (
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Lab / discussion
+                    </span>
+                  ) : null}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {item.selectionKind === "unresolved"
-                    ? "Sections chosen automatically from valid schedules"
-                    : "Resolved from an earlier version"}
+                    ? "Sections follow the schedule you are viewing"
+                    : "Sections were pinned from an earlier planner version"}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

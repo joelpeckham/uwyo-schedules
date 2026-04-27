@@ -18,7 +18,7 @@ export function HeroSection() {
         </h1>
         <p className="mt-6 max-w-prose text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl">
           From course list to class schedule, in minutes. Pick your classes — we
-          generate every conflict-free weekly schedule from the live UW Banner
+          generate every conflict-free weekly schedule from the live UW course
           catalog.
         </p>
         <div className="mt-10 flex flex-wrap items-center gap-4">

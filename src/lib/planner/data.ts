@@ -1,5 +1,6 @@
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
+import { canonicalAggregateCourseTitle } from "@/lib/catalog/canonicalCourseTitleSql";
 import { and, asc, desc, eq, inArray, max, sql } from "drizzle-orm";
 import { bannerClockToMinutes } from "./banner-time";
 import {
@@ -153,7 +154,7 @@ export async function searchCourses(
       subject: schema.courses.subject,
       courseNumber: schema.courses.courseNumber,
       subjectCourse: schema.courses.subjectCourse,
-      previewTitle: max(schema.sections.courseTitle),
+      previewTitle: canonicalAggregateCourseTitle(),
     })
     .from(schema.courses)
     .innerJoin(

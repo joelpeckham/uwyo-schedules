@@ -3,12 +3,12 @@ export const HOME_FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "Where does this data come from?",
     answer:
-      "Section and meeting data are pulled from the University of Wyoming Banner catalog (the same system behind WyoWeb). We store a working copy so the planner can search and combine sections quickly.",
+      "Section and meeting data are pulled from the University of Wyoming course catalog. We store a working copy so the planner can search and combine sections quickly.",
   },
   {
     question: "How current is the catalog?",
     answer:
-      "We run scheduled ingest jobs to refresh the primary term on a short cadence and archive terms on a slower cadence. Seat counts and meeting details can still change in Banner after our last sync.",
+      "We run scheduled ingest jobs to refresh the primary term on a short cadence and archive terms on a slower cadence. Seat counts and meeting details can still change in the UW course catalog after our last sync.",
   },
   {
     question: "Does uwyoschedule register me for classes?",
@@ -18,12 +18,12 @@ export const HOME_FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "Is uwyoschedule an official University of Wyoming product?",
     answer:
-      "No. uwyoschedule is an independent planner built for UW students. Always double-check critical details (CRN, prerequisites, linked labs) in Banner before you register.",
+      "No. uwyoschedule is an independent planner built for UW students. Always double-check critical details (CRN, prerequisites, linked labs) in the UW course catalog before you register.",
   },
   {
     question: "How do linked sections work?",
     answer:
-      "Some courses require a lecture and lab or discussion that register together. When Banner marks sections as linked, we treat those combinations as a single choice so you do not accidentally pick incompatible pieces.",
+      "Some courses require a lecture and lab or discussion that register together. When the catalog marks sections as linked, we treat those combinations as a single choice so you do not accidentally pick incompatible pieces.",
   },
   {
     question: "What are instructor preferences?",

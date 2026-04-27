@@ -5,11 +5,11 @@ import { listTerms } from "@/lib/planner/data";
 import { absoluteUrl } from "@/lib/seo/site";
 
 export const metadata: Metadata = {
-  title: "UW Banner terms",
+  title: "UW course terms",
   description:
-    "Browse University of Wyoming Banner terms available in uwyoschedule — pick a term to explore subjects and courses.",
+    "Browse University of Wyoming terms available in uwyoschedule — pick a term to explore subjects and courses.",
   alternates: { canonical: "/terms" },
-  openGraph: { url: absoluteUrl("/terms"), title: "UW Banner terms · uwyoschedule" },
+  openGraph: { url: absoluteUrl("/terms"), title: "UW course terms · uwyoschedule" },
 };
 
 export default async function TermsIndexPage() {
@@ -31,10 +31,10 @@ export default async function TermsIndexPage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="font-heading text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
-        Banner terms
+        Terms
       </h1>
       <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-        Each term links to a subject index sourced from our latest Banner sync.
+        Each term links to a subject index sourced from our latest sync.
       </p>
       <ul className="mt-8 space-y-3">
         {terms.map((t) => (

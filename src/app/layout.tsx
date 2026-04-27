@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     template: "%s · uwyoschedule",
   },
   description:
-    "Build a University of Wyoming class schedule that fits, fast and automatic. Pick your courses; we generate every conflict-free weekly schedule from the live UW Banner catalog.",
+    "Build a University of Wyoming class schedule that fits, fast and automatic. Pick your courses; we generate every conflict-free weekly schedule from the live UW course catalog.",
   applicationName: "uwyoschedule",
   robots: {
     index: true,

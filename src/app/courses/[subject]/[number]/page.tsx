@@ -105,8 +105,8 @@ export default async function CourseDetailPage({ params }: Props) {
         University of Wyoming
       </h1>
       <p className="mt-4 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">
-        Catalog data from UW Banner via uwyoschedule. Seat counts and meeting
-        times can change; confirm in Banner before you register.
+        Catalog data from the UW course catalog via uwyoschedule. Seat counts and meeting
+        times can change; confirm in the UW course catalog before you register.
       </p>
 
       <section className="mt-10" aria-labelledby="sections-latest">

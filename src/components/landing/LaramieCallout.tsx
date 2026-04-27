@@ -23,7 +23,7 @@ export function LaramieCallout() {
         </h2>
         <p className="mt-4 text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
           Independent, free, and not affiliated with the University of Wyoming.
-          We read public Banner data so you can plan faster — then you register
+          We read the public UW course catalog so you can plan faster — then you register
           through official UW systems when your window opens.
         </p>
       </div>
