@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { SelectionKind } from "@/lib/planner/resolve-display-crns-shared";
 
 /** Banner term code, e.g. 202710 */
 export const terms = pgTable("terms", {
@@ -90,9 +91,9 @@ export const sections = pgTable(
     index("sections_term_linked_idx").on(t.termCode, t.isSectionLinked),
     index("sections_term_link_id_idx").on(t.termCode, t.linkIdentifier),
     // Cross-term `(subject, course_number)` lookups for evergreen course pages
-    // (`getCourseSeoDetail`, `listAllDistinctCourseKeys`). The existing
-    // `(term_code, subject)` indexes can't satisfy these queries because they
-    // are anchored on `term_code`.
+    // (`getCourseSeoDetail`, `listDistinctCourseKeysPage`, sitemap chunking).
+    // The existing `(term_code, subject)` indexes can't satisfy these queries
+    // because they are anchored on `term_code`.
     index("sections_subject_course_idx").on(t.subject, t.courseNumber),
   ],
 );
@@ -146,7 +147,13 @@ export const sectionFaculty = pgTable(
     primaryIndicator: boolean("primary_indicator"),
     rawJson: jsonb("faculty_raw_json"),
   },
-  (t) => [index("section_faculty_section_idx").on(t.termCode, t.sectionCrn)],
+  (t) => [
+    index("section_faculty_section_idx").on(t.termCode, t.sectionCrn),
+    // Backs `listSectionsForInstructorDisplayName` in
+    // `src/lib/seo/queries.ts`, which filters by `display_name` directly.
+    // Without this index every instructor SEO page does a sequential scan.
+    index("section_faculty_display_name_idx").on(t.displayName),
+  ],
 );
 
 export const sectionAttributes = pgTable(
@@ -240,8 +247,10 @@ export const plannerItems = pgTable(
     subject: text("subject").notNull(),
     courseNumber: text("course_number").notNull(),
     displayColor: text("display_color").notNull(),
-    /** `unresolved` | `single_crn` | `linked_bundle` */
-    selectionKind: text("selection_kind").notNull(),
+    /** `unresolved` | `single_crn` | `linked_bundle`. Refined at the type level
+     * via `$type<SelectionKind>()` so callers don't need to assert when reading
+     * planner rows — all writers must validate the union before persisting. */
+    selectionKind: text("selection_kind").$type<SelectionKind>().notNull(),
     anchorCrn: text("anchor_crn"),
     linkedBundleId: integer("linked_bundle_id").references(
       () => linkedBundles.id,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { bannerIngestWorkflow } from "@/workflows/banner-ingest";
-import { tryAcquireCronLease } from "@/lib/cron-lease";
+import { releaseCronLease, tryAcquireCronLease } from "@/lib/cron-lease";
 
 /**
  * How long a banner-ingest cron lease is honored. The hot scrape typically
@@ -55,13 +55,39 @@ export async function GET(request: NextRequest) {
     return res;
   }
 
-  await start(bannerIngestWorkflow, [
-    {
-      mode,
-      includeLinkedArchive:
-        mode === "archive" ? includeLinkedArchive : undefined,
-    },
-  ]);
+  try {
+    await start(bannerIngestWorkflow, [
+      {
+        mode,
+        includeLinkedArchive:
+          mode === "archive" ? includeLinkedArchive : undefined,
+      },
+    ]);
+  } catch (err) {
+    // Releasing the lease lets the next cron tick retry instead of silently
+    // skipping for the rest of the lease window. We deliberately swallow any
+    // error from the release itself; logging the original failure is more
+    // valuable for diagnosis.
+    try {
+      await releaseCronLease(leaseKey);
+    } catch (releaseErr) {
+      console.error(
+        "banner-ingest cron: failed to release lease after start error",
+        releaseErr,
+      );
+    }
+    console.error("banner-ingest cron: workflow start failed", err);
+    const res = NextResponse.json(
+      {
+        started: false,
+        mode,
+        error: "Workflow start failed; lease released for retry.",
+      },
+      { status: 500 },
+    );
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return res;
+  }
 
   const res = NextResponse.json({
     started: true,

@@ -96,10 +96,15 @@ export function filterFeasibleSwapGhosts(params: {
   scheduleTypeByCrn: Map<string, string | null>;
   rawGhosts: SwapGhostMeeting[];
   /**
-   * When set (unresolved pin-drag), require this in addition to swap.ok.
-   * Uses the same global solve as the planner so ghosts match commit semantics.
+   * When set (unresolved pin-drag), require ghost CRNs to be in this set in
+   * addition to passing swap.ok. Pass `null` for "unknown" (e.g. packs still
+   * loading) — ghosts are then allowed through and re-checked on commit.
+   *
+   * Computed once per drag start via
+   * `feasibleSinglePinChoicesForDrag` so a single drag does not fan out
+   * into one full DFS solve per ghost.
    */
-  pinDragGlobalFeasibleFromPinnedCrn?: (pinnedCrn: string) => boolean;
+  pinDragFeasiblePinnedCrns?: ReadonlySet<string> | null;
 }): SwapGhostMeeting[] {
   const {
     catalog,
@@ -112,7 +117,7 @@ export function filterFeasibleSwapGhosts(params: {
     facultyByCrn,
     scheduleTypeByCrn,
     rawGhosts,
-    pinDragGlobalFeasibleFromPinnedCrn,
+    pinDragFeasiblePinnedCrns,
   } = params;
 
   const membersByBundleId = buildMembersByBundleId(
@@ -146,8 +151,10 @@ export function filterFeasibleSwapGhosts(params: {
     );
     if (!swap.ok) continue;
 
-    if (pinDragGlobalFeasibleFromPinnedCrn) {
-      if (!pinDragGlobalFeasibleFromPinnedCrn(g.crn)) continue;
+    if (pinDragFeasiblePinnedCrns !== undefined) {
+      if (pinDragFeasiblePinnedCrns !== null && !pinDragFeasiblePinnedCrns.has(g.crn)) {
+        continue;
+      }
       feasibleCrns.add(g.crn);
       continue;
     }

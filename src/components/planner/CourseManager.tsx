@@ -6,8 +6,7 @@ import {
   searchCoursesAction,
   updatePlannerItemColorAction,
 } from "@/app/planner/actions";
-import type { CourseSearchRow } from "@/lib/planner/data";
-import type { PlannerItemRow } from "@/lib/planner/data";
+import type { CourseSearchRow, PlannerItemRow } from "@/lib/planner/data";
 import {
   INSTRUCTOR_SELECT_ANY,
   linkedScheduleTypeRows,

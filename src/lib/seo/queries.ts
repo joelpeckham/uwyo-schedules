@@ -419,8 +419,18 @@ export async function listTopCourseKeysBySectionCount(
   }));
 }
 
-export async function listAllDistinctCourseKeys(
+export async function countDistinctCourseKeys(db: Database): Promise<number> {
+  const rows = await db
+    .select({
+      n: sql<number>`count(distinct (${schema.sections.subject}, ${schema.sections.courseNumber}))::int`,
+    })
+    .from(schema.sections);
+  return rows[0]?.n ?? 0;
+}
+
+export async function listDistinctCourseKeysPage(
   db: Database,
+  opts: { limit: number; offset: number },
 ): Promise<
   { subject: string; courseNumber: string; lastMod: Date | null }[]
 > {
@@ -431,7 +441,10 @@ export async function listAllDistinctCourseKeys(
       lastMod: max(schema.sections.updatedAt),
     })
     .from(schema.sections)
-    .groupBy(schema.sections.subject, schema.sections.courseNumber);
+    .groupBy(schema.sections.subject, schema.sections.courseNumber)
+    .orderBy(asc(schema.sections.subject), asc(schema.sections.courseNumber))
+    .limit(opts.limit)
+    .offset(opts.offset);
   return rows.map((r) => ({
     subject: r.subject,
     courseNumber: r.courseNumber,

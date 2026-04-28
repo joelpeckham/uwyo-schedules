@@ -24,8 +24,20 @@ export function SiteChrome({
           </Link>
           {/* `HeaderNav` calls `usePathname()` for active-link styling, which
               is uncached/dynamic data under Cache Components. Wrap it in a
-              boundary so the surrounding shell can still prerender. */}
-          <Suspense fallback={null}>
+              boundary so the surrounding shell can still prerender. The
+              fallback reserves the same height so the prerender doesn't
+              shift when the client nav hydrates. */}
+          <Suspense
+            fallback={
+              <div
+                aria-hidden
+                className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:gap-6"
+              >
+                <div className="hidden h-8 w-full items-center gap-x-4 gap-y-2 sm:flex" />
+                <div className="flex h-8 flex-wrap items-center gap-2 sm:gap-4" />
+              </div>
+            }
+          >
             <HeaderNav actions={actions} />
           </Suspense>
         </div>

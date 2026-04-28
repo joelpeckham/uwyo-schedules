@@ -2,6 +2,11 @@ import { normalizeScheduleTypeKey } from "@/lib/planner/swap-helpers";
 
 const SECTION_PINS_DOC_VERSION = 1 as const;
 
+/** Match MAX_SCHEDULE_TYPE_KEYS-style guardrails so persisted JSONB stays small. */
+const MAX_PIN_TYPE_KEYS = 16;
+const MAX_PIN_KEY_LENGTH = 64;
+const MAX_PIN_VALUE_LENGTH = 64;
+
 type PlannerSectionPinsDocV1 = {
   v: typeof SECTION_PINS_DOC_VERSION;
   /** Normalized schedule-type key → pinned CRN for that type only. */
@@ -23,10 +28,17 @@ export function parseSectionPinsJson(raw: unknown): PlannerSectionPinsDocV1 {
     return { ...EMPTY_SECTION_PINS };
   }
   const byType: Record<string, string> = {};
+  let kept = 0;
   for (const [k, v] of Object.entries(byTypeRaw)) {
-    if (typeof k !== "string" || k.length === 0) continue;
-    if (typeof v !== "string" || v.trim().length === 0) continue;
-    byType[k] = v.trim();
+    if (kept >= MAX_PIN_TYPE_KEYS) break;
+    if (typeof k !== "string" || k.length === 0 || k.length > MAX_PIN_KEY_LENGTH) {
+      continue;
+    }
+    if (typeof v !== "string") continue;
+    const trimmed = v.trim();
+    if (trimmed.length === 0 || trimmed.length > MAX_PIN_VALUE_LENGTH) continue;
+    byType[k] = trimmed;
+    kept += 1;
   }
   return { v: SECTION_PINS_DOC_VERSION, byType };
 }

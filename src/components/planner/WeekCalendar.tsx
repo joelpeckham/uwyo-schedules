@@ -21,7 +21,9 @@ import {
 import type { PlannerItemRow } from "@/lib/planner/data";
 import { filterFeasibleSwapGhosts } from "@/lib/planner/planner-swap-feasibility";
 import { pickCourseSwapSnap } from "@/lib/planner/course-swap-snap";
-import { plannerItemsFeasibility } from "@/lib/planner/solve-schedules-core";
+import {
+  feasibleSinglePinChoicesForDrag,
+} from "@/lib/planner/solve-schedules-core";
 import { cn } from "@/lib/utils";
 import {
   useCallback,
@@ -530,9 +532,21 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     setBusyDialogOpen(true);
   }, []);
 
+  // Reset transient form state on close so the next time the dialog opens
+  // we don't briefly flash the previous edit's day/time/label values
+  // before the parent assigns fresh ones (or before an Escape/overlay
+  // close leaks the stale `editingBlackoutId`).
+  const handleBusyDialogOpenChange = useCallback((next: boolean) => {
+    setBusyDialogOpen(next);
+    if (!next) {
+      setEditingBlackoutId(null);
+      setFormLabel("");
+    }
+  }, []);
+
   const commitBusyForm = useCallback(() => {
     if (!editingBlackoutId) {
-      setBusyDialogOpen(false);
+      handleBusyDialogOpenChange(false);
       return;
     }
     const body = clampInterval({
@@ -542,7 +556,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       label: formLabel.trim() || undefined,
     });
     if (body.end - body.start < 30) {
-      setBusyDialogOpen(false);
+      handleBusyDialogOpenChange(false);
       return;
     }
     const next: PlannerBlackoutItemV1 = {
@@ -556,13 +570,14 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       v: 1,
       items: prev.items.map((i) => (i.id === editingBlackoutId ? next : i)),
     }));
-    setBusyDialogOpen(false);
+    handleBusyDialogOpenChange(false);
   }, [
     editingBlackoutId,
     formDayIndex,
     formEndMin,
     formLabel,
     formStartMin,
+    handleBusyDialogOpenChange,
     setBlackouts,
   ]);
 
@@ -572,8 +587,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       v: 1,
       items: prev.items.filter((i) => i.id !== editingBlackoutId),
     }));
-    setBusyDialogOpen(false);
-  }, [editingBlackoutId, setBlackouts]);
+    handleBusyDialogOpenChange(false);
+  }, [editingBlackoutId, handleBusyDialogOpenChange, setBlackouts]);
 
   const endDragToBlackout = useCallback(
     (clientY: number) => {
@@ -759,40 +774,32 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [courseDragSession, endCourseDrag]);
 
-  const pinDragGlobalFeasibleFromPinnedCrnForBlock = useCallback(
-    (b: CalendarBlock) => {
+  // Drag UX: pin-drag feasibility for an unresolved block's same-type swap
+  // ghosts. Returns `undefined` when the dragged item isn't unresolved (no
+  // additional filtering), `null` when packs are still loading (treat all as
+  // feasible — re-checked on commit), or a Set of CRNs that produce a
+  // complete schedule. Computed once per drag in a single batched DFS pass
+  // rather than once per ghost CRN.
+  const pinDragFeasiblePinnedCrnsForBlock = useCallback(
+    (b: CalendarBlock, candidateCrns: readonly string[]): ReadonlySet<string> | null | undefined => {
       if (
         plannerItemsById.get(b.plannerItemId)?.selectionKind !==
         "unresolved"
       ) {
         return undefined;
       }
-      return (pinnedCrn: string) => {
-        const next = plannerItems.map((r) => {
-          if (r.id !== b.plannerItemId || r.selectionKind !== "unresolved") {
-            return r;
-          }
-          const pins = parseSectionPinsJson(r.sectionPins);
-          return {
-            ...r,
-            sectionPins: {
-              v: pins.v,
-              byType: {
-                ...pins.byType,
-                [b.sectionScheduleTypeKey]: pinnedCrn,
-              },
-            },
-          };
-        });
-        // Drag UX: optimistically allow ghost while packs are still loading
-        // (treat "unknown" as feasible). Definitively-infeasible ghosts get
-        // hidden so users only see drop targets that actually work.
-        const f = plannerItemsFeasibility(next, solvePacks, {
+      const result = feasibleSinglePinChoicesForDrag(
+        plannerItems,
+        solvePacks,
+        b.plannerItemId,
+        b.sectionScheduleTypeKey,
+        candidateCrns,
+        {
           requireOpenSections,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackouts),
-        });
-        return f !== "infeasible";
-      };
+        },
+      );
+      return result;
     },
     [plannerItems, plannerItemsById, solvePacks, requireOpenSections, blackouts],
   );
@@ -862,6 +869,14 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           sourceScheduleTypeKey: b.sectionScheduleTypeKey,
           sourceMeetingScheduleType: b.meetingScheduleType,
         });
+        const candidateCrns: string[] = [];
+        const seenCandidate = new Set<string>();
+        for (const g of raw) {
+          if (g.crn === b.sectionCrn) continue;
+          if (seenCandidate.has(g.crn)) continue;
+          seenCandidate.add(g.crn);
+          candidateCrns.push(g.crn);
+        }
         const ghosts = filterFeasibleSwapGhosts({
           catalog,
           draggedBlock: b,
@@ -873,8 +888,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           facultyByCrn: mergedPackConstraintMaps.facultyByCrn,
           scheduleTypeByCrn: mergedPackConstraintMaps.scheduleTypeByCrn,
           rawGhosts: raw,
-          pinDragGlobalFeasibleFromPinnedCrn:
-            pinDragGlobalFeasibleFromPinnedCrnForBlock(b),
+          pinDragFeasiblePinnedCrns: pinDragFeasiblePinnedCrnsForBlock(
+            b,
+            candidateCrns,
+          ),
         });
         const snapped = pickCourseSnap(
           lastCoursePointerRef.current.x,
@@ -931,7 +948,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       mergedPackConstraintMaps.scheduleTypeByCrn,
       mergedPackConstraintMaps.seatsByCrn,
       pickCourseSnap,
-      pinDragGlobalFeasibleFromPinnedCrnForBlock,
+      pinDragFeasiblePinnedCrnsForBlock,
       requireOpenSections,
     ],
   );
@@ -1268,8 +1285,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         <div className="border-b border-border bg-muted/20 p-3 sm:p-4">
           {infeasibilityHints.length > 0 ? (
             <ul className="mb-3 list-inside list-disc space-y-2 text-sm text-foreground">
-              {infeasibilityHints.map((h, i) => (
-                <li key={i}>{h}</li>
+              {infeasibilityHints.map((h) => (
+                <li key={h}>{h}</li>
               ))}
             </ul>
           ) : null}
@@ -1715,7 +1732,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
       <BusyTimeDialog
         open={busyDialogOpen}
-        onOpenChange={setBusyDialogOpen}
+        onOpenChange={handleBusyDialogOpenChange}
         editingId={editingBlackoutId}
         dayIndex={formDayIndex}
         startMin={formStartMin}
@@ -1727,7 +1744,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         onEndChange={setFormEndMin}
         onLabelChange={setFormLabel}
         onRemove={removeEditingBlackout}
-        onCancel={() => setBusyDialogOpen(false)}
+        onCancel={() => handleBusyDialogOpenChange(false)}
         onSave={commitBusyForm}
       />
     </section>

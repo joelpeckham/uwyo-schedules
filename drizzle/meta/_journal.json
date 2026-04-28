@@ -64,6 +64,13 @@
       "when": 1777700000000,
       "tag": "0008_catalog_action_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777800000000,
+      "tag": "0009_section_faculty_display_name_idx",
+      "breakpoints": true
     }
   ]
 }

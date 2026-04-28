@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Inter, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { SkipToMain } from "@/components/seo/SkipToMain";
@@ -80,6 +81,15 @@ export const viewport: Viewport = {
   ],
 };
 
+/**
+ * Inline script that runs before paint, applies the stored theme preference
+ * to <html>, and prevents the brief light-to-dark (or vice versa) flash that
+ * happens when a useEffect-based theme toggle hydrates.
+ *
+ * Mirrors the storage key and "system" semantics in `ThemeToggle`.
+ */
+const NO_THEME_FLASH_SCRIPT = `(()=>{try{var k='uwyoschedule-theme';var v=localStorage.getItem(k);var d=v==='dark'||(v!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -91,10 +101,14 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${inter.variable} ${sourceSerif4.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: NO_THEME_FLASH_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col font-sans">
         <SkipToMain />
         {children}
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

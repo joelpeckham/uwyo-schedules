@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { createDb } from "@/db/index";
 import * as schema from "@/db/schema";
@@ -28,5 +29,15 @@ export async function tryAcquireCronLease(
     })
     .returning({ key: schema.cronLease.key });
   return rows.length > 0;
+}
+
+/**
+ * Release a lease unconditionally. Used when the work the lease was meant to
+ * cover failed to start, so the next cron tick is allowed to retry instead of
+ * waiting for the lease window to expire.
+ */
+export async function releaseCronLease(key: string): Promise<void> {
+  const db = createDb();
+  await db.delete(schema.cronLease).where(eq(schema.cronLease.key, key));
 }
 

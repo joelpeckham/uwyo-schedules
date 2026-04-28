@@ -206,6 +206,86 @@ export async function listSectionsForCourse(
   }));
 }
 
+/**
+ * Batched section lookup for many `(subject, courseNumber)` pairs in one
+ * query. The map key is `${subject}\u0000${courseNumber}` (matching how
+ * `coursesTouched` keys are constructed elsewhere) so callers can rejoin
+ * with a tuple.
+ */
+export async function listSectionsForCourseKeys(
+  db: Database,
+  termCode: string,
+  pairs: { subject: string; courseNumber: string }[],
+): Promise<
+  Map<
+    string,
+    {
+      crn: string;
+      sequenceNumber: string | null;
+      courseTitle: string | null;
+      scheduleTypeDescription: string | null;
+      subjectCourse: string | null;
+      isSectionLinked: boolean | null;
+    }[]
+  >
+> {
+  const out = new Map<
+    string,
+    {
+      crn: string;
+      sequenceNumber: string | null;
+      courseTitle: string | null;
+      scheduleTypeDescription: string | null;
+      subjectCourse: string | null;
+      isSectionLinked: boolean | null;
+    }[]
+  >();
+  if (pairs.length === 0) return out;
+  const subjects = [...new Set(pairs.map((p) => p.subject))];
+  const numbers = [...new Set(pairs.map((p) => p.courseNumber))];
+  const wantKeys = new Set(pairs.map((p) => `${p.subject}\u0000${p.courseNumber}`));
+
+  // Pull every section in the matching subject ∩ courseNumber rectangle, then
+  // filter client-side back to the requested pairs. Postgres can use the
+  // existing `(subject, courseNumber)` index for both predicates.
+  const raw = await db
+    .select({
+      subject: schema.sections.subject,
+      courseNumber: schema.sections.courseNumber,
+      crn: schema.sections.crn,
+      sequenceNumber: schema.sections.sequenceNumber,
+      courseTitle: schema.sections.courseTitle,
+      scheduleTypeDescription: schema.sections.scheduleTypeDescription,
+      subjectCourse: schema.sections.subjectCourse,
+      isSectionLinked: schema.sections.isSectionLinked,
+    })
+    .from(schema.sections)
+    .where(
+      and(
+        eq(schema.sections.termCode, termCode),
+        inArray(schema.sections.subject, subjects),
+        inArray(schema.sections.courseNumber, numbers),
+      ),
+    )
+    .orderBy(schema.sections.crn);
+
+  for (const r of raw) {
+    const key = `${r.subject}\u0000${r.courseNumber}`;
+    if (!wantKeys.has(key)) continue;
+    const list = out.get(key) ?? [];
+    list.push({
+      crn: r.crn,
+      sequenceNumber: decodeHtmlEntities(r.sequenceNumber),
+      courseTitle: decodeHtmlEntities(r.courseTitle),
+      scheduleTypeDescription: decodeHtmlEntities(r.scheduleTypeDescription),
+      subjectCourse: decodeHtmlEntities(r.subjectCourse),
+      isSectionLinked: r.isSectionLinked,
+    });
+    out.set(key, list);
+  }
+  return out;
+}
+
 type LinkedBundleOption = {
   id: number;
   bundleIndex: number;
@@ -295,17 +375,6 @@ export async function listLinkedBundleOptionsForAnchors(
   }
 
   return out;
-}
-
-export async function listLinkedBundleOptions(
-  db: Database,
-  termCode: string,
-  anchorCrn: string,
-): Promise<LinkedBundleOption[]> {
-  const byAnchor = await listLinkedBundleOptionsForAnchors(db, termCode, [
-    anchorCrn,
-  ]);
-  return byAnchor.get(anchorCrn) ?? [];
 }
 
 async function loadSectionLabels(

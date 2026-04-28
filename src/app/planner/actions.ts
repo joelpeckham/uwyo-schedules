@@ -41,9 +41,9 @@ import { catalogActionClientKey } from "@/lib/planner/catalog-action-client-key"
 import { takeCatalogActionRateLimit } from "@/lib/planner/catalog-action-rate-limit";
 import {
   getSectionDetail,
-  listLinkedBundleOptions,
+  listLinkedBundleOptionsForAnchors,
   listPlannerItems,
-  listSectionsForCourse,
+  listSectionsForCourseKeys,
   searchCourses,
   type CourseSearchRow,
   type PlannerItemRow,
@@ -116,26 +116,6 @@ async function requireSessionId(): Promise<string> {
   return raw;
 }
 
-async function validateLinkedBundle(
-  db: ReturnType<typeof createDb>,
-  termCode: string,
-  anchorCrn: string,
-  bundleId: number,
-): Promise<boolean> {
-  const [b] = await db
-    .select({ id: schema.linkedBundles.id })
-    .from(schema.linkedBundles)
-    .where(
-      and(
-        eq(schema.linkedBundles.id, bundleId),
-        eq(schema.linkedBundles.termCode, termCode),
-        eq(schema.linkedBundles.anchorCrn, anchorCrn),
-      ),
-    )
-    .limit(1);
-  return !!b;
-}
-
 /** Add a course to the wish list (sections chosen automatically later). */
 export async function addPlannerCourseWishAction(input: {
   termCode: string;
@@ -198,6 +178,9 @@ export async function solveSchedulesAction(
   | { ok: false; error: string }
 > {
   try {
+    if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
+      return { ok: false, error: "Too many requests. Try again in a moment." };
+    }
     const sessionId = await requireSessionId();
     if (!termCode) return { ok: false, error: "Missing term." };
     const db = createDb();
@@ -222,6 +205,9 @@ export async function prefetchCourseSolvePackAction(
   { ok: true; pack: CourseSolvePack } | { ok: false; error: string }
 > {
   try {
+    if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
+      return { ok: false, error: "Too many requests. Try again in a moment." };
+    }
     if (!termCode.trim()) return { ok: false, error: "Missing term." };
     if (!subject.trim() || !courseNumber.trim()) {
       return { ok: false, error: "Missing course." };
@@ -330,11 +316,123 @@ export async function searchCoursesAction(
   return searchCourses(db, termCode, query);
 }
 
+/** Keys the client SectionDetailPanels actually renders. Anything else from
+ * Banner is dropped before crossing the wire so we cannot accidentally leak
+ * unrelated fields if Banner's API surface changes. */
+const SECTION_DETAIL_TOP_KEYS = new Set([
+  "subject",
+  "courseNumber",
+  "sequenceNumber",
+  "subjectCourse",
+  "courseReferenceNumber",
+  "courseTitle",
+  "scheduleTypeDescription",
+  "campusDescription",
+  "partOfTerm",
+  "termDesc",
+  "term",
+  "creditHours",
+  "creditHourLow",
+  "creditHourHigh",
+  "creditHourIndicator",
+  "enrollment",
+  "maximumEnrollment",
+  "seatsAvailable",
+  "waitCapacity",
+  "waitCount",
+  "waitAvailable",
+  "isSectionLinked",
+  "linkIdentifier",
+  "openSection",
+  "faculty",
+  "meetingsFaculty",
+  "sectionAttributes",
+  "status",
+]);
+
+const FACULTY_KEYS = new Set(["displayName", "emailAddress", "primaryIndicator"]);
+const MEETING_TIME_KEYS = new Set([
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+  "beginTime",
+  "endTime",
+  "buildingDescription",
+  "building",
+  "room",
+  "startDate",
+  "endDate",
+  "meetingTypeDescription",
+  "meetingType",
+  "meetingScheduleType",
+]);
+const ATTRIBUTE_KEYS = new Set(["code", "description", "isZTCAttribute"]);
+const STATUS_KEYS = new Set([
+  "sectionOpen",
+  "select",
+  "restricted",
+  "timeConflict",
+  "sectionStatus",
+]);
+
+function pickKeys(
+  src: unknown,
+  allowed: Set<string>,
+): Record<string, unknown> | null {
+  if (src === null || typeof src !== "object" || Array.isArray(src)) return null;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(src as Record<string, unknown>)) {
+    if (allowed.has(k)) out[k] = v;
+  }
+  return out;
+}
+
+function sanitizeSectionRawJson(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  let obj: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  const top = pickKeys(obj, SECTION_DETAIL_TOP_KEYS);
+  if (!top) return null;
+  if (Array.isArray(top.faculty)) {
+    top.faculty = (top.faculty as unknown[])
+      .map((f) => pickKeys(f, FACULTY_KEYS))
+      .filter((f): f is Record<string, unknown> => f !== null);
+  }
+  if (Array.isArray(top.meetingsFaculty)) {
+    top.meetingsFaculty = (top.meetingsFaculty as unknown[])
+      .map((m) => {
+        if (m === null || typeof m !== "object" || Array.isArray(m)) return null;
+        const mt = (m as Record<string, unknown>).meetingTime;
+        return { meetingTime: pickKeys(mt, MEETING_TIME_KEYS) };
+      })
+      .filter((m): m is { meetingTime: Record<string, unknown> | null } => m !== null);
+  }
+  if (Array.isArray(top.sectionAttributes)) {
+    top.sectionAttributes = (top.sectionAttributes as unknown[])
+      .map((a) => pickKeys(a, ATTRIBUTE_KEYS))
+      .filter((a): a is Record<string, unknown> => a !== null);
+  }
+  const sanitizedStatus = pickKeys(top.status, STATUS_KEYS);
+  if (sanitizedStatus) top.status = sanitizedStatus;
+  else delete top.status;
+  return top;
+}
+
 export async function getSectionDetailAction(
   termCode: string,
   crn: string,
 ): Promise<{
-  rawJson: unknown;
+  rawJson: Record<string, unknown> | null;
   title: string;
 } | null> {
   if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
@@ -351,7 +449,7 @@ export async function getSectionDetailAction(
     ]
       .filter(Boolean)
       .join(" · ") || `CRN ${crn}`;
-  return { rawJson: r.rawJson, title };
+  return { rawJson: sanitizeSectionRawJson(r.rawJson), title };
 }
 
 /** Full planner rows + catalog for client-side derivation (calendar, swap). */
@@ -371,6 +469,9 @@ export async function loadPlannerCatalogBootstrapAction(
   | { ok: false; error: string }
 > {
   try {
+    if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
+      return { ok: false, error: "Too many requests. Try again in a moment." };
+    }
     const sessionId = await requireSessionId();
     if (!termCode) return { ok: false, error: "Missing term." };
     const db = createDb();
@@ -394,62 +495,129 @@ export async function loadPlannerCatalogBootstrapAction(
   }
 }
 
-async function assertPlannerRowPersistable(
+/**
+ * Batched validation for an entire planner cart in three round-trips
+ * (sections, bundles+members, bundle-id existence) instead of two queries
+ * per row. Up to 40 rows previously meant ~80 sequential queries running
+ * before the transaction even opened.
+ */
+async function assertPlannerRowsPersistable(
   db: ReturnType<typeof createDb>,
   termCode: string,
-  row: PlannerItemRow,
+  rows: PlannerItemRow[],
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (row.selectionKind === "unresolved") {
-    if (row.anchorCrn != null || row.linkedBundleId != null) {
-      return { ok: false, error: "Unresolved planner row must not have a section." };
+  const courseKeyPairs = new Map<string, { subject: string; courseNumber: string }>();
+  const anchorCrns: string[] = [];
+
+  for (const row of rows) {
+    // Defensive runtime check at the DB boundary: server actions accept
+    // arbitrary client payloads, so don't trust the type-level narrowing of
+    // `PlannerItemRow.selectionKind` from `$type<SelectionKind>()` — verify
+    // it really is one of the three valid values before persisting.
+    if (
+      row.selectionKind !== "unresolved" &&
+      row.selectionKind !== "single_crn" &&
+      row.selectionKind !== "linked_bundle"
+    ) {
+      return { ok: false, error: "Invalid selection kind in planner data." };
     }
-    const pins = parseSectionPinsJson(row.sectionPins);
-    if (Object.keys(pins.byType).length === 0) return { ok: true };
-    const sections = await listSectionsForCourse(
-      db,
-      termCode,
-      row.subject,
-      row.courseNumber,
-    );
-    const byCrn = new Map(sections.map((s) => [s.crn, s]));
-    for (const [typeKey, pinnedCrn] of Object.entries(pins.byType)) {
-      const sec = byCrn.get(pinnedCrn);
-      if (!sec) {
-        return { ok: false, error: "Pinned section is not part of this course." };
+    if (row.selectionKind === "unresolved") {
+      if (row.anchorCrn != null || row.linkedBundleId != null) {
+        return { ok: false, error: "Unresolved planner row must not have a section." };
       }
-      if (normalizeScheduleTypeKey(sec.scheduleTypeDescription) !== typeKey) {
-        return { ok: false, error: "Pinned section does not match schedule type." };
+      const pins = parseSectionPinsJson(row.sectionPins);
+      if (Object.keys(pins.byType).length === 0) continue;
+      const key = `${row.subject}\u0000${row.courseNumber}`;
+      if (!courseKeyPairs.has(key)) {
+        courseKeyPairs.set(key, {
+          subject: row.subject,
+          courseNumber: row.courseNumber,
+        });
       }
+      continue;
     }
-    return { ok: true };
-  }
-  const pinsOnResolved = parseSectionPinsJson(row.sectionPins);
-  if (Object.keys(pinsOnResolved.byType).length > 0) {
-    return {
-      ok: false,
-      error: "Section pins are only valid while the course uses automatic sections.",
-    };
-  }
-  if (row.anchorCrn == null) {
-    return { ok: false, error: "Resolved planner row is missing a section." };
-  }
-  const bundles = await listLinkedBundleOptions(db, termCode, row.anchorCrn);
-  if (bundles.length > 0) {
-    if (row.selectionKind !== "linked_bundle" || row.linkedBundleId == null) {
+    const pinsOnResolved = parseSectionPinsJson(row.sectionPins);
+    if (Object.keys(pinsOnResolved.byType).length > 0) {
       return {
         ok: false,
-        error: "Linked registration required for one or more rows.",
+        error: "Section pins are only valid while the course uses automatic sections.",
       };
     }
-    const ok = await validateLinkedBundle(
-      db,
-      termCode,
-      row.anchorCrn,
-      row.linkedBundleId,
-    );
-    if (!ok) return { ok: false, error: "Invalid linked bundle in planner data." };
-  } else if (row.selectionKind !== "single_crn") {
-    return { ok: false, error: "Invalid selection in planner data." };
+    if (row.anchorCrn == null) {
+      return { ok: false, error: "Resolved planner row is missing a section." };
+    }
+    anchorCrns.push(row.anchorCrn);
+  }
+
+  const [sectionsByCourse, bundlesByAnchor] = await Promise.all([
+    courseKeyPairs.size > 0
+      ? listSectionsForCourseKeys(db, termCode, [...courseKeyPairs.values()])
+      : Promise.resolve(
+          new Map<
+            string,
+            Awaited<ReturnType<typeof listSectionsForCourseKeys>> extends Map<
+              string,
+              infer V
+            >
+              ? V
+              : never
+          >(),
+        ),
+    anchorCrns.length > 0
+      ? listLinkedBundleOptionsForAnchors(db, termCode, anchorCrns)
+      : Promise.resolve(
+          new Map<
+            string,
+            Awaited<ReturnType<typeof listLinkedBundleOptionsForAnchors>> extends Map<
+              string,
+              infer V
+            >
+              ? V
+              : never
+          >(),
+        ),
+  ]);
+
+  for (const row of rows) {
+    if (row.selectionKind === "unresolved") {
+      const pins = parseSectionPinsJson(row.sectionPins);
+      if (Object.keys(pins.byType).length === 0) continue;
+      const key = `${row.subject}\u0000${row.courseNumber}`;
+      const sections = sectionsByCourse.get(key) ?? [];
+      const byCrn = new Map(sections.map((s) => [s.crn, s]));
+      for (const [typeKey, pinnedCrn] of Object.entries(pins.byType)) {
+        const sec = byCrn.get(pinnedCrn);
+        if (!sec) {
+          return {
+            ok: false,
+            error: "Pinned section is not part of this course.",
+          };
+        }
+        if (normalizeScheduleTypeKey(sec.scheduleTypeDescription) !== typeKey) {
+          return {
+            ok: false,
+            error: "Pinned section does not match schedule type.",
+          };
+        }
+      }
+      continue;
+    }
+    if (row.anchorCrn == null) continue;
+    const bundles = bundlesByAnchor.get(row.anchorCrn) ?? [];
+    if (bundles.length > 0) {
+      if (row.selectionKind !== "linked_bundle" || row.linkedBundleId == null) {
+        return {
+          ok: false,
+          error: "Linked registration required for one or more rows.",
+        };
+      }
+      const matched = bundles.some((b) => b.id === row.linkedBundleId);
+      if (!matched) {
+        return { ok: false, error: "Invalid linked bundle in planner data." };
+      }
+    } else if (row.selectionKind !== "single_crn") {
+      return { ok: false, error: "Invalid selection in planner data." };
+    }
   }
   return { ok: true };
 }
@@ -479,9 +647,9 @@ export async function syncPlannerStateAction(
       }
       const prefs = validateInstructorPrefsPayload(row.instructorPrefs);
       if (!prefs.ok) return { ok: false, error: prefs.error };
-      const v = await assertPlannerRowPersistable(db, termCode, row);
-      if (!v.ok) return v;
     }
+    const v = await assertPlannerRowsPersistable(db, termCode, items);
+    if (!v.ok) return v;
 
     await db.transaction(async (tx) => {
       if (items.length === 0) {

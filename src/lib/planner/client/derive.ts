@@ -17,7 +17,6 @@ import type {
 import type {
   PlannerItemSelection,
   ResolvedPlannerSelection,
-  SelectionKind,
 } from "../resolve-display-crns-shared";
 import { resolveDisplayCrnsWithMemberMap } from "../resolve-display-crns-shared";
 
@@ -62,7 +61,7 @@ export function resolveItemDisplayCrns(
   membersByBundleId: Map<number, string[]>,
 ): string[] {
   const sel: PlannerItemSelection = {
-    selectionKind: item.selectionKind as SelectionKind,
+    selectionKind: item.selectionKind,
     anchorCrn: item.anchorCrn,
     linkedBundleId: item.linkedBundleId,
   };

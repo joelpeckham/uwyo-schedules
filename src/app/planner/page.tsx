@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { HomePlanner } from "@/components/planner/HomePlanner";
+import { PlannerSkeleton } from "@/components/planner/PlannerSkeleton";
 import { PlannerTermSelect } from "@/components/planner/PlannerTermSelect";
 import { PlannerJsonLd } from "@/components/seo/PlannerJsonLd";
 import { SiteChrome } from "@/components/seo/SiteChrome";
@@ -84,7 +85,7 @@ export default function PlannerPage({
   searchParams: Promise<{ term?: string }>;
 }) {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<PlannerSkeleton />}>
       <PlannerBody searchParams={searchParams} />
     </Suspense>
   );

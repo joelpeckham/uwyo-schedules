@@ -80,7 +80,7 @@ export async function loadPlannerCatalogBootstrap(
   const displayCrns = new Set<string>();
   for (const item of plannerItems) {
     const sel: PlannerItemSelection = {
-      selectionKind: item.selectionKind as PlannerItemSelection["selectionKind"],
+      selectionKind: item.selectionKind,
       anchorCrn: item.anchorCrn,
       linkedBundleId: item.linkedBundleId,
     };

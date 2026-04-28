@@ -46,6 +46,13 @@ const BLACKOUT_PERSIST_DEBOUNCE_MS = 800;
 const PACK_PREFETCH_DEBOUNCE_MS = 400;
 /** Single best schedule for the interactive planner (no paging). */
 const PLANNER_MAX_SOLUTIONS = 1 as const;
+/**
+ * Tight budget for synchronous "would this still fit?" probes that gate
+ * pin/toggle/drag previews. If DFS can't decide in this window we report
+ * "unknown" and let the action through; the next full recalculate will
+ * surface true infeasibility without making the user wait on the click.
+ */
+const PREVIEW_FEASIBILITY_TIMEOUT_MS = 250;
 
 const EMPTY_BLACKOUTS: PlannerBlackoutsDocV1 = { v: 1, items: [] };
 
@@ -176,26 +183,13 @@ export function PlannerProvider({
     solutionsRef.current = solutions;
   }, [solutions]);
 
-  useEffect(() => {
-    queueMicrotask(() => {
-      setPlannerItems(initialPlannerItems);
-    });
-  }, [initialPlannerItems]);
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      setCatalog(initialCatalog);
-    });
-  }, [initialCatalog]);
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      solvePacksRef.current = {};
-      setSolvePacks({});
-      // Invalidate any in-flight pack prefetches from the previous term.
-      prefetchGenRef.current += 1;
-    });
-  }, [termCode]);
+  // No prop-sync effects: the parent (HomePlanner) keys this provider on
+  // `termCode`, so a term switch remounts everything with fresh initial state.
+  // Re-hydrating from `initialPlannerItems` / `initialCatalog` on referential
+  // changes was a bug — an RSC refresh or cache invalidation could clobber
+  // unsaved client edits made between the last persist flush and the next
+  // server snapshot. The `refreshCatalogFromServer` callback is the only
+  // intentional re-hydration path.
 
   const itemsRef = useRef(plannerItems);
   const termRef = useRef(termCode);
@@ -256,9 +250,13 @@ export function PlannerProvider({
       blackouts,
       requireOpenSections,
       catalog,
+      // We only reach this branch when the main solve already returned
+      // zero schedules with the same items+packs+constraints, so skip the
+      // redundant base DFS that infeasibility-hints used to run.
+      baseAlreadyInfeasible: true,
     });
   }, [
-    solutions.length,
+    solutions,
     plannerItems,
     solvePacks,
     blackouts,
@@ -470,6 +468,7 @@ export function PlannerProvider({
       if (rows.length === 0) {
         if (myGen === recalcGenRef.current) {
           setSyncError(null);
+          setScheduleFeasibilityError(null);
           setSolutions([]);
           setSolutionsCapped(false);
           setSolutionsTimedOut(false);
@@ -523,10 +522,15 @@ export function PlannerProvider({
       if (myGen !== recalcGenRef.current) return;
       setSyncError(null);
       const sols = res.result.solutions;
+      // Re-read packs after the await: a concurrent prefetch may have
+      // completed during the server round-trip, in which case keeping the
+      // user's previous solution is preferable to clobbering it with the
+      // server result.
+      const packsAfter = solvePacksRef.current;
       if (
         prevSol &&
-        everyPlannerItemHasSolvePack(rows, packs) &&
-        scheduleSolutionStillValidForItems(rows, packs, prevSol, {
+        everyPlannerItemHasSolvePack(rows, packsAfter) &&
+        scheduleSolutionStillValidForItems(rows, packsAfter, prevSol, {
           requireOpenSections: requireOpen,
           blackoutIntervals: blackoutIv,
         })
@@ -568,6 +572,7 @@ export function PlannerProvider({
         plannerItemsFeasibility(next, solvePacksRef.current, {
           requireOpenSections: requireOpenRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
+          timeoutMs: PREVIEW_FEASIBILITY_TIMEOUT_MS,
         }) === "infeasible"
       ) {
         setScheduleFeasibilityError(
@@ -611,6 +616,7 @@ export function PlannerProvider({
         plannerItemsFeasibility(next, solvePacksRef.current, {
           requireOpenSections: requireOpenRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
+          timeoutMs: PREVIEW_FEASIBILITY_TIMEOUT_MS,
         }) === "infeasible"
       ) {
         setScheduleFeasibilityError(
@@ -649,6 +655,7 @@ export function PlannerProvider({
         plannerItemsFeasibility(next, solvePacksRef.current, {
           requireOpenSections: requireOpenRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
+          timeoutMs: PREVIEW_FEASIBILITY_TIMEOUT_MS,
         }) === "infeasible"
       ) {
         setScheduleFeasibilityError(
@@ -703,9 +710,21 @@ export function PlannerProvider({
     void recalculateSolutionsRef.current();
   }, [blackouts, scheduleBlackoutPersist]);
 
+  // Stable signature of which courses are in the cart, so unrelated edits
+  // (color, instructor prefs, pin toggles) don't restart the debounce timer
+  // or kick off a redundant prefetch round.
+  const plannerCourseKeysSignature = useMemo(() => {
+    const keys = plannerItems.map((row) =>
+      courseSolvePackCourseKey(row.subject, row.courseNumber),
+    );
+    keys.sort();
+    return keys.join("\u0001");
+  }, [plannerItems]);
+
   useEffect(() => {
-    if (plannerItems.length === 0) return;
+    if (plannerCourseKeysSignature.length === 0) return;
     const t = termCode;
+    let cancelled = false;
     const timer = setTimeout(() => {
       // Bump the prefetch generation so any in-flight Promise.all from a prior
       // term/items snapshot bails before merging stale packs (P0 #5).
@@ -734,6 +753,7 @@ export function PlannerProvider({
             prefetchCourseSolvePackAction(t, c.subject, c.courseNumber),
           ),
         );
+        if (cancelled) return;
         if (myGen !== prefetchGenRef.current) return;
         if (termRef.current !== t) return;
         for (const res of results) {
@@ -742,8 +762,11 @@ export function PlannerProvider({
         void recalculateSolutionsRef.current();
       })();
     }, PACK_PREFETCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [termCode, plannerItems, mergeSolvePack]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [termCode, plannerCourseKeysSignature, mergeSolvePack]);
 
   const value = useMemo<PlannerContextValue>(
     () => ({

@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignore": ["design-system/**", "src/lib/seo/cache-tags.ts"],
+  "ignore": ["design-system/**"],
   "ignoreDependencies": ["postcss"],
   "vitest": {
     "config": ["vitest.config.ts"],

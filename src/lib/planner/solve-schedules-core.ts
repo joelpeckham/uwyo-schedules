@@ -402,14 +402,48 @@ function mergeBundleMembers(
   }
 }
 
-function courseIntervalsOverlapBlackouts(
-  acc: TimeInterval[],
-  blackouts: TimeInterval[],
+/**
+ * For a sorted-by-(dayIndex, start) interval list, check whether any pair
+ * overlaps. O(n) given sorted input.
+ */
+function sortedHasInternalOverlap(intervals: TimeInterval[]): boolean {
+  for (let i = 1; i < intervals.length; i++) {
+    const prev = intervals[i - 1]!;
+    const curr = intervals[i]!;
+    if (prev.dayIndex === curr.dayIndex && curr.start < prev.end) return true;
+  }
+  return false;
+}
+
+function intervalSortCmp(a: TimeInterval, b: TimeInterval): number {
+  if (a.dayIndex !== b.dayIndex) return a.dayIndex - b.dayIndex;
+  return a.start - b.start;
+}
+
+/**
+ * Compare two interval lists (each sorted by dayIndex, start). Returns true
+ * if any interval in `a` overlaps any interval in `b`. O(n + m).
+ */
+function sortedAnyOverlap(
+  a: TimeInterval[],
+  b: TimeInterval[],
 ): boolean {
-  for (const b of blackouts) {
-    for (const iv of acc) {
-      if (intervalsOverlap(iv, b)) return true;
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const ai = a[i]!;
+    const bj = b[j]!;
+    if (ai.dayIndex < bj.dayIndex) {
+      i++;
+      continue;
     }
+    if (ai.dayIndex > bj.dayIndex) {
+      j++;
+      continue;
+    }
+    if (ai.start < bj.end && bj.start < ai.end) return true;
+    if (ai.end <= bj.end) i++;
+    else j++;
   }
   return false;
 }
@@ -437,7 +471,8 @@ export function runSolveSearch(params: {
     seatsByCrn,
     requireOpenSections,
   } = params;
-  const blackoutIntervals = params.blackoutIntervals ?? [];
+  const blackoutIntervalsRaw = params.blackoutIntervals ?? [];
+  const blackoutIntervals = blackoutIntervalsRaw.slice().sort(intervalSortCmp);
   const maxSolutions = params.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const started = Date.now();
@@ -457,24 +492,75 @@ export function runSolveSearch(params: {
   // candidate considered.
   const prefsByItemIndex = items.map((it) => parseInstructorPrefs(it.instructorPrefs));
 
-  function overlapsAccumulated(
-    cand: ScheduleCandidate,
-    excludeItemIndex: number,
-  ): boolean {
-    const acc: TimeInterval[] = [];
-    for (let ii = 0; ii < items.length; ii++) {
-      if (ii === excludeItemIndex) continue;
-      const ch = chosen[ii];
-      if (!ch) continue;
-      for (const crn of ch.crns) {
-        acc.push(...(meetingsByCrn.get(crn) ?? []));
+  // Precompute the flat, sorted interval list per candidate so the inner loop
+  // doesn't re-flatten / re-sort meetings on every visit. Candidates whose
+  // own meetings already self-overlap (or hit a blackout) are dropped here so
+  // the DFS never even considers them.
+  const candidateIntervalsCache = new WeakMap<ScheduleCandidate, TimeInterval[]>();
+  function intervalsForCandidate(cand: ScheduleCandidate): TimeInterval[] | null {
+    const cached = candidateIntervalsCache.get(cand);
+    if (cached) return cached;
+    const flat: TimeInterval[] = [];
+    for (const crn of cand.crns) {
+      const ivs = meetingsByCrn.get(crn);
+      if (!ivs) continue;
+      for (const iv of ivs) flat.push(iv);
+    }
+    flat.sort(intervalSortCmp);
+    if (sortedHasInternalOverlap(flat)) return null;
+    if (
+      blackoutIntervals.length > 0 &&
+      sortedAnyOverlap(flat, blackoutIntervals)
+    ) {
+      return null;
+    }
+    candidateIntervalsCache.set(cand, flat);
+    return flat;
+  }
+
+  /**
+   * Persistent interval stack mirroring the union of `chosen` candidates'
+   * meeting intervals (sorted). DFS pushes a candidate's intervals before
+   * recursing and pops them on the way back, so we never re-flatten.
+   */
+  const accIntervals: TimeInterval[] = [];
+
+  function pushSorted(intervals: TimeInterval[]): void {
+    if (accIntervals.length === 0) {
+      for (const iv of intervals) accIntervals.push(iv);
+      return;
+    }
+    const merged: TimeInterval[] = [];
+    let i = 0;
+    let j = 0;
+    while (i < accIntervals.length && j < intervals.length) {
+      if (intervalSortCmp(accIntervals[i]!, intervals[j]!) <= 0) {
+        merged.push(accIntervals[i]!);
+        i++;
+      } else {
+        merged.push(intervals[j]!);
+        j++;
       }
     }
-    for (const crn of cand.crns) {
-      acc.push(...(meetingsByCrn.get(crn) ?? []));
+    while (i < accIntervals.length) merged.push(accIntervals[i++]!);
+    while (j < intervals.length) merged.push(intervals[j++]!);
+    accIntervals.length = 0;
+    for (const iv of merged) accIntervals.push(iv);
+  }
+
+  function popIntervals(intervals: TimeInterval[]): void {
+    if (intervals.length === 0) return;
+    const removeSet = new Set<TimeInterval>(intervals);
+    let writeIdx = 0;
+    for (let readIdx = 0; readIdx < accIntervals.length; readIdx++) {
+      const iv = accIntervals[readIdx]!;
+      if (removeSet.has(iv)) {
+        removeSet.delete(iv);
+        continue;
+      }
+      accIntervals[writeIdx++] = iv;
     }
-    if (hasAnyOverlap(acc)) return true;
-    return courseIntervalsOverlapBlackouts(acc, blackoutIntervals);
+    accIntervals.length = writeIdx;
   }
 
   function dfs(depth: number): void {
@@ -527,10 +613,14 @@ export function runSolveSearch(params: {
       ) {
         continue;
       }
-      if (overlapsAccumulated(cand, itemIndex)) continue;
+      const candIntervals = intervalsForCandidate(cand);
+      if (candIntervals === null) continue;
+      if (sortedAnyOverlap(accIntervals, candIntervals)) continue;
 
       chosen[itemIndex] = cand;
+      pushSorted(candIntervals);
       dfs(depth + 1);
+      popIntervals(candIntervals);
       chosen[itemIndex] = null;
 
       if (capped || timedOut) return;
@@ -731,7 +821,11 @@ export function scheduleSolutionStillValidForItems(
     }
   }
   if (hasAnyOverlap(acc)) return false;
-  if (courseIntervalsOverlapBlackouts(acc, blackoutIntervals)) return false;
+  for (const b of blackoutIntervals) {
+    for (const iv of acc) {
+      if (intervalsOverlap(iv, b)) return false;
+    }
+  }
   return true;
 }
 
@@ -816,6 +910,13 @@ export function plannerItemsFeasibility(
     requireOpenSections: boolean;
     blackoutIntervals?: TimeInterval[];
     maxSolutions?: number;
+    /**
+     * Tight upper bound for synchronous UX gates (toggle/drag/pin). When the
+     * solver hits this we return `"unknown"` so the caller can let the
+     * preview through and rely on the next full recalc for the verdict —
+     * never block a user action on a slow probe.
+     */
+    timeoutMs?: number;
   },
 ): PlannerFeasibility {
   if (items.length === 0) return "feasible";
@@ -824,7 +925,282 @@ export function plannerItemsFeasibility(
     requireOpenSections: opts.requireOpenSections,
     blackoutIntervals: opts.blackoutIntervals ?? [],
     maxSolutions: opts.maxSolutions ?? DEFAULT_MAX_SOLUTIONS,
+    timeoutMs: opts.timeoutMs,
   });
-  return result.solutions.length > 0 ? "feasible" : "infeasible";
+  if (result.solutions.length > 0) return "feasible";
+  return result.timedOut ? "unknown" : "infeasible";
+}
+
+/**
+ * Batch feasibility for an unresolved item's `scheduleTypeKey` pin: returns
+ * the subset of `candidatePinCrns` for which a complete schedule still exists.
+ *
+ * Compared to running `plannerItemsFeasibility` once per ghost CRN this:
+ *   - merges constraint maps once instead of N times,
+ *   - builds non-dragged candidate lists once,
+ *   - reuses interval intersection precomputation,
+ *   - early-exits the dragged-item DFS layer when every CRN has a witness.
+ *
+ * Returns `null` when the dragged row is missing its pack ("unknown").
+ */
+export function feasibleSinglePinChoicesForDrag(
+  items: PlannerItemRow[],
+  packs: Record<string, CourseSolvePack>,
+  draggedItemId: number,
+  scheduleTypeKey: string,
+  candidatePinCrns: readonly string[],
+  opts: {
+    requireOpenSections: boolean;
+    blackoutIntervals?: TimeInterval[];
+    timeoutMs?: number;
+  },
+): Set<string> | null {
+  if (candidatePinCrns.length === 0) return new Set();
+  if (!everyPlannerItemHasSolvePack(items, packs)) return null;
+
+  const draggedIdx = items.findIndex((r) => r.id === draggedItemId);
+  if (draggedIdx < 0) return new Set();
+  const draggedItem = items[draggedIdx]!;
+  if (draggedItem.selectionKind !== "unresolved") return new Set();
+
+  const targetCrnSet = new Set(candidatePinCrns);
+  const remainingCrns = new Set(candidatePinCrns);
+
+  const {
+    meetingsByCrn,
+    facultyByCrn,
+    scheduleTypeByCrn,
+    seatsByCrn,
+    bundleMembersMerged,
+  } = mergePackMapsForSolve(items, packs);
+
+  const requireOpenSections = opts.requireOpenSections;
+  const blackoutIntervalsRaw = opts.blackoutIntervals ?? [];
+  const blackoutIntervals = blackoutIntervalsRaw.slice().sort(intervalSortCmp);
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  // Candidate lists for non-dragged items use their existing pins; the
+  // dragged item is special-cased below with a per-pin filtered list.
+  const otherIdxs: number[] = [];
+  const otherCandidates: ScheduleCandidate[][] = [];
+  for (let i = 0; i < items.length; i++) {
+    if (i === draggedIdx) continue;
+    otherIdxs.push(i);
+    otherCandidates.push(
+      candidateListForPlannerItem(
+        items[i]!,
+        packs[
+          courseSolvePackCourseKey(items[i]!.subject, items[i]!.courseNumber)
+        ],
+        bundleMembersMerged,
+      ),
+    );
+  }
+  // Cheapest-first DFS over the non-dragged items.
+  const orderedOtherIdxOrder = otherIdxs
+    .map((_, k) => k)
+    .sort((a, b) => otherCandidates[a]!.length - otherCandidates[b]!.length);
+
+  const draggedPack =
+    packs[
+      courseSolvePackCourseKey(draggedItem.subject, draggedItem.courseNumber)
+    ];
+  if (!draggedPack) return null;
+
+  // Group the dragged item's full candidate list by which pin CRN they would
+  // resolve at `scheduleTypeKey`. Only candidates whose pin CRN is in the
+  // requested set survive; we test them grouped so we can stop probing a
+  // pin CRN as soon as we find any feasible completion for it.
+  const draggedCandidatesByPin = new Map<string, ScheduleCandidate[]>();
+  const basePins = parseSectionPinsJson(draggedItem.sectionPins);
+  for (const cand of draggedPack.candidates) {
+    let pinCrn: string | null = null;
+    for (const crn of cand.crns) {
+      if (
+        normalizeScheduleTypeKey(scheduleTypeByCrn.get(crn) ?? null) ===
+        scheduleTypeKey
+      ) {
+        pinCrn = crn;
+        break;
+      }
+    }
+    if (pinCrn === null || !targetCrnSet.has(pinCrn)) continue;
+    let mismatch = false;
+    for (const [otherKey, otherCrn] of Object.entries(basePins.byType)) {
+      if (otherKey === scheduleTypeKey) continue;
+      if (!cand.crns.includes(otherCrn)) {
+        mismatch = true;
+        break;
+      }
+    }
+    if (mismatch) continue;
+    let bucket = draggedCandidatesByPin.get(pinCrn);
+    if (!bucket) {
+      bucket = [];
+      draggedCandidatesByPin.set(pinCrn, bucket);
+    }
+    bucket.push(cand);
+  }
+
+  if (draggedCandidatesByPin.size === 0) return new Set();
+
+  const feasible = new Set<string>();
+
+  const candidateIntervalsCache = new WeakMap<ScheduleCandidate, TimeInterval[]>();
+  function intervalsForCandidate(cand: ScheduleCandidate): TimeInterval[] | null {
+    const cached = candidateIntervalsCache.get(cand);
+    if (cached) return cached;
+    const flat: TimeInterval[] = [];
+    for (const crn of cand.crns) {
+      const ivs = meetingsByCrn.get(crn);
+      if (!ivs) continue;
+      for (const iv of ivs) flat.push(iv);
+    }
+    flat.sort(intervalSortCmp);
+    if (sortedHasInternalOverlap(flat)) return null;
+    if (
+      blackoutIntervals.length > 0 &&
+      sortedAnyOverlap(flat, blackoutIntervals)
+    ) {
+      return null;
+    }
+    candidateIntervalsCache.set(cand, flat);
+    return flat;
+  }
+
+  const accIntervals: TimeInterval[] = [];
+  function pushSorted(intervals: TimeInterval[]): void {
+    if (accIntervals.length === 0) {
+      for (const iv of intervals) accIntervals.push(iv);
+      return;
+    }
+    const merged: TimeInterval[] = [];
+    let i = 0;
+    let j = 0;
+    while (i < accIntervals.length && j < intervals.length) {
+      if (intervalSortCmp(accIntervals[i]!, intervals[j]!) <= 0) {
+        merged.push(accIntervals[i]!);
+        i++;
+      } else {
+        merged.push(intervals[j]!);
+        j++;
+      }
+    }
+    while (i < accIntervals.length) merged.push(accIntervals[i++]!);
+    while (j < intervals.length) merged.push(intervals[j++]!);
+    accIntervals.length = 0;
+    for (const iv of merged) accIntervals.push(iv);
+  }
+  function popIntervals(intervals: TimeInterval[]): void {
+    if (intervals.length === 0) return;
+    const removeSet = new Set<TimeInterval>(intervals);
+    let writeIdx = 0;
+    for (let readIdx = 0; readIdx < accIntervals.length; readIdx++) {
+      const iv = accIntervals[readIdx]!;
+      if (removeSet.has(iv)) {
+        removeSet.delete(iv);
+        continue;
+      }
+      accIntervals[writeIdx++] = iv;
+    }
+    accIntervals.length = writeIdx;
+  }
+
+  const started = Date.now();
+  let timedOut = false;
+
+  function tryPin(pinCrn: string, bucket: ScheduleCandidate[]): boolean {
+    for (const cand of bucket) {
+      if (Date.now() - started > timeoutMs) {
+        timedOut = true;
+        return false;
+      }
+      if (
+        requireOpenSections &&
+        !allCrnsHaveOpenSeats(cand.crns, seatsByCrn)
+      ) {
+        continue;
+      }
+      if (
+        candidateViolatesHardInstructorPrefs(
+          cand,
+          parseInstructorPrefs(draggedItem.instructorPrefs),
+          facultyByCrn,
+          scheduleTypeByCrn,
+        )
+      ) {
+        continue;
+      }
+      const candIntervals = intervalsForCandidate(cand);
+      if (candIntervals === null) continue;
+      if (sortedAnyOverlap(accIntervals, candIntervals)) continue;
+      pushSorted(candIntervals);
+      const found = dfsOthers(0);
+      popIntervals(candIntervals);
+      if (timedOut) return false;
+      if (found) return true;
+    }
+    return false;
+  }
+
+  function dfsOthers(orderIdx: number): boolean {
+    if (orderIdx === orderedOtherIdxOrder.length) return true;
+    if (Date.now() - started > timeoutMs) {
+      timedOut = true;
+      return false;
+    }
+    const k = orderedOtherIdxOrder[orderIdx]!;
+    const otherItem = items[otherIdxs[k]!]!;
+    const list = otherCandidates[k]!;
+    const itemPrefs = parseInstructorPrefs(otherItem.instructorPrefs);
+    for (const cand of list) {
+      if (Date.now() - started > timeoutMs) {
+        timedOut = true;
+        return false;
+      }
+      if (
+        requireOpenSections &&
+        !allCrnsHaveOpenSeats(cand.crns, seatsByCrn)
+      ) {
+        continue;
+      }
+      if (
+        candidateViolatesHardInstructorPrefs(
+          cand,
+          itemPrefs,
+          facultyByCrn,
+          scheduleTypeByCrn,
+        )
+      ) {
+        continue;
+      }
+      const candIntervals = intervalsForCandidate(cand);
+      if (candIntervals === null) continue;
+      if (sortedAnyOverlap(accIntervals, candIntervals)) continue;
+      pushSorted(candIntervals);
+      const found = dfsOthers(orderIdx + 1);
+      popIntervals(candIntervals);
+      if (timedOut) return false;
+      if (found) return true;
+    }
+    return false;
+  }
+
+  // Test pin CRNs in the order they were requested. As soon as any single
+  // candidate for that pin produces a complete schedule we mark it feasible
+  // and move on to the next pin.
+  for (const pinCrn of candidatePinCrns) {
+    if (!remainingCrns.has(pinCrn)) continue;
+    const bucket = draggedCandidatesByPin.get(pinCrn);
+    if (!bucket || bucket.length === 0) {
+      remainingCrns.delete(pinCrn);
+      continue;
+    }
+    if (tryPin(pinCrn, bucket)) feasible.add(pinCrn);
+    remainingCrns.delete(pinCrn);
+    if (timedOut) break;
+  }
+
+  return feasible;
 }
 
