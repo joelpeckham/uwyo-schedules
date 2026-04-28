@@ -106,6 +106,8 @@ export async function loadPlannerCatalogBootstrap(
       instructionalMethod: schema.sections.instructionalMethod,
       instructionalMethodDescription:
         schema.sections.instructionalMethodDescription,
+      creditHours: schema.sections.creditHours,
+      seatsAvailable: schema.sections.seatsAvailable,
     })
     .from(schema.sections)
     .where(
@@ -237,6 +239,8 @@ export async function loadPlannerCatalogBootstrap(
         instructionalMethod: schema.sections.instructionalMethod,
         instructionalMethodDescription:
           schema.sections.instructionalMethodDescription,
+        creditHours: schema.sections.creditHours,
+        seatsAvailable: schema.sections.seatsAvailable,
       })
       .from(schema.sections)
       .where(
@@ -280,6 +284,8 @@ export async function loadPlannerCatalogBootstrap(
             building: schema.sectionMeetings.building,
             buildingDescription: schema.sectionMeetings.buildingDescription,
             room: schema.sectionMeetings.room,
+            startDate: schema.sectionMeetings.startDate,
+            endDate: schema.sectionMeetings.endDate,
           })
           .from(schema.sectionMeetings)
           .where(
@@ -296,6 +302,8 @@ export async function loadPlannerCatalogBootstrap(
     building: decodeHtmlEntities(m.building),
     buildingDescription: decodeHtmlEntities(m.buildingDescription),
     room: decodeHtmlEntities(m.room),
+    startDate: decodeHtmlEntities(m.startDate),
+    endDate: decodeHtmlEntities(m.endDate),
   }));
 
   const facultyRows =

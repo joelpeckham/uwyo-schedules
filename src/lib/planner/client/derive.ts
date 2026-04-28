@@ -134,13 +134,16 @@ export function buildCalendarBlocksFromCatalog(
       const clipEnd = Math.min(end, windowEnd);
       if (clipEnd <= clipStart) continue;
 
+      const buildingShort = m.buildingDescription ?? m.building ?? null;
       const sub =
-        [m.buildingDescription ?? m.building, m.room].filter(Boolean).join(" ") ||
+        [buildingShort, m.room].filter(Boolean).join(" ") ||
         "";
       const facultyRaw =
         catalog.facultyByCrn[m.sectionCrn]?.trim() ?? "";
       const instructorSublabel =
         facultyRaw.length > 0 ? facultyRaw : null;
+      const sectionRow = sectionByCrn.get(m.sectionCrn) ?? null;
+      const seatsAvailable = sectionRow?.seatsAvailable ?? null;
 
       for (const field of DAY_FIELDS) {
         if (!m[field]) continue;
@@ -157,6 +160,8 @@ export function buildCalendarBlocksFromCatalog(
           label: sectionTitles.get(m.sectionCrn) ?? label,
           sublabel: sub,
           instructorSublabel,
+          seatsAvailable,
+          buildingShort,
           color: item.displayColor,
           subject: item.subject,
           courseNumber: item.courseNumber,

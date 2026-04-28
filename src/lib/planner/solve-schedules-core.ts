@@ -12,6 +12,7 @@ import {
   parseSectionPinsJson,
 } from "./section-pins";
 import { normalizeScheduleTypeKey } from "./swap-helpers";
+import type { PlannerTimePrefsV1 } from "./time-prefs";
 
 const DAY_FIELDS = [
   "monday",
@@ -271,6 +272,50 @@ function scoreCandidate(
   return score;
 }
 
+const TIME_PREF_PENALTY_PER_VIOLATION = 4;
+const FRIDAY_DAY_INDEX = 4;
+
+/**
+ * Soft time-of-day score adjustment per candidate. Each meeting that
+ * violates a configured pref subtracts a small constant from the candidate
+ * score, so weeks with fewer violations rank higher. Hard exclusion remains
+ * the job of `blackoutIntervals`.
+ */
+function timePrefsPenaltyForIntervals(
+  intervals: TimeInterval[],
+  prefs: PlannerTimePrefsV1 | null | undefined,
+): number {
+  if (!prefs) return 0;
+  if (
+    !prefs.noFridays &&
+    prefs.noBefore == null &&
+    prefs.noAfter == null &&
+    !prefs.protectLunch
+  ) {
+    return 0;
+  }
+  let penalty = 0;
+  for (const iv of intervals) {
+    if (prefs.noFridays && iv.dayIndex === FRIDAY_DAY_INDEX) {
+      penalty += TIME_PREF_PENALTY_PER_VIOLATION;
+    }
+    if (prefs.noBefore != null && iv.start < prefs.noBefore) {
+      penalty += TIME_PREF_PENALTY_PER_VIOLATION;
+    }
+    if (prefs.noAfter != null && iv.end > prefs.noAfter) {
+      penalty += TIME_PREF_PENALTY_PER_VIOLATION;
+    }
+    if (
+      prefs.protectLunch &&
+      iv.start < prefs.protectLunch.end &&
+      prefs.protectLunch.start < iv.end
+    ) {
+      penalty += TIME_PREF_PENALTY_PER_VIOLATION;
+    }
+  }
+  return penalty;
+}
+
 /**
  * True only when every CRN has a known seat row that proves the section is
  * open. A missing seat row is treated as **closed** so that incomplete packs
@@ -459,6 +504,8 @@ export function runSolveSearch(params: {
   requireOpenSections: boolean;
   /** User busy times; any overlap with a candidate section meeting rejects the candidate. */
   blackoutIntervals?: TimeInterval[];
+  /** Soft time-of-day preferences that bias scoring (lower score per violation). */
+  timePrefs?: PlannerTimePrefsV1 | null;
   maxSolutions?: number;
   timeoutMs?: number;
 }): SolveSchedulesResult {
@@ -473,6 +520,7 @@ export function runSolveSearch(params: {
   } = params;
   const blackoutIntervalsRaw = params.blackoutIntervals ?? [];
   const blackoutIntervals = blackoutIntervalsRaw.slice().sort(intervalSortCmp);
+  const timePrefs = params.timePrefs ?? null;
   const maxSolutions = params.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const started = Date.now();
@@ -587,6 +635,7 @@ export function runSolveSearch(params: {
           scheduleTypeByCrn,
         );
       }
+      score -= timePrefsPenaltyForIntervals(accIntervals, timePrefs);
       solutions.push({ score, selections });
       return;
     }

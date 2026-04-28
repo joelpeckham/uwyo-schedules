@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  collectDisplayCrnsForItems,
   listSameTypeSwapGhostsFromCatalog,
   resolvePlannerSwapClient,
 } from "@/lib/planner/client/derive";
@@ -24,6 +23,7 @@ import { pickCourseSwapSnap } from "@/lib/planner/course-swap-snap";
 import {
   feasibleSinglePinChoicesForDrag,
 } from "@/lib/planner/solve-schedules-core";
+import { track } from "@/lib/analytics/track";
 import { cn } from "@/lib/utils";
 import {
   useCallback,
@@ -35,9 +35,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
-  AlertCircle,
-  Check,
-  Copy,
+  Ban,
   Loader2,
   Minus,
   Pin,
@@ -67,6 +65,9 @@ import { useViewportHourSizing } from "./week-calendar/use-viewport-hour-sizing"
 import { useWeekViewportGestures } from "./week-calendar/use-week-viewport-gestures";
 import { visibleDayIndicesMerged } from "./week-calendar/visible-days";
 import { WeekCalendarView } from "./week-calendar/WeekCalendarView";
+import { SolutionsPager } from "./SolutionsPager";
+import { activeTimePrefsCount } from "@/lib/planner/time-prefs";
+import { ExportMenu } from "./ExportMenu";
 
 type Props = {
   onBlockActivate: (block: CalendarBlock) => void;
@@ -127,17 +128,23 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     topPx: number;
     heightPx: number;
   } | null>(null);
-  const [showGestureTip, setShowGestureTip] = useState(false);
+  const [tourStep, setTourStep] = useState<number | null>(null);
 
   useEffect(() => {
     try {
       if (!localStorage.getItem(GESTURE_TIP_STORAGE_KEY)) {
-        queueMicrotask(() => setShowGestureTip(true));
+        queueMicrotask(() => setTourStep(0));
       }
     } catch {
       /* private mode or blocked */
     }
   }, []);
+
+  useEffect(() => {
+    if (tourStep == null) return;
+    if (plannerItems.length === 0) return;
+    track("planner_tour_step_seen", { step: tourStep + 1 });
+  }, [tourStep, plannerItems.length]);
   const blackoutDragRef = useRef<{
     dayIndex: number;
     columnEl: HTMLElement;
@@ -146,8 +153,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     anchorMinutes: number;
   } | null>(null);
 
-  const [copyStatus, setCopyStatus] = useState<"idle" | "ok" | "err">("idle");
-  const copyStatusTimerRef = useRef<number | null>(null);
   const [swapError, setSwapError] = useState<string | null>(null);
   const [courseDragSession, setCourseDragSession] =
     useState<DragSessionState | null>(null);
@@ -331,6 +336,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       v: 1,
       items: prev.items.map((i) => (i.id === editingBlackoutId ? next : i)),
     }));
+    track("planner_blackout_edited", {
+      dayIndex: next.dayIndex,
+      minutes: next.end - next.start,
+    });
     handleBusyDialogOpenChange(false);
   }, [
     editingBlackoutId,
@@ -348,6 +357,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       v: 1,
       items: prev.items.filter((i) => i.id !== editingBlackoutId),
     }));
+    track("planner_blackout_removed", {});
     handleBusyDialogOpenChange(false);
   }, [editingBlackoutId, handleBusyDialogOpenChange, setBlackouts]);
 
@@ -398,6 +408,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           },
         ],
       }));
+      track("planner_blackout_added", {
+        dayIndex: body.dayIndex,
+        minutes: body.end - body.start,
+      });
     },
     [gridHeightPx, setBlackouts, startMin, totalMin],
   );
@@ -482,15 +496,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     [],
   );
 
-  useEffect(() => {
-    return () => {
-      if (copyStatusTimerRef.current) {
-        clearTimeout(copyStatusTimerRef.current);
-        copyStatusTimerRef.current = null;
-      }
-    };
-  }, []);
-
   const zoomCalendarIn = useCallback(() => {
     setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) * 1.08));
   }, [clampRowPx, minRowPx, setHourRowPx]);
@@ -498,33 +503,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   const zoomCalendarOut = useCallback(() => {
     setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) / 1.08));
   }, [clampRowPx, minRowPx, setHourRowPx]);
-
-  const displayWeekCrns = useMemo(
-    () => collectDisplayCrnsForItems(effectivePlannerItems, catalog),
-    [effectivePlannerItems, catalog],
-  );
-
-  const copyCrns = useCallback(async () => {
-    if (displayWeekCrns.length === 0) return;
-    if (copyStatusTimerRef.current) {
-      clearTimeout(copyStatusTimerRef.current);
-      copyStatusTimerRef.current = null;
-    }
-    try {
-      await navigator.clipboard.writeText(displayWeekCrns.join("\n"));
-      setCopyStatus("ok");
-      copyStatusTimerRef.current = window.setTimeout(() => {
-        copyStatusTimerRef.current = null;
-        setCopyStatus("idle");
-      }, 2000);
-    } catch {
-      setCopyStatus("err");
-      copyStatusTimerRef.current = window.setTimeout(() => {
-        copyStatusTimerRef.current = null;
-        setCopyStatus("idle");
-      }, 2500);
-    }
-  }, [displayWeekCrns]);
 
   useEffect(() => {
     if (!courseDragSession) return;
@@ -823,32 +801,20 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         </p>
       ) : null}
       <div className="border-b border-border p-3 sm:p-4" id="planner-week-calendar-toolbar">
-        {showGestureTip ? (
-          <div className="mb-3 flex gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
-            <p className="min-w-0 flex-1 leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">Tip:</span> On touch,
-              use two fingers to pan the week; pinch to zoom. On a trackpad or
-              mouse, hold <kbd className="rounded border border-border bg-background px-1 font-mono text-xs">Ctrl</kbd>{" "}
-              and scroll to zoom — or use + / − beside the help button.
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0 text-muted-foreground"
-              aria-label="Dismiss tip"
-              onClick={() => {
-                try {
-                  localStorage.setItem(GESTURE_TIP_STORAGE_KEY, "1");
-                } catch {
-                  /* ignore */
-                }
-                setShowGestureTip(false);
-              }}
-            >
-              <X className="size-4" />
-            </Button>
-          </div>
+        {tourStep != null && plannerItems.length > 0 ? (
+          <FirstRunTour
+            step={tourStep}
+            onAdvance={() => setTourStep((s) => (s == null ? 0 : s + 1))}
+            onDismiss={() => {
+              try {
+                localStorage.setItem(GESTURE_TIP_STORAGE_KEY, "1");
+              } catch {
+                /* ignore */
+              }
+              track("planner_tour_dismissed", { step: (tourStep ?? 0) + 1 });
+              setTourStep(null);
+            }}
+          />
         ) : null}
         {syncError ? (
           <div
@@ -886,86 +852,55 @@ export function WeekCalendar({ onBlockActivate }: Props) {
             aria-live="polite"
           >
             <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
-            Finding the best week…
+            Building this week&hellip;
           </p>
         ) : null}
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-3">
-          <h2
-            id="planner-week-calendar-heading"
-            className="font-heading min-w-0 text-lg font-medium text-foreground"
-          >
-            Weekly schedule
-          </h2>
-          <div className="flex w-full min-w-0 flex-1 flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-end md:gap-x-3 md:gap-y-2">
-            <div className="flex min-w-0 w-full flex-wrap items-center gap-2 md:w-auto">
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                className="h-9 touch-manipulation"
-                disabled={displayWeekCrns.length === 0}
-                onClick={() => void copyCrns()}
-              >
-                <Copy className="mr-1.5 size-4 shrink-0" aria-hidden />
-                Copy CRNs
-              </Button>
-              {copyStatus === "ok" ? (
-                <span
-                  className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
-                  aria-live="polite"
-                >
-                  <Check
-                    className="size-3.5 shrink-0 text-primary"
-                    aria-hidden
-                    strokeWidth={2.5}
-                  />
-                  Copied
-                </span>
-              ) : null}
-              {copyStatus === "err" ? (
-                <span
-                  className="inline-flex min-w-0 items-center gap-1.5 text-xs text-destructive"
-                  aria-live="polite"
-                >
-                  <AlertCircle className="size-3.5 shrink-0" aria-hidden />
-                  Copy failed
-                </span>
-              ) : null}
-            </div>
-            <div className="flex min-w-0 w-full flex-wrap items-center gap-2 md:w-auto">
-              <Button
-                type="button"
-                variant={requireOpenSections ? "default" : "outline"}
-                size="lg"
-                className="h-9 touch-manipulation"
-                id="exclude-full-toggle"
-                aria-pressed={requireOpenSections}
-                onClick={() => {
-                  const next = !requireOpenSections;
-                  setRequireOpenSections(next);
-                  void recalculateSolutions(next);
-                }}
-              >
-                Exclude full
-              </Button>
-            </div>
-            <div className="flex min-w-0 w-full flex-wrap items-center gap-2 md:w-auto">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2
+              id="planner-week-calendar-heading"
+              className="font-heading min-w-0 text-lg font-medium text-foreground"
+            >
+              Weekly schedule
+            </h2>
+            <CreditHoursPill />
+            <TimePrefsBadge />
+          </div>
+          <div className="flex w-full min-w-0 flex-1 flex-wrap items-center justify-end gap-2 md:gap-x-3 md:gap-y-2">
+            <ExportMenu />
+            <Button
+              type="button"
+              variant={requireOpenSections ? "default" : "outline"}
+              size="sm"
+              className="h-9 touch-manipulation"
+              id="exclude-full-toggle"
+              aria-pressed={requireOpenSections}
+              onClick={() => {
+                const next = !requireOpenSections;
+                setRequireOpenSections(next);
+                track("planner_exclude_full_toggled", { on: next });
+                void recalculateSolutions(next);
+              }}
+            >
+              Exclude full
+            </Button>
+            <div className="flex min-w-0 items-center gap-1">
               <Button
                 type="button"
                 variant={markBusyMode ? "default" : "outline"}
-                size="lg"
+                size="sm"
                 className="h-9 touch-manipulation"
                 aria-pressed={markBusyMode}
+                aria-label={markBusyMode ? "Stop marking busy time" : "Mark busy time"}
                 onClick={() => {
                   setMarkBusyMode((v) => !v);
                   blackoutDragRef.current = null;
                   setDragPreview(null);
                 }}
               >
-                Mark busy time
+                <Ban className="size-4" aria-hidden />
+                <span className="ml-1.5 hidden sm:inline">Mark busy time</span>
               </Button>
-            </div>
-            <div className="flex min-w-0 w-full flex-wrap items-center gap-1 md:w-auto">
               <Button
                 type="button"
                 variant="outline"
@@ -991,8 +926,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           </div>
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          Copy CRNs lists every CRN shown on your calendar this week (the current
-          best-fit schedule, including any slices you pinned).
+          Copy / export gives you the week as CRNs, an .ics file, or a print
+          view. Use the CRNs to register in WyoWeb.
         </p>
       </div>
 
@@ -1005,9 +940,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               ))}
             </ul>
           ) : null}
-          <p className="font-medium text-foreground">Nothing fits yet</p>
+          <p className="font-medium text-foreground">No schedule fits yet.</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Try one of these to make the week valid:
+            Try one of these to open up the week:
           </p>
           <ul className="mt-2 list-inside list-disc space-y-2 text-sm text-foreground">
             {requireOpenSections ? (
@@ -1062,7 +997,12 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 <button
                   type="button"
                   className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
-                  onClick={() => setBlackouts({ v: 1, items: [] })}
+                  onClick={() => {
+                    track("planner_blackouts_cleared", {
+                      count: blackouts.items.length,
+                    });
+                    setBlackouts({ v: 1, items: [] });
+                  }}
                 >
                   Clear all busy times
                 </button>
@@ -1127,6 +1067,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           </button>
         </div>
       ) : null}
+
+      <SolutionsPager />
 
       <div ref={hScrollRef} className="overflow-x-auto">
         <WeekCalendarView
@@ -1337,5 +1279,169 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         onSave={commitBusyForm}
       />
     </section>
+  );
+}
+
+function CreditHoursPill() {
+  const { effectivePlannerItems, calendarBlocks, catalog } = usePlanner();
+  const total = useMemo(() => {
+    if (effectivePlannerItems.length === 0) return 0;
+    const sectionByCrn = new Map<string, number | null>();
+    for (const s of catalog.sections) sectionByCrn.set(s.crn, s.creditHours);
+    const anchorCrnByItemId = new Map<number, string>();
+    for (const item of effectivePlannerItems) {
+      if (item.anchorCrn) anchorCrnByItemId.set(item.id, item.anchorCrn);
+    }
+    // Fall back to the first calendar block's section CRN when no anchor is
+    // resolved yet — this gives users a credit estimate while the planner
+    // is still picking sections.
+    const seenItems = new Set<number>();
+    let sum = 0;
+    for (const item of effectivePlannerItems) {
+      if (seenItems.has(item.id)) continue;
+      seenItems.add(item.id);
+      const anchorCrn = anchorCrnByItemId.get(item.id);
+      if (anchorCrn) {
+        const ch = sectionByCrn.get(anchorCrn);
+        if (typeof ch === "number" && Number.isFinite(ch)) sum += ch;
+        continue;
+      }
+      const block = calendarBlocks.find((b) => b.plannerItemId === item.id);
+      if (!block) continue;
+      const ch = sectionByCrn.get(block.sectionCrn);
+      if (typeof ch === "number" && Number.isFinite(ch)) sum += ch;
+    }
+    return sum;
+  }, [effectivePlannerItems, calendarBlocks, catalog.sections]);
+
+  if (total <= 0) return null;
+  const isFullTime = total >= 12;
+  const display = Number.isInteger(total) ? `${total}` : total.toFixed(1);
+  const label = `${display} credit hour${total === 1 ? "" : "s"}`;
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] font-medium",
+        isFullTime
+          ? "border-amber-500/40 bg-amber-100/70 text-amber-900"
+          : "border-border bg-muted/50 text-muted-foreground",
+      )}
+      title={
+        isFullTime
+          ? `${label} · full-time (UW undergrad threshold is 12)`
+          : `${label} · part-time (full-time at 12)`
+      }
+      aria-label={label}
+    >
+      <span className="font-mono tabular-nums">{display}</span>
+      <span>cr</span>
+      {isFullTime ? <span className="ml-0.5">· full-time</span> : null}
+    </span>
+  );
+}
+
+function TimePrefsBadge() {
+  const { timePrefs } = usePlanner();
+  const count = activeTimePrefsCount(timePrefs);
+  if (count === 0) return null;
+  const label = `${count} time ${count === 1 ? "preference" : "preferences"} active`;
+  return (
+    <a
+      href="#planner-time-prefs"
+      className="inline-flex h-6 items-center rounded-full border border-border bg-muted/50 px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      title={label}
+      aria-label={label}
+    >
+      <span className="font-mono tabular-nums">{count}</span>
+      <span className="ml-1">time pref{count === 1 ? "" : "s"}</span>
+    </a>
+  );
+}
+
+const TOUR_STEPS: readonly { title: string; body: React.ReactNode }[] = [
+  {
+    title: "Pin a section",
+    body: (
+      <>
+        Tap the pin on any block (or in the section list on the left) to lock
+        that lecture, lab, or discussion. The planner keeps everything else
+        flexible.
+      </>
+    ),
+  },
+  {
+    title: "Try other times",
+    body: (
+      <>
+        Drag a block to preview other meetings of the same type. Highlighted
+        slots fit; release on one to swap.
+      </>
+    ),
+  },
+  {
+    title: "Pan and zoom",
+    body: (
+      <>
+        On touch, use two fingers to pan; pinch to zoom. On a trackpad, hold{" "}
+        <kbd className="rounded border border-border bg-background px-1 font-mono text-[10px]">
+          Ctrl
+        </kbd>{" "}
+        and scroll &mdash; or use + / &minus; in the toolbar.
+      </>
+    ),
+  },
+];
+
+function FirstRunTour({
+  step,
+  onAdvance,
+  onDismiss,
+}: {
+  step: number;
+  onAdvance: () => void;
+  onDismiss: () => void;
+}) {
+  const idx = Math.max(0, Math.min(step, TOUR_STEPS.length - 1));
+  const current = TOUR_STEPS[idx]!;
+  const isLast = idx === TOUR_STEPS.length - 1;
+  return (
+    <div className="mb-3 flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground sm:flex-row sm:items-start sm:gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-2">
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+            {idx + 1} / {TOUR_STEPS.length}
+          </span>
+          <span className="font-medium text-foreground">{current.title}</span>
+        </p>
+        <p className="mt-1 leading-relaxed text-muted-foreground">{current.body}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2 text-xs text-muted-foreground"
+          onClick={onDismiss}
+        >
+          Skip
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className="h-8 px-3 text-xs"
+          onClick={isLast ? onDismiss : onAdvance}
+        >
+          {isLast ? "Got it" : "Next"}
+        </Button>
+        <button
+          type="button"
+          aria-label="Dismiss tour"
+          className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-foreground"
+          onClick={onDismiss}
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+    </div>
   );
 }

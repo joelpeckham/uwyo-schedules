@@ -22,6 +22,8 @@ function block(
     meetingId: partial.meetingId ?? 0,
     sublabel: partial.sublabel ?? "",
     instructorSublabel: partial.instructorSublabel ?? null,
+    seatsAvailable: partial.seatsAvailable ?? null,
+    buildingShort: partial.buildingShort ?? null,
     subject: partial.subject ?? "",
     courseNumber: partial.courseNumber ?? "",
     sectionScheduleTypeKey: partial.sectionScheduleTypeKey ?? "lecture",

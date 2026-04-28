@@ -36,6 +36,10 @@ export type CalendarBlock = {
   sublabel: string;
   /** Comma-separated faculty names from Banner, if any. */
   instructorSublabel: string | null;
+  /** Open seats remaining for the section, when Banner exposes a count. */
+  seatsAvailable: number | null;
+  /** Building name (no room number) for short adjacency labels. */
+  buildingShort: string | null;
   color: string;
   subject: string;
   courseNumber: string;

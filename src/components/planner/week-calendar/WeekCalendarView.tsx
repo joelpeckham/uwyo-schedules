@@ -114,6 +114,8 @@ export function WeekCalendarView({
   const blocksByDay = groupBlocksByDay(blocks);
   const layout: WeekCalendarLayout = { startMin, totalMin, gridHeightPx };
 
+  const backToBackChipsByDay = computeBackToBackChips(blocksByDay);
+
   return (
     <div
       className={cn("flex flex-col", className)}
@@ -179,6 +181,24 @@ export function WeekCalendarView({
                     ))}
                   </div>
                   {renderDayOverlay?.(dayIndex, layout)}
+                  {(backToBackChipsByDay.get(dayIndex) ?? []).map((chip) => {
+                    const topPx = ((chip.atMinute - startMin) / totalMin) * gridHeightPx;
+                    return (
+                      <div
+                        key={chip.key}
+                        className="pointer-events-none absolute left-1 right-1 z-25 -translate-y-1/2"
+                        style={{ top: topPx }}
+                        aria-hidden
+                      >
+                        <span
+                          className="block truncate rounded border border-amber-500/50 bg-amber-50/90 px-1 py-px text-[9px] leading-tight text-amber-900 shadow-sm"
+                          title={chip.title}
+                        >
+                          {chip.label}
+                        </span>
+                      </div>
+                    );
+                  })}
                   {(blocksByDay.get(dayIndex) ?? []).map((b) => {
                     const topPx =
                       ((b.startMinutes - startMin) / totalMin) * gridHeightPx;
@@ -196,7 +216,16 @@ export function WeekCalendarView({
                     const secondaryPx = Math.max(7, titlePx - 1);
                     const tier = calendarSecondaryTier(heightPx);
                     const loc = b.sublabel.trim();
-                    const inst = b.instructorSublabel?.trim() ?? "";
+                    const instRaw = b.instructorSublabel?.trim() ?? "";
+                    const seats = b.seatsAvailable;
+                    const seatChip =
+                      typeof seats === "number" && Number.isFinite(seats)
+                        ? `${Math.max(0, seats)} seat${seats === 1 ? "" : "s"}`
+                        : "";
+                    const inst =
+                      instRaw && seatChip
+                        ? `${instRaw} · ${seatChip}`
+                        : instRaw || seatChip;
                     const titleAttr = [b.label, inst, loc]
                       .filter(Boolean)
                       .join(" · ");
@@ -279,4 +308,58 @@ export function WeekCalendarView({
       </div>
     </div>
   );
+}
+
+type BackToBackChip = {
+  key: string;
+  /** Render the chip at this minute-of-day (centered vertically). */
+  atMinute: number;
+  /** Short body, e.g. `12 min · Ross → Engineering`. */
+  label: string;
+  /** Long-form tooltip with both buildings spelled out. */
+  title: string;
+};
+
+const BACK_TO_BACK_GAP_THRESHOLD_MIN = 15;
+
+function computeBackToBackChips(
+  blocksByDay: Map<number, CalendarBlock[]>,
+): Map<number, BackToBackChip[]> {
+  const out = new Map<number, BackToBackChip[]>();
+  for (const [dayIndex, list] of blocksByDay.entries()) {
+    const sorted = [...list].sort((a, b) => a.startMinutes - b.startMinutes);
+    const chips: BackToBackChip[] = [];
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const a = sorted[i];
+      const b = sorted[i + 1];
+      // Skip overlaps (same item double meeting or genuine conflict — those
+      // aren't a tight passing-period story).
+      if (b.startMinutes <= a.endMinutes) continue;
+      if (a.plannerItemId === b.plannerItemId) continue;
+      const gap = b.startMinutes - a.endMinutes;
+      if (gap >= BACK_TO_BACK_GAP_THRESHOLD_MIN) continue;
+      const fromBuilding = a.buildingShort?.trim();
+      const toBuilding = b.buildingShort?.trim();
+      if (!fromBuilding || !toBuilding) continue;
+      if (fromBuilding === toBuilding) continue;
+      const fromShort = shortenBuilding(fromBuilding);
+      const toShort = shortenBuilding(toBuilding);
+      chips.push({
+        key: `${a.key}->${b.key}`,
+        atMinute: a.endMinutes + gap / 2,
+        label: `${gap} min · ${fromShort} → ${toShort}`,
+        title: `${gap}-minute walk from ${fromBuilding} to ${toBuilding}`,
+      });
+    }
+    if (chips.length > 0) out.set(dayIndex, chips);
+  }
+  return out;
+}
+
+function shortenBuilding(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length <= 14) return trimmed;
+  // Use the first capitalized token if a longer phrase was returned by Banner.
+  const first = trimmed.split(/\s+/)[0] ?? trimmed;
+  return first.length > 1 ? first : trimmed.slice(0, 12);
 }

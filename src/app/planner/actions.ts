@@ -47,6 +47,17 @@ import {
   stableBlackoutsJsonForDb,
   type PlannerBlackoutsDocV1,
 } from "@/lib/planner/blackouts";
+import {
+  MAX_KEPT_SOLUTIONS,
+  parseKeptSolutionsJson,
+  stableKeptSolutionsJsonForDb,
+  type PlannerKeptSolutionsDocV1,
+} from "@/lib/planner/kept-solutions";
+import {
+  parseTimePrefs,
+  stableTimePrefsJsonForDb,
+  type PlannerTimePrefsV1,
+} from "@/lib/planner/time-prefs";
 import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
 import { sanitizeSectionRawJson } from "@/lib/planner/section-detail-sanitize";
 import { parseSectionPinsJson } from "@/lib/planner/section-pins";
@@ -202,7 +213,7 @@ export async function solveSchedulesAction(
     const items = await listPlannerItems(db, sessionId, termCode);
     const result = await solveSchedulesForTerm(db, termCode, items, {
       requireOpenSections,
-      maxSolutions: 1,
+      maxSolutions: 25,
     });
     return { ok: true, result };
   } catch (e) {
@@ -367,6 +378,8 @@ export async function loadPlannerCatalogBootstrapAction(
         lastSolutionIndex: number;
         favoriteSolutionIndex: number | null;
         blackouts: PlannerBlackoutsDocV1;
+        keptSolutions: PlannerKeptSolutionsDocV1;
+        timePrefs: PlannerTimePrefsV1;
       } | null;
     }
   | { ok: false; error: string }
@@ -389,9 +402,133 @@ export async function loadPlannerCatalogBootstrapAction(
             lastSolutionIndex: termUiState.lastSolutionIndex,
             favoriteSolutionIndex: termUiState.favoriteSolutionIndex,
             blackouts: parseBlackoutsJson(termUiState.blackouts),
+            keptSolutions: parseKeptSolutionsJson(termUiState.keptSolutionKeys),
+            timePrefs: parseTimePrefs(termUiState.timePrefs),
           }
         : null,
     };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
+/** Persist the user's "kept" schedule fingerprints for this term. */
+export async function savePlannerKeptSolutionsAction(input: {
+  termCode: string;
+  keys: unknown;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const sessionId = await requireSessionId();
+    if (!input.termCode?.trim()) return { ok: false, error: "Missing term." };
+    if (!Array.isArray(input.keys)) {
+      return { ok: false, error: "Invalid kept list." };
+    }
+    if (input.keys.length > MAX_KEPT_SOLUTIONS) {
+      return {
+        ok: false,
+        error: `At most ${MAX_KEPT_SOLUTIONS} kept schedules.`,
+      };
+    }
+    const doc = parseKeptSolutionsJson({ v: 1, keys: input.keys });
+    const db = createDb();
+    await db
+      .insert(schema.plannerTermUiState)
+      .values({
+        sessionId,
+        termCode: input.termCode.trim(),
+        lastSolutionIndex: 0,
+        favoriteSolutionIndex: null,
+        keptSolutionKeys: stableKeptSolutionsJsonForDb(doc),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.plannerTermUiState.sessionId,
+          schema.plannerTermUiState.termCode,
+        ],
+        set: {
+          keptSolutionKeys: stableKeptSolutionsJsonForDb(doc),
+          updatedAt: new Date(),
+        },
+      });
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
+/** Persist the soft time-of-day preferences for this term. */
+export async function savePlannerTimePrefsAction(input: {
+  termCode: string;
+  prefs: unknown;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const sessionId = await requireSessionId();
+    if (!input.termCode?.trim()) return { ok: false, error: "Missing term." };
+    const doc = parseTimePrefs(input.prefs);
+    const db = createDb();
+    await db
+      .insert(schema.plannerTermUiState)
+      .values({
+        sessionId,
+        termCode: input.termCode.trim(),
+        lastSolutionIndex: 0,
+        favoriteSolutionIndex: null,
+        timePrefs: stableTimePrefsJsonForDb(doc),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.plannerTermUiState.sessionId,
+          schema.plannerTermUiState.termCode,
+        ],
+        set: {
+          timePrefs: stableTimePrefsJsonForDb(doc),
+          updatedAt: new Date(),
+        },
+      });
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
+/** Persist the index of the schedule the user is currently viewing. */
+export async function savePlannerLastSolutionIndexAction(input: {
+  termCode: string;
+  index: number;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const sessionId = await requireSessionId();
+    if (!input.termCode?.trim()) return { ok: false, error: "Missing term." };
+    const i = Math.max(
+      0,
+      Math.min(1000, Number.isFinite(input.index) ? Math.floor(input.index) : 0),
+    );
+    const db = createDb();
+    await db
+      .insert(schema.plannerTermUiState)
+      .values({
+        sessionId,
+        termCode: input.termCode.trim(),
+        lastSolutionIndex: i,
+        favoriteSolutionIndex: null,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.plannerTermUiState.sessionId,
+          schema.plannerTermUiState.termCode,
+        ],
+        set: {
+          lastSolutionIndex: i,
+          updatedAt: new Date(),
+        },
+      });
+    return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
     return { ok: false, error: msg };

@@ -12,6 +12,13 @@ export type ClientCatalogSection = {
   subjectCourse: string | null;
   instructionalMethod: string | null;
   instructionalMethodDescription: string | null;
+  /** Credit hours from `sections.creditHours`. May be null for sections like labs. */
+  creditHours: number | null;
+  /**
+   * Open seats remaining (`sections.seatsAvailable`). `null` when Banner
+   * doesn't expose the seat count for a section.
+   */
+  seatsAvailable: number | null;
 };
 
 type ClientCatalogMeeting = {
@@ -30,6 +37,10 @@ type ClientCatalogMeeting = {
   building: string | null;
   buildingDescription: string | null;
   room: string | null;
+  /** Section-meeting effective start date, used to bound .ics RRULE. */
+  startDate: string | null;
+  /** Section-meeting effective end date, used to bound .ics RRULE. */
+  endDate: string | null;
 };
 
 export type ClientLinkedBundleRow = {

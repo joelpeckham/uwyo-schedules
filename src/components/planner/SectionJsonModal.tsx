@@ -76,7 +76,7 @@ export function SectionJsonModal({ open, onOpenChange, termCode, crn }: Props) {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         showCloseButton
-        className="flex max-h-[min(92vh,52rem)] w-full max-w-[min(100vw-1.5rem,56rem)] flex-col gap-3 overflow-hidden p-4 sm:max-w-[min(100vw-2rem,56rem)] sm:p-5"
+        className="flex w-full flex-col gap-3 overflow-hidden p-4 max-sm:left-0 max-sm:top-auto max-sm:bottom-0 max-sm:translate-x-0 max-sm:translate-y-0 max-sm:max-h-[88vh] max-sm:max-w-full max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:data-open:slide-in-from-bottom-4 sm:max-h-[min(92vh,52rem)] sm:max-w-[min(100vw-2rem,56rem)] sm:p-5"
       >
         <DialogHeader className="shrink-0 space-y-1.5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

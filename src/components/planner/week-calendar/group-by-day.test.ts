@@ -21,6 +21,8 @@ function block(dayIndex: number, key: string): CalendarBlock {
     label: "L",
     sublabel: "",
     instructorSublabel: null,
+    seatsAvailable: null,
+    buildingShort: null,
     color: "#000",
     subject: "X",
     courseNumber: "0000",

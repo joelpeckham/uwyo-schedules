@@ -314,6 +314,14 @@ export const plannerTermUiState = pgTable(
     blackouts: jsonb("blackouts")
       .notNull()
       .default(sql`'{"v":1,"items":[]}'::jsonb`),
+    /** Versioned JSON: `{ v: 1, keys: ["crn1:crn2:..."] }` — fingerprints of "kept" schedules survive recalcs. */
+    keptSolutionKeys: jsonb("kept_solution_keys")
+      .notNull()
+      .default(sql`'{"v":1,"keys":[]}'::jsonb`),
+    /** Versioned JSON: `{ v: 1, noFridays?, noBefore?, noAfter?, protectLunch? }` — soft scoring weights. */
+    timePrefs: jsonb("time_prefs")
+      .notNull()
+      .default(sql`'{"v":1}'::jsonb`),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

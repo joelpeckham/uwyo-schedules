@@ -17,6 +17,8 @@ const minimalCatalog: PlannerCatalogJson = {
       subjectCourse: "MATH 2200",
       instructionalMethod: "TR",
       instructionalMethodDescription: "Traditional",
+      creditHours: 3,
+      seatsAvailable: 12,
     },
     {
       crn: "10002",
@@ -27,6 +29,8 @@ const minimalCatalog: PlannerCatalogJson = {
       subjectCourse: "MATH 2200",
       instructionalMethod: "TR",
       instructionalMethodDescription: "Traditional",
+      creditHours: 3,
+      seatsAvailable: null,
     },
   ],
   meetings: [
@@ -46,6 +50,8 @@ const minimalCatalog: PlannerCatalogJson = {
       building: null,
       buildingDescription: null,
       room: null,
+      startDate: null,
+      endDate: null,
     },
   ],
   linkedBundles: [],

@@ -71,6 +71,13 @@
       "when": 1777800000000,
       "tag": "0009_section_faculty_display_name_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777900000000,
+      "tag": "0010_planner_kept_and_time_prefs",
+      "breakpoints": true
     }
   ]
 }

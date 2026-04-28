@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { track } from "@/lib/analytics/track";
 import { CALENDAR_HOUR_AXIS, DAY_LABELS } from "./axis-constants";
 
 export { CALENDAR_HOUR_AXIS, DAY_LABELS };
@@ -55,18 +56,22 @@ const SCHEDULE_HELP: readonly {
   {
     Icon: ArrowLeftRight,
     label: "Try another time",
-    body: "Drag a section to preview other same-type meeting times that still fit your week, busy blocks, and filters; release on a highlighted slot to switch.",
+    body: "Drag a section to preview other meetings of the same type that still fit. Release on a highlighted slot to switch.",
   },
   {
     Icon: Ban,
     label: "Busy times",
-    body: "Turn on “Mark busy time” and drag on a day column to block time. Tap a busy block to fine-tune times or add a label. Busy blocks are respected while the planner finds a best-fit week. Two fingers still pan and zoom the week.",
+    body: "Turn on “Mark busy time” and drag on a day column to block time. Tap a block to fine-tune the times or add a label. Two fingers still pan and zoom the week.",
   },
 ] as const;
 
 export function ScheduleHelpDialog() {
   return (
-    <Dialog>
+    <Dialog
+      onOpenChange={(open) => {
+        if (open) track("planner_help_opened", {});
+      }}
+    >
       <DialogTrigger asChild>
         <Button
           type="button"

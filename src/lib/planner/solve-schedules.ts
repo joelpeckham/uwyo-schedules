@@ -2,6 +2,7 @@ import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { blackoutsDocToTimeIntervals, parseBlackoutsJson } from "./blackouts";
+import { parseTimePrefs } from "./time-prefs";
 import type { PlannerItemRow } from "./data";
 import {
   listLinkedBundleOptionsForAnchors,
@@ -452,7 +453,10 @@ export async function solveSchedulesForTerm(
             ),
           ),
     db
-      .select({ blackouts: schema.plannerTermUiState.blackouts })
+      .select({
+        blackouts: schema.plannerTermUiState.blackouts,
+        timePrefs: schema.plannerTermUiState.timePrefs,
+      })
       .from(schema.plannerTermUiState)
       .where(
         and(
@@ -504,6 +508,8 @@ export async function solveSchedulesForTerm(
     ? blackoutsDocToTimeIntervals(parseBlackoutsJson(uiRow.blackouts))
     : [];
 
+  const timePrefs = uiRow ? parseTimePrefs(uiRow.timePrefs) : null;
+
   return runSolveSearch({
     items,
     candidateLists,
@@ -513,6 +519,7 @@ export async function solveSchedulesForTerm(
     seatsByCrn,
     requireOpenSections: opts.requireOpenSections,
     blackoutIntervals,
+    timePrefs,
     maxSolutions,
     timeoutMs,
   });

@@ -4,6 +4,9 @@ import {
   loadPlannerCatalogBootstrapAction,
   prefetchCourseSolvePackAction,
   savePlannerBlackoutsAction,
+  savePlannerKeptSolutionsAction,
+  savePlannerLastSolutionIndexAction,
+  savePlannerTimePrefsAction,
   solveSchedulesAction,
   syncPlannerStateAction,
 } from "@/app/planner/actions";
@@ -13,8 +16,20 @@ import {
   blackoutsDocToTimeIntervals,
   type PlannerBlackoutsDocV1,
 } from "@/lib/planner/blackouts";
+import {
+  EMPTY_KEPT_SOLUTIONS,
+  findSolutionIndexByFingerprint,
+  MAX_KEPT_SOLUTIONS,
+  solutionFingerprint,
+  type PlannerKeptSolutionsDocV1,
+} from "@/lib/planner/kept-solutions";
+import {
+  EMPTY_TIME_PREFS,
+  type PlannerTimePrefsV1,
+} from "@/lib/planner/time-prefs";
 import { computeInfeasibilityHints } from "@/lib/planner/infeasibility-hints";
 import { mergePackConstraintMaps } from "@/lib/planner/planner-swap-feasibility";
+import { track } from "@/lib/analytics/track";
 import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
 import {
   EMPTY_SECTION_PINS,
@@ -43,9 +58,16 @@ import {
 
 const PERSIST_DEBOUNCE_MS = 2500;
 const BLACKOUT_PERSIST_DEBOUNCE_MS = 800;
+const KEPT_PERSIST_DEBOUNCE_MS = 800;
+const TIME_PREFS_PERSIST_DEBOUNCE_MS = 800;
+const LAST_INDEX_PERSIST_DEBOUNCE_MS = 1500;
 const PACK_PREFETCH_DEBOUNCE_MS = 400;
-/** Single best schedule for the interactive planner (no paging). */
-const PLANNER_MAX_SOLUTIONS = 1 as const;
+/**
+ * Cap on how many alternate schedules the UI will paginate through. Set to a
+ * value comfortably larger than 1 so users can flip between options, but
+ * small enough that DFS time stays bounded.
+ */
+const PLANNER_MAX_SOLUTIONS = 25 as const;
 /**
  * Tight budget for synchronous "would this still fit?" probes that gate
  * pin/toggle/drag previews. If DFS can't decide in this window we report
@@ -72,6 +94,14 @@ function applySolutionToPlannerItems(
       linkedBundleId: sel.linkedBundleId,
     };
   });
+}
+
+function clampSolutionIndex(i: number, total: number): number {
+  if (total <= 0) return 0;
+  if (!Number.isFinite(i)) return 0;
+  if (i < 0) return 0;
+  if (i >= total) return total - 1;
+  return Math.floor(i);
 }
 
 type PlannerContextValue = {
@@ -107,6 +137,21 @@ type PlannerContextValue = {
   solutions: ScheduleSolution[];
   solutionsCapped: boolean;
   solutionsTimedOut: boolean;
+  /** Index into `solutions` for the schedule the user is currently viewing. */
+  currentSolutionIndex: number;
+  /** Move the active schedule by one (or to a specific index). */
+  setCurrentSolutionIndex: (
+    next: number,
+    method?: "next" | "prev" | "first" | "last" | "keep" | "drop",
+  ) => void;
+  /** Fingerprint keys (CRN-set joins) of the schedules the user has kept. */
+  keptSolutions: PlannerKeptSolutionsDocV1;
+  /** True if the active schedule is in the kept pile. */
+  isCurrentSolutionKept: boolean;
+  /** Toggle the active schedule's "kept" status. */
+  toggleCurrentSolutionKept: () => void;
+  /** Indices of kept schedules in the current `solutions` array (only the matched ones). */
+  keptSolutionIndices: number[];
   /** Hints when no schedule fits (requires complete solve packs). */
   infeasibilityHints: string[];
   requireOpenSections: boolean;
@@ -125,6 +170,13 @@ type PlannerContextValue = {
       | PlannerBlackoutsDocV1
       | ((prev: PlannerBlackoutsDocV1) => PlannerBlackoutsDocV1),
   ) => void;
+  /** Soft time-of-day preferences that bias schedule scoring. */
+  timePrefs: PlannerTimePrefsV1;
+  setTimePrefs: (
+    next:
+      | PlannerTimePrefsV1
+      | ((prev: PlannerTimePrefsV1) => PlannerTimePrefsV1),
+  ) => void;
 };
 
 const PlannerContext = createContext<PlannerContextValue | null>(null);
@@ -135,6 +187,9 @@ type ProviderProps = {
   initialCatalog: PlannerCatalogJson;
   initialTermUiState: {
     blackouts: PlannerBlackoutsDocV1;
+    keptSolutions: PlannerKeptSolutionsDocV1;
+    timePrefs: PlannerTimePrefsV1;
+    lastSolutionIndex: number;
   } | null;
   children: React.ReactNode;
 };
@@ -166,9 +221,19 @@ export function PlannerProvider({
   const [solutions, setSolutions] = useState<ScheduleSolution[]>([]);
   const [solutionsCapped, setSolutionsCapped] = useState(false);
   const [solutionsTimedOut, setSolutionsTimedOut] = useState(false);
+  const [currentSolutionIndex, setCurrentSolutionIndexState] = useState<number>(
+    () => initialTermUiState?.lastSolutionIndex ?? 0,
+  );
   const [requireOpenSections, setRequireOpenSections] = useState(true);
   const [blackouts, setBlackoutsState] = useState<PlannerBlackoutsDocV1>(
     () => initialTermUiState?.blackouts ?? EMPTY_BLACKOUTS,
+  );
+  const [keptSolutions, setKeptSolutionsState] =
+    useState<PlannerKeptSolutionsDocV1>(
+      () => initialTermUiState?.keptSolutions ?? EMPTY_KEPT_SOLUTIONS,
+    );
+  const [timePrefs, setTimePrefsState] = useState<PlannerTimePrefsV1>(
+    () => initialTermUiState?.timePrefs ?? EMPTY_TIME_PREFS,
   );
   const [solvePacks, setSolvePacks] = useState<Record<string, CourseSolvePack>>(
     {},
@@ -217,10 +282,26 @@ export function PlannerProvider({
   const blackoutPersistInFlightRef = useRef(false);
   const blackoutPersistDirtyGenRef = useRef(0);
   const blackoutPersistFlushedGenRef = useRef(0);
+  const keptPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keptPersistInFlightRef = useRef(false);
+  const keptPersistDirtyGenRef = useRef(0);
+  const keptPersistFlushedGenRef = useRef(0);
+  const timePrefsPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const timePrefsPersistInFlightRef = useRef(false);
+  const timePrefsPersistDirtyGenRef = useRef(0);
+  const timePrefsPersistFlushedGenRef = useRef(0);
+  const lastIndexPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   /** Bumped on every pack-prefetch start; awaiting calls bail when stale. */
   const prefetchGenRef = useRef(0);
   const requireOpenRef = useRef(requireOpenSections);
   const blackoutsRef = useRef(blackouts);
+  const keptSolutionsRef = useRef(keptSolutions);
+  const timePrefsRef = useRef(timePrefs);
+  const currentSolutionIndexRef = useRef(currentSolutionIndex);
 
   useEffect(() => {
     itemsRef.current = plannerItems;
@@ -234,11 +315,42 @@ export function PlannerProvider({
   useEffect(() => {
     blackoutsRef.current = blackouts;
   }, [blackouts]);
+  useEffect(() => {
+    keptSolutionsRef.current = keptSolutions;
+  }, [keptSolutions]);
+  useEffect(() => {
+    timePrefsRef.current = timePrefs;
+  }, [timePrefs]);
+  useEffect(() => {
+    currentSolutionIndexRef.current = currentSolutionIndex;
+  }, [currentSolutionIndex]);
+
+  const safeCurrentSolutionIndex = useMemo(
+    () => clampSolutionIndex(currentSolutionIndex, solutions.length),
+    [currentSolutionIndex, solutions.length],
+  );
 
   const effectivePlannerItems = useMemo(() => {
-    const sol = solutions[0] ?? null;
+    const sol = solutions[safeCurrentSolutionIndex] ?? null;
     return applySolutionToPlannerItems(plannerItems, sol);
-  }, [plannerItems, solutions]);
+  }, [plannerItems, solutions, safeCurrentSolutionIndex]);
+
+  const isCurrentSolutionKept = useMemo(() => {
+    const sol = solutions[safeCurrentSolutionIndex];
+    if (!sol) return false;
+    const fp = solutionFingerprint(sol);
+    return keptSolutions.keys.includes(fp);
+  }, [solutions, safeCurrentSolutionIndex, keptSolutions]);
+
+  const keptSolutionIndices = useMemo(() => {
+    if (solutions.length === 0 || keptSolutions.keys.length === 0) return [];
+    const out: number[] = [];
+    for (const k of keptSolutions.keys) {
+      const i = findSolutionIndexByFingerprint(solutions, k);
+      if (i >= 0) out.push(i);
+    }
+    return out;
+  }, [solutions, keptSolutions]);
 
   const calendarBlocks = useMemo(
     () => buildCalendarBlocksFromCatalog(effectivePlannerItems, catalog),
@@ -336,6 +448,60 @@ export function PlannerProvider({
     }
   }, []);
 
+  const flushKeptPersist = useCallback(async () => {
+    if (keptPersistInFlightRef.current) return;
+    while (
+      keptPersistFlushedGenRef.current < keptPersistDirtyGenRef.current
+    ) {
+      const flushingGen = keptPersistDirtyGenRef.current;
+      const t = termRef.current;
+      keptPersistInFlightRef.current = true;
+      try {
+        const res = await savePlannerKeptSolutionsAction({
+          termCode: t,
+          keys: keptSolutionsRef.current.keys,
+        });
+        if (!res.ok) {
+          setSyncError(res.error);
+          keptPersistFlushedGenRef.current = keptPersistDirtyGenRef.current;
+          return;
+        }
+        setSyncError(null);
+        keptPersistFlushedGenRef.current = flushingGen;
+      } finally {
+        keptPersistInFlightRef.current = false;
+      }
+    }
+  }, []);
+
+  const flushTimePrefsPersist = useCallback(async () => {
+    if (timePrefsPersistInFlightRef.current) return;
+    while (
+      timePrefsPersistFlushedGenRef.current <
+      timePrefsPersistDirtyGenRef.current
+    ) {
+      const flushingGen = timePrefsPersistDirtyGenRef.current;
+      const t = termRef.current;
+      timePrefsPersistInFlightRef.current = true;
+      try {
+        const res = await savePlannerTimePrefsAction({
+          termCode: t,
+          prefs: timePrefsRef.current,
+        });
+        if (!res.ok) {
+          setSyncError(res.error);
+          timePrefsPersistFlushedGenRef.current =
+            timePrefsPersistDirtyGenRef.current;
+          return;
+        }
+        setSyncError(null);
+        timePrefsPersistFlushedGenRef.current = flushingGen;
+      } finally {
+        timePrefsPersistInFlightRef.current = false;
+      }
+    }
+  }, []);
+
   const schedulePersist = useCallback(() => {
     persistDirtyGenRef.current += 1;
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
@@ -355,6 +521,40 @@ export function PlannerProvider({
       void flushBlackoutPersist();
     }, BLACKOUT_PERSIST_DEBOUNCE_MS);
   }, [flushBlackoutPersist]);
+
+  const scheduleKeptPersist = useCallback(() => {
+    keptPersistDirtyGenRef.current += 1;
+    if (keptPersistTimerRef.current) clearTimeout(keptPersistTimerRef.current);
+    keptPersistTimerRef.current = setTimeout(() => {
+      keptPersistTimerRef.current = null;
+      void flushKeptPersist();
+    }, KEPT_PERSIST_DEBOUNCE_MS);
+  }, [flushKeptPersist]);
+
+  const scheduleTimePrefsPersist = useCallback(() => {
+    timePrefsPersistDirtyGenRef.current += 1;
+    if (timePrefsPersistTimerRef.current) {
+      clearTimeout(timePrefsPersistTimerRef.current);
+    }
+    timePrefsPersistTimerRef.current = setTimeout(() => {
+      timePrefsPersistTimerRef.current = null;
+      void flushTimePrefsPersist();
+    }, TIME_PREFS_PERSIST_DEBOUNCE_MS);
+  }, [flushTimePrefsPersist]);
+
+  const scheduleLastIndexPersist = useCallback(() => {
+    if (lastIndexPersistTimerRef.current) {
+      clearTimeout(lastIndexPersistTimerRef.current);
+    }
+    lastIndexPersistTimerRef.current = setTimeout(() => {
+      lastIndexPersistTimerRef.current = null;
+      const t = termRef.current;
+      void savePlannerLastSolutionIndexAction({
+        termCode: t,
+        index: currentSolutionIndexRef.current,
+      });
+    }, LAST_INDEX_PERSIST_DEBOUNCE_MS);
+  }, []);
 
   const clearSyncError = useCallback(() => setSyncError(null), []);
 
@@ -383,13 +583,23 @@ export function PlannerProvider({
           clearTimeout(blackoutPersistTimerRef.current);
           blackoutPersistTimerRef.current = null;
         }
+        if (keptPersistTimerRef.current) {
+          clearTimeout(keptPersistTimerRef.current);
+          keptPersistTimerRef.current = null;
+        }
+        if (timePrefsPersistTimerRef.current) {
+          clearTimeout(timePrefsPersistTimerRef.current);
+          timePrefsPersistTimerRef.current = null;
+        }
         void flushPersist();
         void flushBlackoutPersist();
+        void flushKeptPersist();
+        void flushTimePrefsPersist();
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [flushPersist, flushBlackoutPersist]);
+  }, [flushPersist, flushBlackoutPersist, flushKeptPersist, flushTimePrefsPersist]);
 
   useEffect(() => {
     const onLeave = () => {
@@ -401,12 +611,22 @@ export function PlannerProvider({
         clearTimeout(blackoutPersistTimerRef.current);
         blackoutPersistTimerRef.current = null;
       }
+      if (keptPersistTimerRef.current) {
+        clearTimeout(keptPersistTimerRef.current);
+        keptPersistTimerRef.current = null;
+      }
+      if (timePrefsPersistTimerRef.current) {
+        clearTimeout(timePrefsPersistTimerRef.current);
+        timePrefsPersistTimerRef.current = null;
+      }
       void flushPersist();
       void flushBlackoutPersist();
+      void flushKeptPersist();
+      void flushTimePrefsPersist();
     };
     window.addEventListener("pagehide", onLeave);
     return () => window.removeEventListener("pagehide", onLeave);
-  }, [flushPersist, flushBlackoutPersist]);
+  }, [flushPersist, flushBlackoutPersist, flushKeptPersist, flushTimePrefsPersist]);
 
   const refreshCatalogFromServer = useCallback(async (): Promise<boolean> => {
     const res = await loadPlannerCatalogBootstrapAction(termCode);
@@ -421,10 +641,21 @@ export function PlannerProvider({
     const nextBlackouts = res.termUiState?.blackouts ?? EMPTY_BLACKOUTS;
     blackoutsRef.current = nextBlackouts;
     setBlackoutsState(nextBlackouts);
+    const nextKept = res.termUiState?.keptSolutions ?? EMPTY_KEPT_SOLUTIONS;
+    keptSolutionsRef.current = nextKept;
+    setKeptSolutionsState(nextKept);
+    const nextPrefs = res.termUiState?.timePrefs ?? EMPTY_TIME_PREFS;
+    timePrefsRef.current = nextPrefs;
+    setTimePrefsState(nextPrefs);
+    const nextIdx = res.termUiState?.lastSolutionIndex ?? 0;
+    currentSolutionIndexRef.current = nextIdx;
+    setCurrentSolutionIndexState(nextIdx);
     // Treat the refresh as the new "synced" baseline so subsequent flushes do
     // not race against the data we just pulled.
     persistFlushedGenRef.current = persistDirtyGenRef.current;
     blackoutPersistFlushedGenRef.current = blackoutPersistDirtyGenRef.current;
+    keptPersistFlushedGenRef.current = keptPersistDirtyGenRef.current;
+    timePrefsPersistFlushedGenRef.current = timePrefsPersistDirtyGenRef.current;
     setSyncError(null);
     return true;
   }, [termCode]);
@@ -486,25 +717,43 @@ export function PlannerProvider({
       }
 
       const blackoutIv = blackoutsDocToTimeIntervals(blackoutsRef.current);
-      const prevSol = solutionsRef.current[0] ?? null;
+      const prevIdx = clampSolutionIndex(
+        currentSolutionIndexRef.current,
+        solutionsRef.current.length,
+      );
+      const prevSol = solutionsRef.current[prevIdx] ?? null;
+      const prevFp = prevSol ? solutionFingerprint(prevSol) : null;
       const prevSelections = prevSol?.selections ?? null;
 
-      if (everyPlannerItemHasSolvePack(rows, packs)) {
-        if (
-          prevSol &&
-          scheduleSolutionStillValidForItems(rows, packs, prevSol, {
-            requireOpenSections: requireOpen,
-            blackoutIntervals: blackoutIv,
-          })
-        ) {
-          if (myGen !== recalcGenRef.current) return;
-          setSyncError(null);
-          setSolutions([prevSol]);
-          setSolutionsCapped(false);
-          setSolutionsTimedOut(false);
-          return;
+      const adoptSolutions = (
+        next: ScheduleSolution[],
+        capped: boolean,
+        timedOut: boolean,
+      ) => {
+        setSolutions(next);
+        setSolutionsCapped(capped);
+        setSolutionsTimedOut(timedOut);
+        let nextIdx = 0;
+        if (next.length > 0) {
+          if (prevFp) {
+            const i = findSolutionIndexByFingerprint(next, prevFp);
+            if (i >= 0) nextIdx = i;
+          }
+          if (nextIdx === 0 && keptSolutionsRef.current.keys.length > 0) {
+            for (const k of keptSolutionsRef.current.keys) {
+              const i = findSolutionIndexByFingerprint(next, k);
+              if (i >= 0) {
+                nextIdx = i;
+                break;
+              }
+            }
+          }
         }
+        currentSolutionIndexRef.current = nextIdx;
+        setCurrentSolutionIndexState(nextIdx);
+      };
 
+      if (everyPlannerItemHasSolvePack(rows, packs)) {
         await yieldToMain();
         if (myGen !== recalcGenRef.current) return;
 
@@ -516,9 +765,7 @@ export function PlannerProvider({
         });
         if (myGen !== recalcGenRef.current) return;
         setSyncError(null);
-        setSolutions(result.solutions);
-        setSolutionsCapped(result.capped);
-        setSolutionsTimedOut(result.timedOut);
+        adoptSolutions(result.solutions, result.capped, result.timedOut);
         return;
       }
 
@@ -544,13 +791,9 @@ export function PlannerProvider({
           blackoutIntervals: blackoutIv,
         })
       ) {
-        setSolutions([prevSol]);
-        setSolutionsCapped(false);
-        setSolutionsTimedOut(false);
+        adoptSolutions([prevSol], false, false);
       } else {
-        setSolutions(sols);
-        setSolutionsCapped(res.result.capped);
-        setSolutionsTimedOut(res.result.timedOut);
+        adoptSolutions(sols, res.result.capped, res.result.timedOut);
       }
     } finally {
       recalcDepthRef.current -= 1;
@@ -777,6 +1020,89 @@ export function PlannerProvider({
     };
   }, [termCode, plannerCourseKeysSignature, mergeSolvePack]);
 
+  const setCurrentSolutionIndex = useCallback(
+    (
+      next: number,
+      method?: "next" | "prev" | "first" | "last" | "keep" | "drop",
+    ) => {
+      const total = solutionsRef.current.length;
+      const clamped = clampSolutionIndex(next, total);
+      const prev = currentSolutionIndexRef.current;
+      currentSolutionIndexRef.current = clamped;
+      setCurrentSolutionIndexState(clamped);
+      if (clamped !== prev) {
+        scheduleLastIndexPersist();
+        track("planner_solution_changed", {
+          method: method ?? "keep",
+          from: prev,
+          to: clamped,
+          total,
+        });
+      }
+    },
+    [scheduleLastIndexPersist],
+  );
+
+  const toggleCurrentSolutionKept = useCallback(() => {
+    const total = solutionsRef.current.length;
+    const idx = clampSolutionIndex(
+      currentSolutionIndexRef.current,
+      total,
+    );
+    const sol = solutionsRef.current[idx];
+    if (!sol) return;
+    const fp = solutionFingerprint(sol);
+    const prevDoc = keptSolutionsRef.current;
+    const has = prevDoc.keys.includes(fp);
+    let nextKeys: string[];
+    if (has) {
+      nextKeys = prevDoc.keys.filter((k) => k !== fp);
+    } else {
+      nextKeys = [...prevDoc.keys, fp];
+      if (nextKeys.length > MAX_KEPT_SOLUTIONS) {
+        nextKeys = nextKeys.slice(nextKeys.length - MAX_KEPT_SOLUTIONS);
+      }
+    }
+    const nextDoc: PlannerKeptSolutionsDocV1 = { v: 1, keys: nextKeys };
+    keptSolutionsRef.current = nextDoc;
+    setKeptSolutionsState(nextDoc);
+    scheduleKeptPersist();
+    track(has ? "planner_solution_unkept" : "planner_solution_kept", {
+      index: idx,
+      total,
+    });
+  }, [scheduleKeptPersist]);
+
+  const timePrefsUserGenRef = useRef(0);
+  const timePrefsHandledGenRef = useRef(0);
+
+  const setTimePrefs = useCallback(
+    (
+      next:
+        | PlannerTimePrefsV1
+        | ((prev: PlannerTimePrefsV1) => PlannerTimePrefsV1),
+    ) => {
+      timePrefsUserGenRef.current += 1;
+      setTimePrefsState((prev) => {
+        const doc = typeof next === "function" ? next(prev) : next;
+        timePrefsRef.current = doc;
+        return doc;
+      });
+    },
+    [],
+  );
+
+  // The setter wraps each toggle so we don't need to diff individual prefs
+  // here — the user-facing per-pref `track` call lives in the rail component.
+  useEffect(() => {
+    if (timePrefsUserGenRef.current === timePrefsHandledGenRef.current) {
+      return;
+    }
+    timePrefsHandledGenRef.current = timePrefsUserGenRef.current;
+    scheduleTimePrefsPersist();
+    void recalculateSolutionsRef.current();
+  }, [timePrefs, scheduleTimePrefsPersist]);
+
   const value = useMemo<PlannerContextValue>(
     () => ({
       termCode,
@@ -799,6 +1125,12 @@ export function PlannerProvider({
       solutions,
       solutionsCapped,
       solutionsTimedOut,
+      currentSolutionIndex: safeCurrentSolutionIndex,
+      setCurrentSolutionIndex,
+      keptSolutions,
+      isCurrentSolutionKept,
+      toggleCurrentSolutionKept,
+      keptSolutionIndices,
       infeasibilityHints,
       requireOpenSections,
       setRequireOpenSections,
@@ -809,6 +1141,8 @@ export function PlannerProvider({
       mergedPackConstraintMaps,
       blackouts,
       setBlackouts,
+      timePrefs,
+      setTimePrefs,
     }),
     [
       termCode,
@@ -831,6 +1165,12 @@ export function PlannerProvider({
       solutions,
       solutionsCapped,
       solutionsTimedOut,
+      safeCurrentSolutionIndex,
+      setCurrentSolutionIndex,
+      keptSolutions,
+      isCurrentSolutionKept,
+      toggleCurrentSolutionKept,
+      keptSolutionIndices,
       infeasibilityHints,
       requireOpenSections,
       recalculateSolutions,
@@ -840,6 +1180,8 @@ export function PlannerProvider({
       mergedPackConstraintMaps,
       blackouts,
       setBlackouts,
+      timePrefs,
+      setTimePrefs,
     ],
   );
 
