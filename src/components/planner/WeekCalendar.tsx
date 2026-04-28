@@ -28,7 +28,6 @@ import { cn } from "@/lib/utils";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -37,45 +36,24 @@ import {
 } from "react";
 import {
   AlertCircle,
-  ArrowLeftRight,
-  Ban,
   Check,
-  CircleHelp,
   Copy,
-  Hand,
   Loader2,
   Minus,
-  MousePointerClick,
   Pin,
   X,
   ZoomIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { usePlanner } from "./PlannerContext";
 import { BusyTimeDialog } from "./week-calendar/BusyTimeDialog";
 import {
   buildFloatStyle,
   clientYToMinutes,
-  dampedPinchRowRatio,
   DRAG_THRESHOLD_PX,
   formatQuarterHourLabel,
-  MAX_HOUR_ROW_PX,
   scrollToId,
   SNAP_MAX_DIST_PX,
-  touchCentroidX,
-  touchCentroidY,
-  touchDistance,
-  TWO_FINGER_PAN_CENTROID_MIN_PX,
-  TWO_FINGER_PAN_STABLE_MAX_RATIO,
-  TWO_FINGER_PINCH_ZOOM_MIN_RATIO,
 } from "./week-calendar/interaction";
 import {
   calendarBlockPaddingPx,
@@ -83,56 +61,20 @@ import {
   calendarTitleFontPx,
   formatHour,
 } from "./week-calendar/block-metrics";
+import {
+  CALENDAR_HOUR_AXIS,
+  DAY_LABELS,
+  GESTURE_TIP_STORAGE_KEY,
+  ScheduleHelpDialog,
+} from "./week-calendar/schedule-help-dialog";
+import {
+  groupBlackoutsByDay,
+  groupBlocksByDay,
+  groupSwapGhostsByDay,
+} from "./week-calendar/group-by-day";
+import { useViewportHourSizing } from "./week-calendar/use-viewport-hour-sizing";
+import { useWeekViewportGestures } from "./week-calendar/use-week-viewport-gestures";
 import { visibleDayIndicesMerged } from "./week-calendar/visible-days";
-
-const CALENDAR_HOUR_AXIS = Array.from(
-  { length: CALENDAR_END_HOUR - CALENDAR_START_HOUR + 1 },
-  (_, i) => CALENDAR_START_HOUR + i,
-);
-
-const HOUR_RANGE_HELP =
-  "Zoom stops when 4 a.m. through 11 p.m. fill this view.";
-
-const GESTURE_TIP_STORAGE_KEY = "uwyo.planner.weekCalTipDismissed";
-
-const SCHEDULE_HELP: readonly {
-  readonly Icon: typeof Hand;
-  readonly label: string;
-  readonly body: string;
-}[] = [
-  {
-    Icon: Hand,
-    label: "Pan the week",
-    body: "On touch, use two fingers to pan: up, down, and side to side.",
-  },
-  {
-    Icon: ZoomIn,
-    label: "Zoom the day",
-    body: `Pinch with two fingers, or use Ctrl+scroll, to show more or less of the day. ${HOUR_RANGE_HELP}`,
-  },
-  {
-    Icon: MousePointerClick,
-    label: "Open details",
-    body: "Tap a block (without dragging) to read section details.",
-  },
-  {
-    Icon: Pin,
-    label: "Pin one slice",
-    body: "When a course is on auto-pick, tap the pin on a lecture, lab, or discussion block to hold just that piece; other parts of the same course can still move. Tap again on the same block to unpin.",
-  },
-  {
-    Icon: ArrowLeftRight,
-    label: "Try another time",
-    body: "Drag a section to preview other same-type meeting times that still fit your week, busy blocks, and filters; release on a highlighted slot to switch.",
-  },
-  {
-    Icon: Ban,
-    label: "Busy times",
-    body: "Turn on “Mark busy time” and drag on a day column to block time. Tap a busy block to fine-tune times or add a label. Busy blocks are respected while the planner finds a best-fit week. Two fingers still pan and zoom the week.",
-  },
-] as const;
-
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 type Props = {
   onBlockActivate: (block: CalendarBlock) => void;
@@ -240,38 +182,18 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     () => visibleDayIndicesMerged(blocks, blackouts.items),
     [blocks, blackouts.items],
   );
-  // Pre-group calendar blocks and blackouts by `dayIndex` so the per-day
-  // render is `O(blocks_in_day)` instead of `O(days × blocks)` from a
-  // `.filter()` each day. Empty arrays are stable per render so we still
-  // hand the same reference back when nothing matches a given day.
-  const blocksByDay = useMemo(() => {
-    const map = new Map<number, CalendarBlock[]>();
-    for (const b of blocks) {
-      const list = map.get(b.dayIndex);
-      if (list) list.push(b);
-      else map.set(b.dayIndex, [b]);
-    }
-    return map;
-  }, [blocks]);
-  const blackoutsByDay = useMemo(() => {
-    const map = new Map<number, PlannerBlackoutItemV1[]>();
-    for (const bo of blackouts.items) {
-      const list = map.get(bo.dayIndex);
-      if (list) list.push(bo);
-      else map.set(bo.dayIndex, [bo]);
-    }
-    return map;
-  }, [blackouts.items]);
-  const ghostsByDay = useMemo(() => {
-    const map = new Map<number, SwapGhostMeeting[]>();
-    if (!courseDragSession) return map;
-    for (const g of courseDragSession.ghosts) {
-      const list = map.get(g.dayIndex);
-      if (list) list.push(g);
-      else map.set(g.dayIndex, [g]);
-    }
-    return map;
-  }, [courseDragSession]);
+  const blocksByDay = useMemo(() => groupBlocksByDay(blocks), [blocks]);
+  const blackoutsByDay = useMemo(
+    () => groupBlackoutsByDay(blackouts.items),
+    [blackouts.items],
+  );
+  const ghostsByDay = useMemo(
+    () =>
+      groupSwapGhostsByDay(
+        courseDragSession ? courseDragSession.ghosts : undefined,
+      ),
+    [courseDragSession],
+  );
   const isWeekdaysOnlyView = visibleDayIndices.length === 5;
   const gridMinWidthRem =
     visibleDayIndices.length === 7
@@ -280,31 +202,19 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   const hScrollRef = useRef<HTMLDivElement | null>(null);
   const weekHeaderRef = useRef<HTMLDivElement | null>(null);
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const [viewportH, setViewportH] = useState(0);
-  const [hourRowPx, setHourRowPx] = useState<number | null>(null);
-
-  const twoFingerRef = useRef<{
-    startDist: number;
-    startRowPx: number;
-    startCentroidX: number;
-    startCentroidY: number;
-    startScrollTop: number;
-    startScrollLeft: number;
-    mode: "undecided" | "pinch" | "pan";
-  } | null>(null);
-  const hourRowPxRef = useRef(44);
 
   const startMin = CALENDAR_START_HOUR * 60;
   const totalMin = CALENDAR_HOUR_COUNT * 60;
   const hourCount = CALENDAR_HOUR_COUNT;
 
-  const minRowPx = viewportH > 0 ? viewportH / hourCount : 1;
-
-  const clampRowPx = useCallback(
-    (v: number) => Math.min(MAX_HOUR_ROW_PX, Math.max(v, minRowPx)),
-    [minRowPx],
-  );
+  const {
+    viewportRef,
+    hourRowPx,
+    setHourRowPx,
+    hourRowPxRef,
+    clampRowPx,
+    minRowPx,
+  } = useViewportHourSizing(hourCount);
 
   const rowPx = hourRowPx ?? Math.max(44, minRowPx);
   const gridHeightPx = hourCount * rowPx;
@@ -358,158 +268,18 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     [gridHeightPx, startMin, totalMin, visibleDayIndices],
   );
 
-  useLayoutEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-
-    const measure = () => {
-      const h = el.clientHeight;
-      setViewportH(h);
-      if (h <= 0) return;
-      const floor = h / hourCount;
-      setHourRowPx((prev) => {
-        if (prev == null) return Math.max(44, floor);
-        return Math.min(MAX_HOUR_ROW_PX, Math.max(prev, floor));
-      });
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [hourCount]);
-
-  useLayoutEffect(() => {
-    hourRowPxRef.current = hourRowPx ?? Math.max(44, minRowPx);
-  }, [hourRowPx, minRowPx]);
-
-  useLayoutEffect(() => {
-    const vEl = viewportRef.current;
-    const headerEl = weekHeaderRef.current;
-    if (!vEl) return;
-    const getHScroll = () => hScrollRef.current;
-
-    const beginTwoFinger = (e: TouchEvent) => {
-      if (e.touches.length !== 2) return;
-      const startDist = touchDistance(e.touches);
-      if (startDist <= 0) {
-        twoFingerRef.current = null;
-        return;
-      }
-      const hS = getHScroll();
-      twoFingerRef.current = {
-        startDist,
-        startRowPx: hourRowPxRef.current,
-        startCentroidX: touchCentroidX(e.touches),
-        startCentroidY: touchCentroidY(e.touches),
-        startScrollTop: vEl.scrollTop,
-        startScrollLeft: hS?.scrollLeft ?? 0,
-        mode: "undecided",
-      };
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length >= 2) {
-        const down = coursePointerDownRef.current;
-        const cap = capturedCourseBlockElRef.current;
-        if (cap && down) {
-          try {
-            cap.releasePointerCapture(down.pointerId);
-          } catch {
-            /* ignore */
-          }
-        }
-        capturedCourseBlockElRef.current = null;
-        if (down) endCourseDrag();
-      }
-      if (courseDragSessionRef.current) return;
-      if (e.touches.length === 2) beginTwoFinger(e);
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (courseDragSessionRef.current) return;
-      if (e.touches.length !== 2) return;
-      if (!twoFingerRef.current) beginTwoFinger(e);
-
-      const sess = twoFingerRef.current;
-      if (!sess) return;
-
-      const d = touchDistance(e.touches);
-      const cx = touchCentroidX(e.touches);
-      const cy = touchCentroidY(e.touches);
-      const d0 = sess.startDist;
-      if (d0 <= 0) return;
-
-      if (sess.mode === "undecided") {
-        const relDist = Math.abs(d - d0) / d0;
-        const dPos = Math.hypot(
-          cx - sess.startCentroidX,
-          cy - sess.startCentroidY,
-        );
-        const longSlide = dPos > 14 && relDist < 0.38;
-        if (
-          (dPos > TWO_FINGER_PAN_CENTROID_MIN_PX &&
-            relDist < TWO_FINGER_PAN_STABLE_MAX_RATIO) ||
-          longSlide
-        ) {
-          sess.mode = "pan";
-        } else if (relDist > TWO_FINGER_PINCH_ZOOM_MIN_RATIO) {
-          sess.mode = "pinch";
-        } else {
-          return;
-        }
-      }
-
-      e.preventDefault();
-      if (sess.mode === "pinch") {
-        setHourRowPx(
-          dampedPinchRowRatio(sess.startRowPx, d / d0, clampRowPx),
-        );
-      } else {
-        const hS = getHScroll();
-        vEl.scrollTop = sess.startScrollTop - (cy - sess.startCentroidY);
-        if (hS) {
-          hS.scrollLeft = sess.startScrollLeft - (cx - sess.startCentroidX);
-        }
-      }
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) twoFingerRef.current = null;
-    };
-
-    const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      setHourRowPx((prev) => {
-        const base = prev ?? hourRowPxRef.current;
-        const factor = e.deltaY > 0 ? 0.95 : 1.05;
-        return clampRowPx(base * factor);
-      });
-    };
-
-    const addTouch = (n: HTMLDivElement) => {
-      n.addEventListener("touchstart", onTouchStart, { passive: true });
-      n.addEventListener("touchmove", onTouchMove, { passive: false });
-      n.addEventListener("touchend", onTouchEnd);
-      n.addEventListener("touchcancel", onTouchEnd);
-    };
-    const removeTouch = (n: HTMLDivElement) => {
-      n.removeEventListener("touchstart", onTouchStart);
-      n.removeEventListener("touchmove", onTouchMove);
-      n.removeEventListener("touchend", onTouchEnd);
-      n.removeEventListener("touchcancel", onTouchEnd);
-    };
-
-    addTouch(vEl);
-    if (headerEl) addTouch(headerEl);
-    vEl.addEventListener("wheel", onWheel, { passive: false });
-    return () => {
-      removeTouch(vEl);
-      if (headerEl) removeTouch(headerEl);
-      vEl.removeEventListener("wheel", onWheel);
-    };
-  }, [clampRowPx, endCourseDrag]);
+  useWeekViewportGestures({
+    viewportRef,
+    weekHeaderRef,
+    hScrollRef,
+    hourRowPxRef,
+    clampRowPx,
+    setHourRowPx,
+    endCourseDrag,
+    courseDragSessionRef,
+    coursePointerDownRef,
+    capturedCourseBlockElRef,
+  });
 
   const timeQuarterOptions = useMemo(() => {
     const out: { value: number; label: string }[] = [];
@@ -732,11 +502,11 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   const zoomCalendarIn = useCallback(() => {
     setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) * 1.08));
-  }, [clampRowPx, minRowPx]);
+  }, [clampRowPx, minRowPx, setHourRowPx]);
 
   const zoomCalendarOut = useCallback(() => {
     setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) / 1.08));
-  }, [clampRowPx, minRowPx]);
+  }, [clampRowPx, minRowPx, setHourRowPx]);
 
   const displayWeekCrns = useMemo(
     () => collectDisplayCrnsForItems(effectivePlannerItems, catalog),
@@ -1225,53 +995,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               >
                 <ZoomIn className="size-4" aria-hidden />
               </Button>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-lg"
-                    className="shrink-0 text-muted-foreground hover:text-foreground"
-                    aria-label="How to use the weekly schedule"
-                  >
-                    <CircleHelp className="size-5" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-h-[min(32rem,85vh)] overflow-y-auto sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>How to use the weekly schedule</DialogTitle>
-                    <DialogDescription>
-                      Gestures for moving and zooming your week preview.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <ul className="list-none space-y-4">
-                    {SCHEDULE_HELP.map((item) => {
-                      const I = item.Icon;
-                      return (
-                        <li
-                          key={item.label}
-                          className="flex gap-3 border-b border-border pb-4 last:border-b-0 last:pb-0"
-                        >
-                          <div
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/40 text-muted-foreground"
-                            aria-hidden
-                          >
-                            <I className="size-4" strokeWidth={2} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-foreground">
-                              {item.label}
-                            </p>
-                            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                              {item.body}
-                            </p>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </DialogContent>
-              </Dialog>
+              <ScheduleHelpDialog />
             </div>
           </div>
         </div>

@@ -139,6 +139,15 @@ type ProviderProps = {
   children: React.ReactNode;
 };
 
+/**
+ * Provides planner cart, catalog, solves, and UI wiring in one context value.
+ *
+ * When investigating performance: use React DevTools Profiler while toggling pins,
+ * dragging swaps, or editing CourseManager-only fields. If subtree renders look
+ * wasteful (e.g. CourseManager updating on blackout-only edits), measure before
+ * splitting — a single memoized context value stays simpler than multiple stores
+ * until profiling shows concrete churn.
+ */
 export function PlannerProvider({
   termCode,
   initialPlannerItems,

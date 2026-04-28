@@ -1,5 +1,19 @@
 "use server";
 
+/**
+ * Server-action cache policy:
+ * - `ensurePlannerSessionAction` calls `revalidatePath("/")` once when a brand-new
+ *   anonymous session cookie is minted so any statically cached homepage awareness updates.
+ * - Planner persistence (`syncPlannerStateAction`, blackouts save, catalog bootstrap,
+ *   prefetch, solve, search) deliberately does **not** revalidate routes on each call:
+ *   the planner tab owns live state client-side; the next navigation or refresh loads
+ *   `/planner` fresh from Postgres. Adding `revalidatePath` per debounced persist would
+ *   thrash the Next cache without helping the happy path.
+ * - When a `/planner` loader is wrapped in long-lived `"use cache"` keyed on session +
+ *   term in the future, mutate actions that modify that cached payload should call the
+ *   minimal `revalidatePath`/`updateTag` needed alongside their success paths.
+ */
+
 import { createDb } from "@/db/index";
 import * as schema from "@/db/schema";
 import { and, eq, notInArray } from "drizzle-orm";
