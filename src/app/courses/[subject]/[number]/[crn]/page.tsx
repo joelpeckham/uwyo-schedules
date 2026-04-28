@@ -86,8 +86,6 @@ export async function generateStaticParams() {
   }));
 }
 
-export const dynamicParams = true;
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { subject: seg, number, crn } = await params;
   const subject = pathSegmentToSubject(seg);
