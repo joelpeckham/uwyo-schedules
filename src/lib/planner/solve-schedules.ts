@@ -228,88 +228,94 @@ export async function loadCourseSolvePack(
   }
   const crnList = [...allCrns];
 
+  // Fan out the three independent CRN reads (meetings, faculty, sections)
+  // so the round-trip cost is the slowest query rather than their sum, and
+  // collapse the previous two `sections` queries (seats + schedule type)
+  // into a single select.
+  const [meetingRows, facRows, secRows] = await Promise.all([
+    crnList.length === 0
+      ? Promise.resolve([] as (typeof schema.sectionMeetings.$inferSelect)[])
+      : db
+          .select()
+          .from(schema.sectionMeetings)
+          .where(
+            and(
+              eq(schema.sectionMeetings.termCode, termCode),
+              inArray(schema.sectionMeetings.sectionCrn, crnList),
+            ),
+          ),
+    crnList.length === 0
+      ? Promise.resolve(
+          [] as {
+            sectionCrn: string;
+            displayName: string | null;
+            primaryIndicator: boolean | null;
+          }[],
+        )
+      : db
+          .select({
+            sectionCrn: schema.sectionFaculty.sectionCrn,
+            displayName: schema.sectionFaculty.displayName,
+            primaryIndicator: schema.sectionFaculty.primaryIndicator,
+          })
+          .from(schema.sectionFaculty)
+          .where(
+            and(
+              eq(schema.sectionFaculty.termCode, termCode),
+              inArray(schema.sectionFaculty.sectionCrn, crnList),
+            ),
+          ),
+    crnList.length === 0
+      ? Promise.resolve(
+          [] as {
+            crn: string;
+            seatsAvailable: number | null;
+            openSection: boolean | null;
+            scheduleTypeDescription: string | null;
+          }[],
+        )
+      : db
+          .select({
+            crn: schema.sections.crn,
+            seatsAvailable: schema.sections.seatsAvailable,
+            openSection: schema.sections.openSection,
+            scheduleTypeDescription: schema.sections.scheduleTypeDescription,
+          })
+          .from(schema.sections)
+          .where(
+            and(
+              eq(schema.sections.termCode, termCode),
+              inArray(schema.sections.crn, crnList),
+            ),
+          ),
+  ]);
+
   const meetingsByCrn: Record<string, TimeInterval[]> = {};
-  if (crnList.length > 0) {
-    const meetingRows = await db
-      .select()
-      .from(schema.sectionMeetings)
-      .where(
-        and(
-          eq(schema.sectionMeetings.termCode, termCode),
-          inArray(schema.sectionMeetings.sectionCrn, crnList),
-        ),
-      );
-    for (const crn of crnList) meetingsByCrn[crn] = [];
-    for (const m of meetingRows) {
-      const list = meetingsByCrn[m.sectionCrn] ?? [];
-      list.push(...meetingRowToIntervals(m));
-      meetingsByCrn[m.sectionCrn] = list;
-    }
+  for (const crn of crnList) meetingsByCrn[crn] = [];
+  for (const m of meetingRows) {
+    const list = meetingsByCrn[m.sectionCrn] ?? [];
+    list.push(...meetingRowToIntervals(m));
+    meetingsByCrn[m.sectionCrn] = list;
   }
 
   const seatsByCrn: CourseSolvePack["seatsByCrn"] = {};
-  if (crnList.length > 0) {
-    const secRows = await db
-      .select({
-        crn: schema.sections.crn,
-        seatsAvailable: schema.sections.seatsAvailable,
-        openSection: schema.sections.openSection,
-      })
-      .from(schema.sections)
-      .where(
-        and(
-          eq(schema.sections.termCode, termCode),
-          inArray(schema.sections.crn, crnList),
-        ),
-      );
-    for (const r of secRows) {
-      seatsByCrn[r.crn] = {
-        seatsAvailable: r.seatsAvailable,
-        openSection: r.openSection,
-      };
-    }
+  const scheduleTypeByCrn: Record<string, string | null> = {};
+  for (const r of secRows) {
+    seatsByCrn[r.crn] = {
+      seatsAvailable: r.seatsAvailable,
+      openSection: r.openSection,
+    };
+    scheduleTypeByCrn[r.crn] = r.scheduleTypeDescription;
   }
 
   const facultyByCrn: CourseSolvePack["facultyByCrn"] = {};
-  const scheduleTypeByCrn: Record<string, string | null> = {};
-  if (crnList.length > 0) {
-    const facRows = await db
-      .select({
-        sectionCrn: schema.sectionFaculty.sectionCrn,
-        displayName: schema.sectionFaculty.displayName,
-        primaryIndicator: schema.sectionFaculty.primaryIndicator,
-      })
-      .from(schema.sectionFaculty)
-      .where(
-        and(
-          eq(schema.sectionFaculty.termCode, termCode),
-          inArray(schema.sectionFaculty.sectionCrn, crnList),
-        ),
-      );
-    for (const r of facRows) {
-      const list = facultyByCrn[r.sectionCrn] ?? [];
-      list.push({
-        displayName: r.displayName,
-        primaryIndicator: r.primaryIndicator,
-      });
-      facultyByCrn[r.sectionCrn] = list;
-    }
-
-    const stRows = await db
-      .select({
-        crn: schema.sections.crn,
-        scheduleTypeDescription: schema.sections.scheduleTypeDescription,
-      })
-      .from(schema.sections)
-      .where(
-        and(
-          eq(schema.sections.termCode, termCode),
-          inArray(schema.sections.crn, crnList),
-        ),
-      );
-    for (const r of stRows) {
-      scheduleTypeByCrn[r.crn] = r.scheduleTypeDescription;
-    }
+  for (const r of facRows) {
+    const list = facultyByCrn[r.sectionCrn] ?? [];
+    list.push({
+      displayName: r.displayName,
+      primaryIndicator: r.primaryIndicator,
+    });
+    facultyByCrn[r.sectionCrn] = list;
   }
 
   return {
@@ -371,107 +377,129 @@ export async function solveSchedulesForTerm(
   }
   const crnList = [...allCrns];
 
-  const meetingsByCrn = new Map<string, TimeInterval[]>();
-  if (crnList.length > 0) {
-    const meetingRows = await db
-      .select()
-      .from(schema.sectionMeetings)
+  const sessionId = items[0]!.sessionId;
+  for (const r of items) {
+    if (r.sessionId !== sessionId) {
+      throw new Error(
+        "solveSchedulesForTerm: planner items must share a single session.",
+      );
+    }
+    if (r.termCode !== termCode) {
+      throw new Error(
+        "solveSchedulesForTerm: planner items must match the requested term.",
+      );
+    }
+  }
+
+  // All four reads (meetings, faculty, sections, planner ui) are independent.
+  // Fan them out in a single `Promise.all` so total wall time is the slowest
+  // round-trip rather than their sum, and merge the previous two `sections`
+  // selects (seats + schedule type) into a single query.
+  const [meetingRows, facRows, secRows, uiRow] = await Promise.all([
+    crnList.length === 0
+      ? Promise.resolve([] as (typeof schema.sectionMeetings.$inferSelect)[])
+      : db
+          .select()
+          .from(schema.sectionMeetings)
+          .where(
+            and(
+              eq(schema.sectionMeetings.termCode, termCode),
+              inArray(schema.sectionMeetings.sectionCrn, crnList),
+            ),
+          ),
+    crnList.length === 0
+      ? Promise.resolve(
+          [] as {
+            sectionCrn: string;
+            displayName: string | null;
+            primaryIndicator: boolean | null;
+          }[],
+        )
+      : db
+          .select({
+            sectionCrn: schema.sectionFaculty.sectionCrn,
+            displayName: schema.sectionFaculty.displayName,
+            primaryIndicator: schema.sectionFaculty.primaryIndicator,
+          })
+          .from(schema.sectionFaculty)
+          .where(
+            and(
+              eq(schema.sectionFaculty.termCode, termCode),
+              inArray(schema.sectionFaculty.sectionCrn, crnList),
+            ),
+          ),
+    crnList.length === 0
+      ? Promise.resolve(
+          [] as {
+            crn: string;
+            seatsAvailable: number | null;
+            openSection: boolean | null;
+            scheduleTypeDescription: string | null;
+          }[],
+        )
+      : db
+          .select({
+            crn: schema.sections.crn,
+            seatsAvailable: schema.sections.seatsAvailable,
+            openSection: schema.sections.openSection,
+            scheduleTypeDescription: schema.sections.scheduleTypeDescription,
+          })
+          .from(schema.sections)
+          .where(
+            and(
+              eq(schema.sections.termCode, termCode),
+              inArray(schema.sections.crn, crnList),
+            ),
+          ),
+    db
+      .select({ blackouts: schema.plannerTermUiState.blackouts })
+      .from(schema.plannerTermUiState)
       .where(
         and(
-          eq(schema.sectionMeetings.termCode, termCode),
-          inArray(schema.sectionMeetings.sectionCrn, crnList),
+          eq(schema.plannerTermUiState.sessionId, sessionId),
+          eq(schema.plannerTermUiState.termCode, termCode),
         ),
-      );
-    for (const crn of crnList) meetingsByCrn.set(crn, []);
-    for (const m of meetingRows) {
-      const list = meetingsByCrn.get(m.sectionCrn) ?? [];
-      list.push(...meetingRowToIntervals(m));
-      meetingsByCrn.set(m.sectionCrn, list);
-    }
+      )
+      .limit(1)
+      .then((rows) => rows[0]),
+  ]);
+
+  const meetingsByCrn = new Map<string, TimeInterval[]>();
+  for (const crn of crnList) meetingsByCrn.set(crn, []);
+  for (const m of meetingRows) {
+    const list = meetingsByCrn.get(m.sectionCrn) ?? [];
+    list.push(...meetingRowToIntervals(m));
+    meetingsByCrn.set(m.sectionCrn, list);
   }
 
   const seatsByCrn = new Map<
     string,
     { seatsAvailable: number | null; openSection: boolean | null }
   >();
-  if (opts.requireOpenSections && crnList.length > 0) {
-    const secRows = await db
-      .select({
-        crn: schema.sections.crn,
-        seatsAvailable: schema.sections.seatsAvailable,
-        openSection: schema.sections.openSection,
-      })
-      .from(schema.sections)
-      .where(
-        and(
-          eq(schema.sections.termCode, termCode),
-          inArray(schema.sections.crn, crnList),
-        ),
-      );
-    for (const r of secRows) {
+  const scheduleTypeByCrn = new Map<string, string | null>();
+  for (const r of secRows) {
+    if (opts.requireOpenSections) {
       seatsByCrn.set(r.crn, {
         seatsAvailable: r.seatsAvailable,
         openSection: r.openSection,
       });
     }
+    scheduleTypeByCrn.set(r.crn, r.scheduleTypeDescription);
   }
 
   const facultyByCrn = new Map<
     string,
     { displayName: string | null; primaryIndicator: boolean | null }[]
   >();
-  const scheduleTypeByCrn = new Map<string, string | null>();
-  if (crnList.length > 0) {
-    const facRows = await db
-      .select({
-        sectionCrn: schema.sectionFaculty.sectionCrn,
-        displayName: schema.sectionFaculty.displayName,
-        primaryIndicator: schema.sectionFaculty.primaryIndicator,
-      })
-      .from(schema.sectionFaculty)
-      .where(
-        and(
-          eq(schema.sectionFaculty.termCode, termCode),
-          inArray(schema.sectionFaculty.sectionCrn, crnList),
-        ),
-      );
-    for (const r of facRows) {
-      const list = facultyByCrn.get(r.sectionCrn) ?? [];
-      list.push({
-        displayName: r.displayName,
-        primaryIndicator: r.primaryIndicator,
-      });
-      facultyByCrn.set(r.sectionCrn, list);
-    }
-
-    const stRows = await db
-      .select({
-        crn: schema.sections.crn,
-        scheduleTypeDescription: schema.sections.scheduleTypeDescription,
-      })
-      .from(schema.sections)
-      .where(
-        and(
-          eq(schema.sections.termCode, termCode),
-          inArray(schema.sections.crn, crnList),
-        ),
-      );
-    for (const r of stRows) {
-      scheduleTypeByCrn.set(r.crn, r.scheduleTypeDescription);
-    }
+  for (const r of facRows) {
+    const list = facultyByCrn.get(r.sectionCrn) ?? [];
+    list.push({
+      displayName: r.displayName,
+      primaryIndicator: r.primaryIndicator,
+    });
+    facultyByCrn.set(r.sectionCrn, list);
   }
 
-  const sessionId = items[0]!.sessionId;
-  const [uiRow] = await db
-    .select({ blackouts: schema.plannerTermUiState.blackouts })
-    .from(schema.plannerTermUiState)
-    .where(
-      and(
-        eq(schema.plannerTermUiState.sessionId, sessionId),
-        eq(schema.plannerTermUiState.termCode, termCode),
-      ),
-    )
-    .limit(1);
   const blackoutIntervals = uiRow
     ? blackoutsDocToTimeIntervals(parseBlackoutsJson(uiRow.blackouts))
     : [];

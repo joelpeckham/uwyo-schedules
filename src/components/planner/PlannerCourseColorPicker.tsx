@@ -8,7 +8,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { memo, useState } from "react";
 
 const COLS = COURSE_COLOR_GRID[0]?.length ?? 1;
 
@@ -18,7 +18,7 @@ type Props = {
   onPick: (hex: string) => void;
 };
 
-export function PlannerCourseColorPicker({
+function PlannerCourseColorPickerInner({
   displayColor,
   disabled,
   onPick,
@@ -83,3 +83,5 @@ export function PlannerCourseColorPicker({
     </Popover>
   );
 }
+
+export const PlannerCourseColorPicker = memo(PlannerCourseColorPickerInner);

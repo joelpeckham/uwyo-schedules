@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createDb } from "@/db/index";
-import { getLatestTermCode } from "@/lib/planner/data";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
   getCourseSeoDetailForSeo,
+  getLatestTermCodeForSeo,
   listSectionTableRowsForCourseTermForSeo,
   pathSegmentToSubject,
   subjectToPathSegment,
@@ -64,8 +63,7 @@ export default async function CourseDetailPage({ params }: Props) {
   const detail = await getCourseSeoDetailForSeo(subject, num);
   if (!detail) notFound();
 
-  const db = createDb();
-  const latest = await getLatestTermCode(db);
+  const latest = await getLatestTermCodeForSeo();
   const primaryTerm = detail.terms[0]?.termCode ?? latest;
   if (!primaryTerm) notFound();
 

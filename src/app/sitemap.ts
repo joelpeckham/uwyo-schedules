@@ -1,8 +1,8 @@
 import type { MetadataRoute } from "next";
-import { eq } from "drizzle-orm";
+import { cacheLife, cacheTag } from "next/cache";
 import { createDb } from "@/db/index";
-import * as schema from "@/db/schema";
 import { getLatestTermCode, listTerms } from "@/lib/planner/data";
+import { SEO_SITEMAP_TAG } from "@/lib/seo/cache-tags";
 import { SITE_URL } from "@/lib/seo/site";
 import {
   listAllDistinctCourseKeys,
@@ -11,14 +11,23 @@ import {
   subjectToPathSegment,
 } from "@/lib/seo/queries";
 
-export const revalidate = 3600;
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // The whole sitemap is read-only over Postgres, so cache it under the
+  // shared sitemap tag. Banner ingest invalidates the tag on every scrape so
+  // the next request rebuilds the entry list.
+  "use cache";
+  cacheTag(SEO_SITEMAP_TAG);
+  cacheLife("hours");
+
   const db = createDb();
   const base = SITE_URL;
   const now = new Date();
-  const terms = await listTerms(db);
-  const latest = await getLatestTermCode(db);
+  // Run independent reads in parallel so the sitemap response is bounded by
+  // the slowest query rather than the sum of every roundtrip.
+  const [terms, latest] = await Promise.all([
+    listTerms(db),
+    getLatestTermCode(db),
+  ]);
 
   const staticEntries: MetadataRoute.Sitemap = [
     {
@@ -59,27 +68,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  const termEntries: MetadataRoute.Sitemap = [];
-  for (const t of terms) {
-    const [termMod] = await db
-      .select({
-        lastHotScrapeAt: schema.terms.lastHotScrapeAt,
-        lastFullScrapeAt: schema.terms.lastFullScrapeAt,
-      })
-      .from(schema.terms)
-      .where(eq(schema.terms.code, t.code))
-      .limit(1);
-    const lastMod =
-      termMod?.lastHotScrapeAt ?? termMod?.lastFullScrapeAt ?? now;
+  // Fetch every term's subjects in parallel — `listTerms` already returned
+  // `lastHotScrapeAt` / `lastFullScrapeAt`, so no per-term lookup is needed.
+  const subjectsByTerm = await Promise.all(
+    terms.map((t) =>
+      listSubjectsForTerm(db, t.code).then((subjects) => ({
+        term: t,
+        subjects,
+      })),
+    ),
+  );
 
+  const termEntries: MetadataRoute.Sitemap = [];
+  for (const { term: t, subjects } of subjectsByTerm) {
+    const lastMod = t.lastHotScrapeAt ?? t.lastFullScrapeAt ?? now;
     termEntries.push({
       url: `${base}/terms/${encodeURIComponent(t.code)}`,
       lastModified: lastMod,
       changeFrequency: "daily",
       priority: t.code === latest ? 0.95 : 0.75,
     });
-
-    const subjects = await listSubjectsForTerm(db, t.code);
     for (const s of subjects) {
       termEntries.push({
         url: `${base}/terms/${encodeURIComponent(t.code)}/${encodeURIComponent(subjectToPathSegment(s.subject))}`,

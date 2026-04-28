@@ -43,6 +43,27 @@
       "when": 1777400000000,
       "tag": "0005_planner_section_pins",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777500000000,
+      "tag": "0006_cron_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777600000000,
+      "tag": "0007_sections_subject_course_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777700000000,
+      "tag": "0008_catalog_action_rate_limit",
+      "breakpoints": true
     }
   ]
 }

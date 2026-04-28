@@ -1,8 +1,25 @@
+import { cacheLife, cacheTag } from "next/cache";
 import { createDb } from "@/db/index";
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { canonicalAggregateCourseTitle } from "@/lib/catalog/canonicalCourseTitleSql";
 import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
+import {
+  SEO_SITEMAP_TAG,
+  seoCourseTag,
+  seoInstructorTag,
+  seoTermSubjectTag,
+  seoTermTag,
+} from "@/lib/seo/cache-tags";
+import {
+  getLatestTermCode,
+  listTerms,
+  termExists,
+} from "@/lib/planner/data";
+import {
+  getLatestTermRow,
+  getTermDescriptionByCode,
+} from "@/lib/terms/labels";
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, max, sql } from "drizzle-orm";
 
 /** URL path segment for Banner subject (e.g. `MATH` → `math`). */
@@ -15,7 +32,7 @@ export function pathSegmentToSubject(segment: string): string {
   return segment.trim().toUpperCase();
 }
 
-export type SubjectRow = {
+type SubjectRow = {
   subject: string;
   sectionCount: number;
 };
@@ -36,7 +53,7 @@ export async function listSubjectsForTerm(
   return rows;
 }
 
-export type CourseListRow = {
+type CourseListRow = {
   subject: string;
   courseNumber: string;
   subjectCourse: string | null;
@@ -45,7 +62,7 @@ export type CourseListRow = {
   creditHours: number | null;
 };
 
-export async function listCoursesForSubjectAndTerm(
+async function listCoursesForSubjectAndTerm(
   db: Database,
   termCode: string,
   subject: string,
@@ -88,14 +105,14 @@ export async function listCoursesForSubjectAndTerm(
   }));
 }
 
-export type CourseTermSummary = {
+type CourseTermSummary = {
   termCode: string;
   termDescription: string;
   sectionCount: number;
   lastUpdated: Date | null;
 };
 
-export type CourseSeoDetail = {
+type CourseSeoDetail = {
   subject: string;
   courseNumber: string;
   /** Best-known title across terms. */
@@ -103,7 +120,7 @@ export type CourseSeoDetail = {
   terms: CourseTermSummary[];
 };
 
-export async function getCourseSeoDetail(
+async function getCourseSeoDetail(
   db: Database,
   subject: string,
   courseNumber: string,
@@ -165,7 +182,7 @@ export async function getCourseSeoDetail(
   };
 }
 
-export type SectionTableRow = {
+type SectionTableRow = {
   crn: string;
   termCode: string;
   courseTitle: string | null;
@@ -198,7 +215,7 @@ function formatMeetingRow(m: typeof schema.sectionMeetings.$inferSelect): string
   return [dayPart, time, place].filter(Boolean).join(" · ");
 }
 
-export async function listSectionTableRowsForCourseTerm(
+async function listSectionTableRowsForCourseTerm(
   db: Database,
   termCode: string,
   subject: string,
@@ -295,7 +312,7 @@ export async function listSectionTableRowsForCourseTerm(
   });
 }
 
-export function slugifyInstructorName(name: string): string {
+function slugifyInstructorName(name: string): string {
   return name
     .trim()
     .toLowerCase()
@@ -303,7 +320,7 @@ export function slugifyInstructorName(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-export type InstructorIndexRow = {
+type InstructorIndexRow = {
   slug: string;
   displayName: string;
   sectionCount: number;
@@ -336,7 +353,7 @@ export async function listInstructorsForSeo(
   return out;
 }
 
-export async function listSectionsForInstructorDisplayName(
+async function listSectionsForInstructorDisplayName(
   db: Database,
   displayName: string,
   limit = 200,
@@ -423,10 +440,17 @@ export async function listAllDistinctCourseKeys(
 }
 
 /**
- * Route helpers: open a fresh DB client per call.
- * (Not Next.js `use cache` / `cacheTag`; name avoids implying framework-level caching.)
+ * Route helpers wrapped with Next.js 16 Cache Components (`'use cache'`).
+ *
+ * Each helper opens its own DB client per call so it can safely be invoked
+ * from any RSC/route segment. The `cacheTag` calls let `replaceTermData`
+ * (and other writers) call `revalidateTag` to tie SEO freshness to scrapes
+ * rather than a wall-clock `revalidate`.
  */
 export async function listSubjectsForTermForSeo(termCode: string) {
+  "use cache";
+  cacheTag(seoTermTag(termCode), SEO_SITEMAP_TAG);
+  cacheLife("hours");
   const db = createDb();
   return listSubjectsForTerm(db, termCode);
 }
@@ -435,6 +459,12 @@ export async function listCoursesForSubjectAndTermForSeo(
   termCode: string,
   subject: string,
 ) {
+  "use cache";
+  cacheTag(
+    seoTermSubjectTag(termCode, subject),
+    seoTermTag(termCode),
+  );
+  cacheLife("hours");
   const db = createDb();
   return listCoursesForSubjectAndTerm(db, termCode, subject);
 }
@@ -443,6 +473,9 @@ export async function getCourseSeoDetailForSeo(
   subject: string,
   courseNumber: string,
 ) {
+  "use cache";
+  cacheTag(seoCourseTag(subject, courseNumber));
+  cacheLife("hours");
   const db = createDb();
   return getCourseSeoDetail(db, subject, courseNumber);
 }
@@ -452,16 +485,80 @@ export async function listSectionTableRowsForCourseTermForSeo(
   subject: string,
   courseNumber: string,
 ) {
+  "use cache";
+  cacheTag(
+    seoCourseTag(subject, courseNumber),
+    seoTermTag(termCode),
+  );
+  cacheLife("hours");
   const db = createDb();
   return listSectionTableRowsForCourseTerm(db, termCode, subject, courseNumber);
 }
 
 export async function listInstructorsIndexForSeo(minSections = 3) {
+  "use cache";
+  cacheTag(SEO_SITEMAP_TAG);
+  cacheLife("hours");
   const db = createDb();
   return listInstructorsForSeo(db, minSections);
 }
 
-export async function listSectionsForInstructorForSeo(displayName: string) {
+export async function listSectionsForInstructorForSeo(
+  displayName: string,
+  slug?: string,
+) {
+  "use cache";
+  if (slug) cacheTag(seoInstructorTag(slug));
+  cacheLife("hours");
   const db = createDb();
   return listSectionsForInstructorDisplayName(db, displayName);
+}
+
+/**
+ * Cached helpers around `lib/planner/data` and `lib/terms/labels` so SEO
+ * pages can read term metadata without a fresh Postgres round-trip per
+ * request. Tagged with `SEO_SITEMAP_TAG` because every term ingest already
+ * invalidates that broad tag.
+ */
+export async function getLatestTermCodeForSeo(): Promise<string | null> {
+  "use cache";
+  cacheTag(SEO_SITEMAP_TAG);
+  cacheLife("hours");
+  const db = createDb();
+  return getLatestTermCode(db);
+}
+
+export async function getLatestTermRowForSeo(): Promise<
+  { code: string; description: string } | null
+> {
+  "use cache";
+  cacheTag(SEO_SITEMAP_TAG);
+  cacheLife("hours");
+  const db = createDb();
+  return getLatestTermRow(db);
+}
+
+export async function termExistsForSeo(termCode: string): Promise<boolean> {
+  "use cache";
+  cacheTag(SEO_SITEMAP_TAG);
+  cacheLife("hours");
+  const db = createDb();
+  return termExists(db, termCode);
+}
+
+export async function getTermDescriptionByCodeForSeo(
+  termCode: string,
+): Promise<string | null> {
+  "use cache";
+  cacheTag(seoTermTag(termCode));
+  cacheLife("hours");
+  return getTermDescriptionByCode(termCode);
+}
+
+export async function listTermsForSeo() {
+  "use cache";
+  cacheTag(SEO_SITEMAP_TAG);
+  cacheLife("hours");
+  const db = createDb();
+  return listTerms(db);
 }

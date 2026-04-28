@@ -6,6 +6,13 @@ import {
   SUBJECT_PAGE_SIZE,
   TERMS_MAX,
 } from "./constants";
+
+/**
+ * Per-request timeout for Banner HTTP calls. Banner SSB occasionally hangs
+ * indefinitely; without this the workflow step would block forever and never
+ * be retried.
+ */
+const BANNER_REQUEST_TIMEOUT_MS = 15_000;
 import { parseSynchronizerToken } from "./parse-html";
 import type {
   BannerSubject,
@@ -61,20 +68,43 @@ export class BannerSsbClient {
     if (c) headers.set("Cookie", c);
 
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
-      const res = await fetch(url, { ...init, headers, redirect: "follow" });
-      const raw = res.headers.get("set-cookie");
-      if (raw) {
-        this.mergeSetCookie([raw]);
+      const signal = init.signal
+        ? AbortSignal.any([
+            init.signal,
+            AbortSignal.timeout(BANNER_REQUEST_TIMEOUT_MS),
+          ])
+        : AbortSignal.timeout(BANNER_REQUEST_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, {
+          ...init,
+          headers,
+          redirect: "follow",
+          signal,
+        });
+        const raw = res.headers.get("set-cookie");
+        if (raw) {
+          this.mergeSetCookie([raw]);
+        }
+        const list = res.headers.getSetCookie?.();
+        if (list?.length) {
+          this.mergeSetCookie(list);
+        }
+        if (res.status >= 500 && attempt < RETRY_ATTEMPTS) {
+          await delay(RETRY_BASE_MS * attempt);
+          continue;
+        }
+        return res;
+      } catch (err) {
+        const isAbort =
+          err instanceof DOMException && err.name === "AbortError";
+        const isTimeout =
+          err instanceof DOMException && err.name === "TimeoutError";
+        if ((isAbort || isTimeout) && attempt < RETRY_ATTEMPTS) {
+          await delay(RETRY_BASE_MS * attempt);
+          continue;
+        }
+        throw err;
       }
-      const list = res.headers.getSetCookie?.();
-      if (list?.length) {
-        this.mergeSetCookie(list);
-      }
-      if (res.status >= 500 && attempt < RETRY_ATTEMPTS) {
-        await delay(RETRY_BASE_MS * attempt);
-        continue;
-      }
-      return res;
     }
     throw new Error("Banner rawFetch: exhausted retries without returning a response");
   }
@@ -237,11 +267,24 @@ export class BannerSsbClient {
       method: "GET",
       headers: this.xhrHeaders(),
     });
+    if (!res.ok) {
+      throw new Error(
+        `Banner fetchLinkedSections ${anchorCrn}: HTTP ${res.status}`,
+      );
+    }
     const text = await res.text();
+    if (text.trim() === "") {
+      return {};
+    }
     try {
       return JSON.parse(text) as LinkedSectionsResponse;
-    } catch {
-      return {};
+    } catch (err) {
+      const snippet = text.slice(0, 200).replace(/\s+/g, " ");
+      throw new Error(
+        `Banner fetchLinkedSections ${anchorCrn}: invalid JSON response (status ${res.status}, body starts: "${snippet}")${
+          err instanceof Error ? `: ${err.message}` : ""
+        }`,
+      );
     }
   }
 }

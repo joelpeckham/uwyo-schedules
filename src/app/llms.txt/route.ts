@@ -4,9 +4,10 @@ import {
   instructorPagesEnabledFromEnv,
 } from "@/lib/seo/llms-txt";
 
-export const revalidate = 3600;
-
 export function GET() {
+  // The body is fully synchronous; response-level `Cache-Control` keeps
+  // CDN/browser caching hot. Cache Components forbids `revalidate` segment
+  // config, and we don't read any data so `'use cache'` is unnecessary.
   const body = buildLlmsTxt(SITE_URL, {
     includeInstructorPages: instructorPagesEnabledFromEnv(),
   });

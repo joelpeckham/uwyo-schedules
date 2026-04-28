@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { HomePlanner } from "@/components/planner/HomePlanner";
 import { PlannerTermSelect } from "@/components/planner/PlannerTermSelect";
 import { PlannerJsonLd } from "@/components/seo/PlannerJsonLd";
@@ -6,7 +7,10 @@ import { SiteChrome } from "@/components/seo/SiteChrome";
 import { createDb } from "@/db/index";
 import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
-import { getLatestTermCode, listTerms } from "@/lib/planner/data";
+import {
+  getLatestTermCodeForSeo,
+  listTermsForSeo,
+} from "@/lib/seo/queries";
 import { readPlannerSessionIdFromCookies } from "@/lib/planner/session";
 import { absoluteUrl } from "@/lib/seo/site";
 
@@ -31,21 +35,23 @@ const emptyCatalog: PlannerCatalogJson = {
   facultyByCrn: {},
 };
 
-export default async function PlannerPage({
+async function PlannerBody({
   searchParams,
 }: {
   searchParams: Promise<{ term?: string }>;
 }) {
-  const db = createDb();
-  const terms = await listTerms(db);
-  const sp = await searchParams;
-  const latest = await getLatestTermCode(db);
+  const [terms, latest, sp] = await Promise.all([
+    listTermsForSeo(),
+    getLatestTermCodeForSeo(),
+    searchParams,
+  ]);
   const termFromQuery =
     sp.term && terms.some((t) => t.code === sp.term) ? sp.term : null;
   const termCode =
     termFromQuery ?? latest ?? (terms.length > 0 ? terms[0]!.code : "");
 
   const sessionId = await readPlannerSessionIdFromCookies();
+  const db = createDb();
   const { plannerItems, catalog, termUiState } =
     sessionId && termCode
       ? await loadPlannerCatalogBootstrap(db, sessionId, termCode)
@@ -69,5 +75,17 @@ export default async function PlannerPage({
         hasData={hasData}
       />
     </SiteChrome>
+  );
+}
+
+export default function PlannerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ term?: string }>;
+}) {
+  return (
+    <Suspense fallback={null}>
+      <PlannerBody searchParams={searchParams} />
+    </Suspense>
   );
 }

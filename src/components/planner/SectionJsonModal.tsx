@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -28,41 +28,44 @@ type BodyState =
 export function SectionJsonModal({ open, onOpenChange, termCode, crn }: Props) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState<BodyState>({ kind: "idle" });
-  const [pending, startTransition] = useTransition();
   const loadGenRef = useRef(0);
 
-  const load = useCallback(() => {
+  // The previous implementation wrapped `await getSectionDetailAction(...)` in
+  // `startTransition(async () => …)`, but `useTransition`'s `pending` only
+  // tracks the synchronous body of the callback; it flips back to `false` as
+  // soon as the async function returns its first promise, so the loading
+  // spinner would disappear before the data actually arrived. We drive the
+  // loading UI from `body.kind === "loading"` instead.
+  const load = useCallback(async () => {
     if (!crn || !termCode) return;
     const gen = ++loadGenRef.current;
     setBody({ kind: "loading" });
-    startTransition(async () => {
-      const row = await getSectionDetailAction(termCode, crn);
-      if (gen !== loadGenRef.current) return;
-      if (!row) {
-        setTitle("Section not found");
-        setBody({ kind: "not_found" });
-        return;
-      }
-      setTitle(row.title);
-      const parsed = parseSectionRawJson(row.rawJson);
-      if (gen !== loadGenRef.current) return;
-      if (!parsed.ok) {
-        setBody({ kind: "parse_error", message: parsed.message });
-        return;
-      }
-      setBody({ kind: "ok", root: parsed.root });
-    });
+    const row = await getSectionDetailAction(termCode, crn);
+    if (gen !== loadGenRef.current) return;
+    if (!row) {
+      setTitle("Section not found");
+      setBody({ kind: "not_found" });
+      return;
+    }
+    setTitle(row.title);
+    const parsed = parseSectionRawJson(row.rawJson);
+    if (gen !== loadGenRef.current) return;
+    if (!parsed.ok) {
+      setBody({ kind: "parse_error", message: parsed.message });
+      return;
+    }
+    setBody({ kind: "ok", root: parsed.root });
   }, [crn, termCode]);
 
   useEffect(() => {
     if (!open || !crn) return undefined;
     const t = window.setTimeout(() => {
-      load();
+      void load();
     }, 0);
     return () => window.clearTimeout(t);
   }, [open, crn, load]);
 
-  const showLoading = pending || body.kind === "loading";
+  const showLoading = body.kind === "loading";
 
   const handleOpenChange = (next: boolean) => {
     if (!next) setBody({ kind: "idle" });

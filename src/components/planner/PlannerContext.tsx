@@ -23,10 +23,10 @@ import {
 import type { ResolvedPlannerSelection } from "@/lib/planner/resolve-display-crns-shared";
 import {
   courseSolvePackCourseKey,
-  everyPlannerItemHasSolvePack,
-  plannerItemsAdmitAtLeastOneSchedule,
+  plannerItemsFeasibility,
   scheduleSolutionStillValidForItems,
   solveSchedulesFromPacks,
+  everyPlannerItemHasSolvePack,
   type CourseSolvePack,
   type ScheduleSolution,
 } from "@/lib/planner/solve-schedules-core";
@@ -192,6 +192,8 @@ export function PlannerProvider({
     queueMicrotask(() => {
       solvePacksRef.current = {};
       setSolvePacks({});
+      // Invalidate any in-flight pack prefetches from the previous term.
+      prefetchGenRef.current += 1;
     });
   }, [termCode]);
 
@@ -199,10 +201,21 @@ export function PlannerProvider({
   const termRef = useRef(termCode);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistInFlightRef = useRef(false);
+  /**
+   * Bumped by every persist scheduler so an in-flight save can detect that newer
+   * data arrived while it was syncing and re-flush instead of silently dropping
+   * the latest items (cf. P0 persistence race).
+   */
+  const persistDirtyGenRef = useRef(0);
+  const persistFlushedGenRef = useRef(0);
   const blackoutPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const blackoutPersistInFlightRef = useRef(false);
+  const blackoutPersistDirtyGenRef = useRef(0);
+  const blackoutPersistFlushedGenRef = useRef(0);
+  /** Bumped on every pack-prefetch start; awaiting calls bail when stale. */
+  const prefetchGenRef = useRef(0);
   const requireOpenRef = useRef(requireOpenSections);
   const blackoutsRef = useRef(blackouts);
 
@@ -253,37 +266,71 @@ export function PlannerProvider({
     catalog,
   ]);
 
+  const refreshCatalogFromServerRef = useRef<
+    (() => Promise<boolean>) | null
+  >(null);
+
   const flushPersist = useCallback(async () => {
-    const t = termRef.current;
-    const rows = itemsRef.current;
     if (persistInFlightRef.current) return;
-    persistInFlightRef.current = true;
-    try {
-      const res = await syncPlannerStateAction(t, rows);
-      if (!res.ok) setSyncError(res.error);
-      else setSyncError(null);
-    } finally {
-      persistInFlightRef.current = false;
+    while (persistFlushedGenRef.current < persistDirtyGenRef.current) {
+      const flushingGen = persistDirtyGenRef.current;
+      const t = termRef.current;
+      const rows = itemsRef.current;
+      persistInFlightRef.current = true;
+      try {
+        const res = await syncPlannerStateAction(t, rows);
+        if (!res.ok) {
+          setSyncError(res.error);
+          // Roll back: refresh local state from the server so the client and DB
+          // do not silently diverge after a rejected write (P0 #6).
+          if (refreshCatalogFromServerRef.current) {
+            await refreshCatalogFromServerRef.current();
+          }
+          // Stop draining the queue on failure; the refresh resets ref state.
+          persistFlushedGenRef.current = persistDirtyGenRef.current;
+          return;
+        }
+        setSyncError(null);
+        persistFlushedGenRef.current = flushingGen;
+      } finally {
+        persistInFlightRef.current = false;
+      }
     }
   }, []);
 
   const flushBlackoutPersist = useCallback(async () => {
-    const t = termRef.current;
     if (blackoutPersistInFlightRef.current) return;
-    blackoutPersistInFlightRef.current = true;
-    try {
-      const res = await savePlannerBlackoutsAction({
-        termCode: t,
-        items: blackoutsRef.current.items,
-      });
-      if (!res.ok) setSyncError(res.error);
-      else setSyncError(null);
-    } finally {
-      blackoutPersistInFlightRef.current = false;
+    while (
+      blackoutPersistFlushedGenRef.current <
+      blackoutPersistDirtyGenRef.current
+    ) {
+      const flushingGen = blackoutPersistDirtyGenRef.current;
+      const t = termRef.current;
+      blackoutPersistInFlightRef.current = true;
+      try {
+        const res = await savePlannerBlackoutsAction({
+          termCode: t,
+          items: blackoutsRef.current.items,
+        });
+        if (!res.ok) {
+          setSyncError(res.error);
+          if (refreshCatalogFromServerRef.current) {
+            await refreshCatalogFromServerRef.current();
+          }
+          blackoutPersistFlushedGenRef.current =
+            blackoutPersistDirtyGenRef.current;
+          return;
+        }
+        setSyncError(null);
+        blackoutPersistFlushedGenRef.current = flushingGen;
+      } finally {
+        blackoutPersistInFlightRef.current = false;
+      }
     }
   }, []);
 
   const schedulePersist = useCallback(() => {
+    persistDirtyGenRef.current += 1;
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
     persistTimerRef.current = setTimeout(() => {
       persistTimerRef.current = null;
@@ -292,6 +339,7 @@ export function PlannerProvider({
   }, [flushPersist]);
 
   const scheduleBlackoutPersist = useCallback(() => {
+    blackoutPersistDirtyGenRef.current += 1;
     if (blackoutPersistTimerRef.current) {
       clearTimeout(blackoutPersistTimerRef.current);
     }
@@ -359,37 +407,39 @@ export function PlannerProvider({
       setSyncError(res.error);
       return false;
     }
+    itemsRef.current = res.plannerItems;
     setPlannerItems(res.plannerItems);
     setCatalog(res.catalog);
     setSolutions([]);
     const nextBlackouts = res.termUiState?.blackouts ?? EMPTY_BLACKOUTS;
     blackoutsRef.current = nextBlackouts;
     setBlackoutsState(nextBlackouts);
+    // Treat the refresh as the new "synced" baseline so subsequent flushes do
+    // not race against the data we just pulled.
+    persistFlushedGenRef.current = persistDirtyGenRef.current;
+    blackoutPersistFlushedGenRef.current = blackoutPersistDirtyGenRef.current;
     setSyncError(null);
     return true;
   }, [termCode]);
 
-  const removePlannerItem = useCallback((id: number) => {
-    let next: PlannerItemRow[] = [];
-    setPlannerItems((prev) => {
-      next = prev.filter((r) => r.id !== id);
-      itemsRef.current = next;
-      return next;
-    });
-    if (persistTimerRef.current) {
-      clearTimeout(persistTimerRef.current);
-      persistTimerRef.current = null;
-    }
-    // Never call server actions inside a setState updater — updaters run during
-    // render and Next.js can touch Router synchronously when starting an action.
-    queueMicrotask(() => {
-      void (async () => {
-        const res = await syncPlannerStateAction(termRef.current, next);
-        if (!res.ok) setSyncError(res.error);
-        else setSyncError(null);
-      })();
-    });
-  }, []);
+  useEffect(() => {
+    refreshCatalogFromServerRef.current = refreshCatalogFromServer;
+  }, [refreshCatalogFromServer]);
+
+  const removePlannerItem = useCallback(
+    (id: number) => {
+      setPlannerItems((prev) => {
+        const next = prev.filter((r) => r.id !== id);
+        itemsRef.current = next;
+        return next;
+      });
+      // Route through the same debounced queue as every other mutation. The
+      // queue serializes writes so a remove cannot race a debounced batched
+      // update (P0 #1).
+      schedulePersist();
+    },
+    [schedulePersist],
+  );
 
   const updatePlannerItem = useCallback(
     (id: number, patch: Partial<PlannerItemRow>) => {
@@ -515,11 +565,10 @@ export function PlannerProvider({
           : r,
       );
       if (
-        everyPlannerItemHasSolvePack(next, solvePacksRef.current) &&
-        !plannerItemsAdmitAtLeastOneSchedule(next, solvePacksRef.current, {
+        plannerItemsFeasibility(next, solvePacksRef.current, {
           requireOpenSections: requireOpenRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
-        })
+        }) === "infeasible"
       ) {
         setScheduleFeasibilityError(
           "That section doesn't fit with your other courses and pins.",
@@ -559,11 +608,10 @@ export function PlannerProvider({
       });
       if (
         !isRemoval &&
-        everyPlannerItemHasSolvePack(next, solvePacksRef.current) &&
-        !plannerItemsAdmitAtLeastOneSchedule(next, solvePacksRef.current, {
+        plannerItemsFeasibility(next, solvePacksRef.current, {
           requireOpenSections: requireOpenRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
-        })
+        }) === "infeasible"
       ) {
         setScheduleFeasibilityError(
           "That pin doesn't fit with your other courses and pins.",
@@ -598,11 +646,10 @@ export function PlannerProvider({
         };
       });
       if (
-        everyPlannerItemHasSolvePack(next, solvePacksRef.current) &&
-        !plannerItemsAdmitAtLeastOneSchedule(next, solvePacksRef.current, {
+        plannerItemsFeasibility(next, solvePacksRef.current, {
           requireOpenSections: requireOpenRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
-        })
+        }) === "infeasible"
       ) {
         setScheduleFeasibilityError(
           "That move doesn't fit with your other courses and pins.",
@@ -622,29 +669,47 @@ export function PlannerProvider({
     [schedulePersist],
   );
 
+  // Counter bumped only by user-initiated `setBlackouts`. The side-effect
+  // useEffect below reads it to skip side effects for server-driven sets
+  // (e.g. `refreshCatalogFromServer`). Under React Strict Mode the previous
+  // implementation ran the functional updater twice, which doubled the
+  // queueMicrotask side-effect scheduling.
+  const blackoutsUserGenRef = useRef(0);
+  const blackoutsHandledGenRef = useRef(0);
+
   const setBlackouts = useCallback(
     (
       next:
         | PlannerBlackoutsDocV1
         | ((prev: PlannerBlackoutsDocV1) => PlannerBlackoutsDocV1),
     ) => {
+      blackoutsUserGenRef.current += 1;
       setBlackoutsState((prev) => {
         const doc = typeof next === "function" ? next(prev) : next;
         blackoutsRef.current = doc;
-        queueMicrotask(() => {
-          scheduleBlackoutPersist();
-          void recalculateSolutionsRef.current();
-        });
         return doc;
       });
     },
-    [scheduleBlackoutPersist],
+    [],
   );
+
+  useEffect(() => {
+    if (blackoutsUserGenRef.current === blackoutsHandledGenRef.current) {
+      // Either the initial mount or a server-driven reset; no side effects.
+      return;
+    }
+    blackoutsHandledGenRef.current = blackoutsUserGenRef.current;
+    scheduleBlackoutPersist();
+    void recalculateSolutionsRef.current();
+  }, [blackouts, scheduleBlackoutPersist]);
 
   useEffect(() => {
     if (plannerItems.length === 0) return;
     const t = termCode;
     const timer = setTimeout(() => {
+      // Bump the prefetch generation so any in-flight Promise.all from a prior
+      // term/items snapshot bails before merging stale packs (P0 #5).
+      const myGen = ++prefetchGenRef.current;
       const keyToCourse = new Map<
         string,
         { subject: string; courseNumber: string }
@@ -669,6 +734,8 @@ export function PlannerProvider({
             prefetchCourseSolvePackAction(t, c.subject, c.courseNumber),
           ),
         );
+        if (myGen !== prefetchGenRef.current) return;
+        if (termRef.current !== t) return;
         for (const res of results) {
           if (res.ok) mergeSolvePack(res.pack);
         }

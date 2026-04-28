@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createDb } from "@/db/index";
-import { listTerms } from "@/lib/planner/data";
-import { getTermDescriptionByCode } from "@/lib/terms/labels";
+import { Suspense } from "react";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
+  getTermDescriptionByCodeForSeo,
   listCoursesForSubjectAndTermForSeo,
   pathSegmentToSubject,
   subjectToPathSegment,
+  termExistsForSeo,
 } from "@/lib/seo/queries";
 
 type Props = { params: Promise<{ term: string; subject: string }> };
@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { term, subject: seg } = await params;
   const subject = pathSegmentToSubject(seg);
   const canonical = `/terms/${encodeURIComponent(term)}/${encodeURIComponent(subjectToPathSegment(subject))}`;
-  const label = (await getTermDescriptionByCode(term)) ?? term;
+  const label = (await getTermDescriptionByCodeForSeo(term)) ?? term;
   return {
     title: `${subject} · ${label}`,
     description: `University of Wyoming ${subject} courses for ${label}.`,
@@ -31,17 +31,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function TermSubjectPage({ params }: Props) {
+async function TermSubjectBody({ params }: Props) {
   const { term, subject: seg } = await params;
   const subject = pathSegmentToSubject(seg);
-  const db = createDb();
-  const terms = await listTerms(db);
-  if (!terms.some((t) => t.code === term)) notFound();
+  if (!(await termExistsForSeo(term))) notFound();
 
-  const courses = await listCoursesForSubjectAndTermForSeo(term, subject);
+  const [courses, label] = await Promise.all([
+    listCoursesForSubjectAndTermForSeo(term, subject),
+    getTermDescriptionByCodeForSeo(term).then((d) => d ?? term),
+  ]);
   if (courses.length === 0) notFound();
-
-  const label = (await getTermDescriptionByCode(term)) ?? term;
   const canonicalPath = `/terms/${encodeURIComponent(term)}/${encodeURIComponent(subjectToPathSegment(subject))}`;
   const collectionJson = {
     "@context": "https://schema.org",
@@ -108,5 +107,13 @@ export default async function TermSubjectPage({ params }: Props) {
         </table>
       </div>
     </div>
+  );
+}
+
+export default function TermSubjectPage(props: Props) {
+  return (
+    <Suspense fallback={null}>
+      <TermSubjectBody {...props} />
+    </Suspense>
   );
 }

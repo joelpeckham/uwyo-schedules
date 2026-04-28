@@ -68,11 +68,11 @@ for (const row of COURSE_COLOR_GRID) {
 
 export const COURSE_COLOR_PALETTE = flat as readonly string[];
 
-export const COURSE_COLOR_PALETTE_LOWER = new Set(
+const COURSE_COLOR_PALETTE_LOWER = new Set(
   COURSE_COLOR_PALETTE.map((c) => c.toLowerCase()),
 );
 
-export const DEFAULT_COURSE_DISPLAY_COLOR = COURSE_COLOR_PALETTE[0]!;
+const DEFAULT_COURSE_DISPLAY_COLOR = COURSE_COLOR_PALETTE[0]!;
 
 /** True if `hex` is exactly one of the planner swatches (#RRGGBB). */
 export function isPlannerCoursePaletteColor(hex: string): boolean {

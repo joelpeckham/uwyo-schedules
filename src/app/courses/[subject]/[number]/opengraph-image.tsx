@@ -1,8 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getCourseSeoDetailForSeo, pathSegmentToSubject } from "@/lib/seo/queries";
 
-export const revalidate = 3600;
-
 export const alt = "Course on uwyoschedule";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -10,6 +8,11 @@ export const contentType = "image/png";
 type Props = { params: Promise<{ subject: string; number: string }> };
 
 export default async function Image({ params }: Props) {
+  // `getCourseSeoDetailForSeo` already wraps its query in `'use cache'` with a
+  // per-course tag, so the actual DB read is cached and freshness is tied to
+  // ingest's `revalidateTag`. Cache Components rejects the previous
+  // `revalidate` segment config in this file.
+
   const { subject: seg, number } = await params;
   const subject = pathSegmentToSubject(seg);
   const detail = await getCourseSeoDetailForSeo(subject, number.trim());

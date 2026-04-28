@@ -137,16 +137,53 @@ export function eligibleForStandaloneSingleCrn(
   return !linkedNonAnchorMemberCrns.has(crn);
 }
 
+/**
+ * Tokenize a name on non-alphanumeric boundaries. Keeps lowercased tokens of
+ * length >= 1 (e.g. "Dr. Jane M. Smith-Jones" -> ["dr","jane","m","smith","jones"]).
+ */
+function tokenizeName(s: string): string[] {
+  const out: string[] = [];
+  for (const part of s.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (part.length > 0) out.push(part);
+  }
+  return out;
+}
+
+/**
+ * True when every pref token has a faculty-name token that starts with it
+ * (case-insensitive, alphanumeric tokens). This replaces the old bidirectional
+ * `includes` matcher that false-positived on short common substrings (e.g.
+ * "smith" matching "blacksmith") and false-negatived when the user typed in
+ * a different name order.
+ */
+function prefMatchesFacultyName(pref: string, facultyName: string): boolean {
+  const prefTokens = tokenizeName(pref);
+  if (prefTokens.length === 0) return false;
+  const nameTokens = tokenizeName(facultyName);
+  if (nameTokens.length === 0) return false;
+  for (const pt of prefTokens) {
+    let found = false;
+    for (const nt of nameTokens) {
+      if (nt.startsWith(pt)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
 function orderedPrefScore(prefs: string[], facultyNames: (string | null)[]): number {
   const names = facultyNames
-    .map((n) => (n ?? "").trim().toLowerCase())
-    .filter(Boolean);
+    .map((n) => (n ?? "").trim())
+    .filter((n) => n.length > 0);
   if (names.length === 0 || prefs.length === 0) return 0;
   for (let i = 0; i < prefs.length; i++) {
-    const p = prefs[i]!.trim().toLowerCase();
+    const p = prefs[i]!.trim();
     if (!p) continue;
     for (const n of names) {
-      if (n.includes(p) || p.includes(n)) {
+      if (prefMatchesFacultyName(p, n)) {
         return (prefs.length - i) * 10;
       }
     }
@@ -155,7 +192,7 @@ function orderedPrefScore(prefs: string[], facultyNames: (string | null)[]): num
 }
 
 /** True if at least one non-empty pref matches some faculty name (bidirectional includes, case-insensitive). */
-export function facultyNamesMatchAnyListedPref(
+function facultyNamesMatchAnyListedPref(
   prefs: string[],
   facultyNames: (string | null)[],
 ): boolean {
@@ -234,13 +271,18 @@ function scoreCandidate(
   return score;
 }
 
+/**
+ * True only when every CRN has a known seat row that proves the section is
+ * open. A missing seat row is treated as **closed** so that incomplete packs
+ * cannot silently bypass the `requireOpenSections` constraint (P0 #3).
+ */
 export function allCrnsHaveOpenSeats(
   crns: string[],
   seatsByCrn: Map<string, { seatsAvailable: number | null; openSection: boolean | null }>,
 ): boolean {
   for (const crn of crns) {
     const row = seatsByCrn.get(crn);
-    if (!row) continue;
+    if (!row) return false;
     if (row.seatsAvailable != null && row.seatsAvailable <= 0) return false;
     if (row.openSection === false) return false;
   }
@@ -249,6 +291,13 @@ export function allCrnsHaveOpenSeats(
 
 export type SolveSchedulesResult = {
   solutions: ScheduleSolution[];
+  /**
+   * True when DFS hit `maxSolutions` and at least one further candidate
+   * was skipped — i.e. additional solutions might exist beyond the returned
+   * set. The planner intentionally requests `maxSolutions = 1` for the
+   * interactive view, so consumers should ignore this flag unless they are
+   * paginating solutions.
+   */
   capped: boolean;
   timedOut: boolean;
   itemOrder: number[];
@@ -403,6 +452,10 @@ export function runSolveSearch(params: {
   let timedOut = false;
 
   const chosen: (ScheduleCandidate | null)[] = items.map(() => null);
+  // Parse each row's instructor preferences once so the DFS leaves and the
+  // hard-prefs filter inside the inner loop don't re-parse JSON for every
+  // candidate considered.
+  const prefsByItemIndex = items.map((it) => parseInstructorPrefs(it.instructorPrefs));
 
   function overlapsAccumulated(
     cand: ScheduleCandidate,
@@ -443,7 +496,7 @@ export function runSolveSearch(params: {
         score += scoreCandidate(
           item,
           c,
-          parseInstructorPrefs(item.instructorPrefs),
+          prefsByItemIndex[i]!,
           facultyByCrn,
           scheduleTypeByCrn,
         );
@@ -453,8 +506,8 @@ export function runSolveSearch(params: {
     }
 
     const itemIndex = indices[depth]!;
-    const item = items[itemIndex]!;
     const list = candidateLists[itemIndex]!;
+    const itemPrefs = prefsByItemIndex[itemIndex]!;
 
     for (const cand of list) {
       if (Date.now() - started > timeoutMs) {
@@ -467,7 +520,7 @@ export function runSolveSearch(params: {
       if (
         candidateViolatesHardInstructorPrefs(
           cand,
-          parseInstructorPrefs(item.instructorPrefs),
+          itemPrefs,
           facultyByCrn,
           scheduleTypeByCrn,
         )
@@ -746,10 +799,17 @@ export function everyPlannerItemHasSolvePack(
 }
 
 /**
- * True if the planner admits at least one global schedule for `items`.
- * When any course pack is missing, returns true (unknown — caller may defer validation).
+ * Tri-state feasibility for `items`:
+ * - `"feasible"` — at least one global schedule exists in the current pack data.
+ * - `"infeasible"` — packs are complete and DFS proved no global schedule exists.
+ * - `"unknown"` — at least one course pack is missing; the caller must decide
+ *   how to handle it (typically allow the action and re-check after prefetch).
+ *
+ * Replaces the old boolean shape that conflated "feasible" and "unknown".
  */
-export function plannerItemsAdmitAtLeastOneSchedule(
+type PlannerFeasibility = "feasible" | "infeasible" | "unknown";
+
+export function plannerItemsFeasibility(
   items: PlannerItemRow[],
   packs: Record<string, CourseSolvePack>,
   opts: {
@@ -757,14 +817,14 @@ export function plannerItemsAdmitAtLeastOneSchedule(
     blackoutIntervals?: TimeInterval[];
     maxSolutions?: number;
   },
-): boolean {
-  if (items.length === 0) return true;
-  if (!everyPlannerItemHasSolvePack(items, packs)) return true;
-  return (
-    solveSchedulesFromPacks(items, packs, {
-      requireOpenSections: opts.requireOpenSections,
-      blackoutIntervals: opts.blackoutIntervals ?? [],
-      maxSolutions: opts.maxSolutions ?? DEFAULT_MAX_SOLUTIONS,
-    }).solutions.length > 0
-  );
+): PlannerFeasibility {
+  if (items.length === 0) return "feasible";
+  if (!everyPlannerItemHasSolvePack(items, packs)) return "unknown";
+  const result = solveSchedulesFromPacks(items, packs, {
+    requireOpenSections: opts.requireOpenSections,
+    blackoutIntervals: opts.blackoutIntervals ?? [],
+    maxSolutions: opts.maxSolutions ?? DEFAULT_MAX_SOLUTIONS,
+  });
+  return result.solutions.length > 0 ? "feasible" : "infeasible";
 }
+

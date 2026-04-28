@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react";
 import {
+  memo,
   useCallback,
   useEffect,
   useRef,
@@ -41,6 +42,60 @@ import {
   type KeyboardEvent,
 } from "react";
 import { usePlanner } from "./PlannerContext";
+
+type ColorCellProps = {
+  itemId: number;
+  displayColor: string;
+  disabled: boolean;
+  onPickById: (id: number, hex: string) => void;
+};
+
+const CourseRowColorCell = memo(function CourseRowColorCell({
+  itemId,
+  displayColor,
+  disabled,
+  onPickById,
+}: ColorCellProps) {
+  const onPick = useCallback(
+    (hex: string) => onPickById(itemId, hex),
+    [itemId, onPickById],
+  );
+  return (
+    <PlannerCourseColorPicker
+      displayColor={displayColor}
+      disabled={disabled}
+      onPick={onPick}
+    />
+  );
+});
+
+type RemoveButtonProps = {
+  itemId: number;
+  ariaLabel: string;
+  disabled: boolean;
+  onRemoveById: (id: number) => void;
+};
+
+const CourseRowRemoveButton = memo(function CourseRowRemoveButton({
+  itemId,
+  ariaLabel,
+  disabled,
+  onRemoveById,
+}: RemoveButtonProps) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="text-destructive hover:text-destructive"
+      disabled={disabled}
+      onClick={() => onRemoveById(itemId)}
+      aria-label={ariaLabel}
+    >
+      <Trash2 className="size-4" />
+    </Button>
+  );
+});
 
 type Props = { termCode: string };
 
@@ -232,6 +287,29 @@ export function CourseManager({ termCode }: Props) {
       void recalculateSolutions();
     },
     [updatePlannerItem, recalculateSolutions],
+  );
+
+  // Stable parent-level handlers for per-row actions. Identity is fixed for
+  // a given (refreshCatalogFromServer, recalculateSolutions, removePlannerItem)
+  // tuple so the memoized `<CourseRowColorCell>` and `<CourseRowRemoveButton>`
+  // can skip re-rendering when unrelated planner state changes.
+  const handleColorPickById = useCallback(
+    (id: number, hex: string) => {
+      startTransition(async () => {
+        await updatePlannerItemColorAction(id, hex);
+        await refreshCatalogFromServer();
+        void recalculateSolutions();
+      });
+    },
+    [refreshCatalogFromServer, recalculateSolutions],
+  );
+
+  const handleRemoveById = useCallback(
+    (id: number) => {
+      removePlannerItem(id);
+      void recalculateSolutions();
+    },
+    [removePlannerItem, recalculateSolutions],
   );
 
   const setPrimaryInstructor = useCallback(
@@ -473,31 +551,18 @@ export function CourseManager({ termCode }: Props) {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <PlannerCourseColorPicker
+                <CourseRowColorCell
+                  itemId={item.id}
                   displayColor={item.displayColor}
                   disabled={pending}
-                  onPick={(hex) => {
-                    startTransition(async () => {
-                      await updatePlannerItemColorAction(item.id, hex);
-                      await refreshCatalogFromServer();
-                      void recalculateSolutions();
-                    });
-                  }}
+                  onPickById={handleColorPickById}
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="text-destructive hover:text-destructive"
+                <CourseRowRemoveButton
+                  itemId={item.id}
+                  ariaLabel={`Remove ${item.subject} ${item.courseNumber}`}
                   disabled={pending}
-                  onClick={() => {
-                    removePlannerItem(item.id);
-                    void recalculateSolutions();
-                  }}
-                  aria-label={`Remove ${item.subject} ${item.courseNumber}`}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                  onRemoveById={handleRemoveById}
+                />
               </div>
             </div>
 

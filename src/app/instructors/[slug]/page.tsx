@@ -46,7 +46,7 @@ export default async function InstructorPage({ params }: Props) {
   const row = index.find((r) => r.slug === slug);
   if (!row) notFound();
 
-  const { rows } = await listSectionsForInstructorForSeo(row.displayName);
+  const { rows } = await listSectionsForInstructorForSeo(row.displayName, slug);
 
   const canonicalPath = `/instructors/${encodeURIComponent(slug)}`;
   const personJson = {

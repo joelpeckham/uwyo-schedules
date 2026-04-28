@@ -12,7 +12,13 @@ import { parseBlackoutsJson } from "@/lib/planner/blackouts";
 
 import { CourseManager } from "./CourseManager";
 import { PlannerProvider } from "./PlannerContext";
-import { SectionJsonModal } from "./SectionJsonModal";
+
+// Loaded only when the user opens a section block; the modal owns a
+// non-trivial JSON tree view that we keep out of the initial bundle.
+const SectionJsonModal = dynamic(
+  () => import("./SectionJsonModal").then((m) => m.SectionJsonModal),
+  { ssr: false },
+);
 
 const WeekCalendar = dynamic(
   () => import("./WeekCalendar").then((m) => m.WeekCalendar),
@@ -113,12 +119,14 @@ export function HomePlanner({
                 </div>
               </div>
             </PlannerProvider>
-            <SectionJsonModal
-              open={modalOpen}
-              onOpenChange={setModalOpen}
-              termCode={termCode}
-              crn={modalCrn}
-            />
+            {modalOpen ? (
+              <SectionJsonModal
+                open={modalOpen}
+                onOpenChange={setModalOpen}
+                termCode={termCode}
+                crn={modalCrn}
+              />
+            ) : null}
           </>
         )}
       </div>

@@ -1,6 +1,13 @@
 import { and, eq, notInArray, sql } from "drizzle-orm";
+import { revalidateTag } from "next/cache";
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
+import {
+  SEO_SITEMAP_TAG,
+  seoCourseTag,
+  seoTermSubjectTag,
+  seoTermTag,
+} from "@/lib/seo/cache-tags";
 import type { ParsedLinkedBundle } from "./mappers";
 import type { SectionGraph } from "./mappers";
 
@@ -135,7 +142,15 @@ export async function replaceTermData(
             bundleIndex: b.bundleIndex,
           })
           .returning({ id: schema.linkedBundles.id });
-        if (!ins) continue;
+        if (!ins) {
+          // Failing the transaction here is preferable to silently dropping a
+          // bundle: the upstream workflow step retries on throw, so we either
+          // succeed completely or surface the bug instead of leaving partial
+          // linked-registration data in the DB.
+          throw new Error(
+            `Linked bundle insert returned no row for termCode=${termCode} anchorCrn=${b.anchorCrn} bundleIndex=${b.bundleIndex}`,
+          );
+        }
         bundleId = ins.id;
       }
 
@@ -166,4 +181,29 @@ export async function replaceTermData(
         );
     }
   });
+
+  // After the transaction commits, invalidate the cached SEO surfaces tied
+  // to this term so the next request re-queries Postgres. We use the broad
+  // term tag plus per-(subject, courseNumber) tags so tightly-scoped course
+  // pages don't have to wait for the next `revalidate` window.
+  const subjectsTouched = new Set<string>();
+  const coursesTouched = new Set<string>();
+  for (const g of graphs) {
+    subjectsTouched.add(g.section.subject);
+    coursesTouched.add(`${g.section.subject}\0${g.section.courseNumber}`);
+  }
+  // `"max"` keeps stale-while-revalidate semantics — readers see the previous
+  // catalog snapshot until the new query lands instead of blocking on a cold
+  // re-fetch the moment the scrape finishes.
+  revalidateTag(seoTermTag(termCode), "max");
+  revalidateTag(SEO_SITEMAP_TAG, "max");
+  for (const subject of subjectsTouched) {
+    revalidateTag(seoTermSubjectTag(termCode, subject), "max");
+  }
+  for (const key of coursesTouched) {
+    const [subject, courseNumber] = key.split("\0");
+    if (subject && courseNumber) {
+      revalidateTag(seoCourseTag(subject, courseNumber), "max");
+    }
+  }
 }

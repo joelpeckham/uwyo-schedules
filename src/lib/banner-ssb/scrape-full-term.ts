@@ -15,7 +15,7 @@ import {
 } from "./mappers";
 import type { BannerSectionRow } from "./types";
 
-export type ScrapeFullTermOptions = {
+type ScrapeFullTermOptions = {
   /** When false, skips `fetchLinkedSections` (e.g. archive runs). Default true. */
   includeLinked?: boolean;
 };

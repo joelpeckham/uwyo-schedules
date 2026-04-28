@@ -240,45 +240,6 @@ export async function prefetchCourseSolvePackAction(
   }
 }
 
-export async function updatePlannerTermUiStateAction(input: {
-  termCode: string;
-  lastSolutionIndex: number;
-  favoriteSolutionIndex: number | null;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    const sessionId = await requireSessionId();
-    if (!input.termCode) return { ok: false, error: "Missing term." };
-    if (input.lastSolutionIndex < 0) {
-      return { ok: false, error: "Invalid solution index." };
-    }
-    const db = createDb();
-    await db
-      .insert(schema.plannerTermUiState)
-      .values({
-        sessionId,
-        termCode: input.termCode,
-        lastSolutionIndex: input.lastSolutionIndex,
-        favoriteSolutionIndex: input.favoriteSolutionIndex,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [
-          schema.plannerTermUiState.sessionId,
-          schema.plannerTermUiState.termCode,
-        ],
-        set: {
-          lastSolutionIndex: input.lastSolutionIndex,
-          favoriteSolutionIndex: input.favoriteSolutionIndex,
-          updatedAt: new Date(),
-        },
-      });
-    return { ok: true };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Something went wrong.";
-    return { ok: false, error: msg };
-  }
-}
-
 export async function savePlannerBlackoutsAction(input: {
   termCode: string;
   items: unknown;
@@ -324,29 +285,6 @@ export async function savePlannerBlackoutsAction(input: {
   }
 }
 
-export async function removePlannerItemAction(
-  itemId: number,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    const sessionId = await requireSessionId();
-    const db = createDb();
-    const res = await db
-      .delete(schema.plannerItems)
-      .where(
-        and(
-          eq(schema.plannerItems.id, itemId),
-          eq(schema.plannerItems.sessionId, sessionId),
-        ),
-      )
-      .returning({ id: schema.plannerItems.id });
-    if (res.length === 0) return { ok: false, error: "Item not found." };
-    return { ok: true };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Something went wrong.";
-    return { ok: false, error: msg };
-  }
-}
-
 export async function updatePlannerItemColorAction(
   itemId: number,
   displayColor: string,
@@ -385,34 +323,11 @@ export async function searchCoursesAction(
   termCode: string,
   query: string,
 ): Promise<CourseSearchRow[]> {
-  if (!takeCatalogActionRateLimit(await catalogActionClientKey())) {
+  if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
     return [];
   }
   const db = createDb();
   return searchCourses(db, termCode, query);
-}
-
-export async function listSectionsForCourseAction(
-  termCode: string,
-  subject: string,
-  courseNumber: string,
-) {
-  if (!takeCatalogActionRateLimit(await catalogActionClientKey())) {
-    return [];
-  }
-  const db = createDb();
-  return listSectionsForCourse(db, termCode, subject, courseNumber);
-}
-
-export async function listLinkedBundleOptionsAction(
-  termCode: string,
-  anchorCrn: string,
-) {
-  if (!takeCatalogActionRateLimit(await catalogActionClientKey())) {
-    return [];
-  }
-  const db = createDb();
-  return listLinkedBundleOptions(db, termCode, anchorCrn);
 }
 
 export async function getSectionDetailAction(
@@ -422,7 +337,7 @@ export async function getSectionDetailAction(
   rawJson: unknown;
   title: string;
 } | null> {
-  if (!takeCatalogActionRateLimit(await catalogActionClientKey())) {
+  if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
     return null;
   }
   const db = createDb();
@@ -559,6 +474,9 @@ export async function syncPlannerStateAction(
     const db = createDb();
 
     for (const row of items) {
+      if (row.termCode !== termCode) {
+        return { ok: false, error: "Planner row term mismatch." };
+      }
       const prefs = validateInstructorPrefsPayload(row.instructorPrefs);
       if (!prefs.ok) return { ok: false, error: prefs.error };
       const v = await assertPlannerRowPersistable(db, termCode, row);

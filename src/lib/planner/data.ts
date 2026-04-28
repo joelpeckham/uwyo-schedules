@@ -5,7 +5,12 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 import { escapeIlikePattern } from "./search-escape";
 
-export type TermOption = { code: string; description: string };
+export type TermOption = {
+  code: string;
+  description: string;
+  lastHotScrapeAt: Date | null;
+  lastFullScrapeAt: Date | null;
+};
 
 /** One catalog course row from [`searchCourses`]. */
 export type CourseSearchRow = {
@@ -49,15 +54,6 @@ export type SwapGhostMeeting = {
   endMinutes: number;
 };
 
-/** Stable key for RSC/client swap-ghost prefetch maps. */
-export function swapPrefetchKey(
-  plannerItemId: number,
-  sectionCrn: string,
-  meetingId: number,
-): string {
-  return `${plannerItemId}:${sectionCrn}:${meetingId}`;
-}
-
 export async function getLatestTermCode(db: Database): Promise<string | null> {
   const [row] = await db
     .select({ code: schema.terms.code })
@@ -72,13 +68,30 @@ export async function listTerms(db: Database): Promise<TermOption[]> {
     .select({
       code: schema.terms.code,
       description: schema.terms.description,
+      lastHotScrapeAt: schema.terms.lastHotScrapeAt,
+      lastFullScrapeAt: schema.terms.lastFullScrapeAt,
     })
     .from(schema.terms)
     .orderBy(desc(schema.terms.code));
   return rows.map((t) => ({
     code: t.code,
     description: decodeHtmlEntities(t.description) ?? t.description,
+    lastHotScrapeAt: t.lastHotScrapeAt,
+    lastFullScrapeAt: t.lastFullScrapeAt,
   }));
+}
+
+/** Cheap "does this term exist?" check that avoids loading every term. */
+export async function termExists(
+  db: Database,
+  termCode: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ one: sql<number>`1` })
+    .from(schema.terms)
+    .where(eq(schema.terms.code, termCode))
+    .limit(1);
+  return rows.length > 0;
 }
 
 export async function listPlannerItems(
@@ -193,7 +206,7 @@ export async function listSectionsForCourse(
   }));
 }
 
-export type LinkedBundleOption = {
+type LinkedBundleOption = {
   id: number;
   bundleIndex: number;
   memberCrns: string[];

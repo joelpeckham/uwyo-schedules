@@ -21,10 +21,7 @@ import {
 import type { PlannerItemRow } from "@/lib/planner/data";
 import { filterFeasibleSwapGhosts } from "@/lib/planner/planner-swap-feasibility";
 import { pickCourseSwapSnap } from "@/lib/planner/course-swap-snap";
-import {
-  everyPlannerItemHasSolvePack,
-  plannerItemsAdmitAtLeastOneSchedule,
-} from "@/lib/planner/solve-schedules-core";
+import { plannerItemsFeasibility } from "@/lib/planner/solve-schedules-core";
 import { cn } from "@/lib/utils";
 import {
   useCallback,
@@ -56,21 +53,12 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { usePlanner } from "./PlannerContext";
+import { BusyTimeDialog } from "./week-calendar/BusyTimeDialog";
 import {
   buildFloatStyle,
   clientYToMinutes,
@@ -94,11 +82,6 @@ import {
   formatHour,
 } from "./week-calendar/block-metrics";
 import { visibleDayIndicesMerged } from "./week-calendar/visible-days";
-
-export {
-  visibleDayIndicesForBlocks,
-  visibleDayIndicesMerged,
-} from "./week-calendar/visible-days";
 
 const CALENDAR_HOUR_AXIS = Array.from(
   { length: CALENDAR_END_HOUR - CALENDAR_START_HOUR + 1 },
@@ -255,6 +238,38 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     () => visibleDayIndicesMerged(blocks, blackouts.items),
     [blocks, blackouts.items],
   );
+  // Pre-group calendar blocks and blackouts by `dayIndex` so the per-day
+  // render is `O(blocks_in_day)` instead of `O(days × blocks)` from a
+  // `.filter()` each day. Empty arrays are stable per render so we still
+  // hand the same reference back when nothing matches a given day.
+  const blocksByDay = useMemo(() => {
+    const map = new Map<number, CalendarBlock[]>();
+    for (const b of blocks) {
+      const list = map.get(b.dayIndex);
+      if (list) list.push(b);
+      else map.set(b.dayIndex, [b]);
+    }
+    return map;
+  }, [blocks]);
+  const blackoutsByDay = useMemo(() => {
+    const map = new Map<number, PlannerBlackoutItemV1[]>();
+    for (const bo of blackouts.items) {
+      const list = map.get(bo.dayIndex);
+      if (list) list.push(bo);
+      else map.set(bo.dayIndex, [bo]);
+    }
+    return map;
+  }, [blackouts.items]);
+  const ghostsByDay = useMemo(() => {
+    const map = new Map<number, SwapGhostMeeting[]>();
+    if (!courseDragSession) return map;
+    for (const g of courseDragSession.ghosts) {
+      const list = map.get(g.dayIndex);
+      if (list) list.push(g);
+      else map.set(g.dayIndex, [g]);
+    }
+    return map;
+  }, [courseDragSession]);
   const isWeekdaysOnlyView = visibleDayIndices.length === 5;
   const gridMinWidthRem =
     visibleDayIndices.length === 7
@@ -769,11 +784,14 @@ export function WeekCalendar({ onBlockActivate }: Props) {
             },
           };
         });
-        if (!everyPlannerItemHasSolvePack(next, solvePacks)) return true;
-        return plannerItemsAdmitAtLeastOneSchedule(next, solvePacks, {
+        // Drag UX: optimistically allow ghost while packs are still loading
+        // (treat "unknown" as feasible). Definitively-infeasible ghosts get
+        // hidden so users only see drop targets that actually work.
+        const f = plannerItemsFeasibility(next, solvePacks, {
           requireOpenSections,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackouts),
         });
+        return f !== "infeasible";
       };
     },
     [plannerItems, plannerItemsById, solvePacks, requireOpenSections, blackouts],
@@ -796,12 +814,22 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         clientY: e.clientY,
         pointerId: e.pointerId,
       };
+      // Pointer capture is best-effort; if the browser rejects it we still
+      // fall back to global pointer events. Surfacing the error helps debug
+      // unusual hardware/browser interactions instead of silently swallowing
+      // the drag start.
       try {
         el.setPointerCapture(e.pointerId);
-      } catch {
-        return;
+        capturedCourseBlockElRef.current = el;
+      } catch (err) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn(
+            "[planner] setPointerCapture failed; falling back to bubbled pointer events",
+            err,
+          );
+        }
+        capturedCourseBlockElRef.current = null;
       }
-      capturedCourseBlockElRef.current = el;
     },
     [clearScheduleFeasibilityError],
   );
@@ -1433,9 +1461,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                         />
                       ))}
                     </div>
-                    {blackouts.items
-                      .filter((bo) => bo.dayIndex === dayIndex)
-                      .map((bo) => {
+                    {(blackoutsByDay.get(dayIndex) ?? []).map((bo) => {
                         const topPx =
                           ((bo.start - startMin) / totalMin) * gridHeightPx;
                         const rawH =
@@ -1481,9 +1507,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                       />
                     ) : null}
                     {courseDragSession
-                      ? courseDragSession.ghosts
-                          .filter((g) => g.dayIndex === dayIndex)
-                          .map((g) => {
+                      ? (ghostsByDay.get(dayIndex) ?? []).map((g) => {
                             const topPx =
                               ((g.startMinutes - startMin) / totalMin) *
                               gridHeightPx;
@@ -1513,9 +1537,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                             );
                           })
                       : null}
-                    {blocks
-                      .filter((b) => b.dayIndex === dayIndex)
-                      .map((b) => {
+                    {(blocksByDay.get(dayIndex) ?? []).map((b) => {
                         const topPx =
                           ((b.startMinutes - startMin) / totalMin) *
                           gridHeightPx;
@@ -1691,124 +1713,23 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         </div>
       </div>
 
-      <Dialog open={busyDialogOpen} onOpenChange={setBusyDialogOpen}>
-        <DialogContent className="max-h-[min(32rem,90vh)] overflow-y-auto sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit busy time</DialogTitle>
-            <DialogDescription>
-              Block times you are not available (work, commute, etc.). The
-              planner avoids these intervals when building your week.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-1">
-            <div className="grid gap-2">
-              <Label htmlFor="busy-day">Day</Label>
-              <Select
-                value={String(formDayIndex)}
-                onValueChange={(v) => setFormDayIndex(Number(v))}
-              >
-                <SelectTrigger
-                  id="busy-day"
-                  className="min-h-11 w-full touch-manipulation"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DAY_LABELS.map((label, di) => (
-                    <SelectItem key={di} value={String(di)}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
-              <div className="grid gap-2">
-                <Label htmlFor="busy-start">Starts</Label>
-                <Select
-                  value={String(formStartMin)}
-                  onValueChange={(v) => setFormStartMin(Number(v))}
-                >
-                  <SelectTrigger
-                    id="busy-start"
-                    className="min-h-11 w-full touch-manipulation"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {timeQuarterOptions.map((o) => (
-                      <SelectItem key={o.value} value={String(o.value)}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="busy-end">Ends</Label>
-                <Select
-                  value={String(formEndMin)}
-                  onValueChange={(v) => setFormEndMin(Number(v))}
-                >
-                  <SelectTrigger
-                    id="busy-end"
-                    className="min-h-11 w-full touch-manipulation"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {timeQuarterOptions.map((o) => (
-                      <SelectItem key={o.value} value={String(o.value)}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="busy-label">Label (optional)</Label>
-              <Input
-                id="busy-label"
-                className="min-h-11 touch-manipulation"
-                maxLength={80}
-                placeholder="e.g. Work"
-                value={formLabel}
-                onChange={(e) => setFormLabel(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
-            {editingBlackoutId ? (
-              <Button
-                type="button"
-                variant="destructive"
-                className="min-h-11 w-full touch-manipulation sm:w-auto"
-                onClick={removeEditingBlackout}
-              >
-                Remove
-              </Button>
-            ) : null}
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 touch-manipulation"
-                onClick={() => setBusyDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                className="min-h-11 touch-manipulation"
-                onClick={commitBusyForm}
-              >
-                Save
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <BusyTimeDialog
+        open={busyDialogOpen}
+        onOpenChange={setBusyDialogOpen}
+        editingId={editingBlackoutId}
+        dayIndex={formDayIndex}
+        startMin={formStartMin}
+        endMin={formEndMin}
+        label={formLabel}
+        timeOptions={timeQuarterOptions}
+        onDayChange={setFormDayIndex}
+        onStartChange={setFormStartMin}
+        onEndChange={setFormEndMin}
+        onLabelChange={setFormLabel}
+        onRemove={removeEditingBlackout}
+        onCancel={() => setBusyDialogOpen(false)}
+        onSave={commitBusyForm}
+      />
     </section>
   );
 }

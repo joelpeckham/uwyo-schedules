@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { createDb } from "@/db/index";
-import { getLatestTermRow } from "@/lib/terms/labels";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
+  getLatestTermRowForSeo,
   listSubjectsForTermForSeo,
   subjectToPathSegment,
 } from "@/lib/seo/queries";
@@ -20,8 +19,7 @@ export const metadata: Metadata = {
 };
 
 export default async function CoursesIndexPage() {
-  const db = createDb();
-  const termRow = await getLatestTermRow(db);
+  const termRow = await getLatestTermRowForSeo();
   if (!termRow) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">

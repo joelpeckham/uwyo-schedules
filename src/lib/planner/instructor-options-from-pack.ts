@@ -41,7 +41,7 @@ export function primaryInstructorOptions(pack: CourseSolvePack): string[] {
   return dedupeInstructorNames(acc);
 }
 
-export type LinkedScheduleTypeRow = {
+type LinkedScheduleTypeRow = {
   scheduleTypeKey: string;
   label: string;
   instructorOptions: string[];

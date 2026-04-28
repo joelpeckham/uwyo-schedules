@@ -44,8 +44,13 @@ export async function loadPlannerCatalogBootstrap(
   catalog: PlannerCatalogJson;
   termUiState: PlannerTermUiStateRow | null;
 }> {
-  const plannerItems = await listPlannerItems(db, sessionId, termCode);
-  const termUiState = await loadPlannerTermUiState(db, sessionId, termCode);
+  // The planner items query and the term UI state lookup are independent —
+  // run them concurrently so we wait on the slower of the two instead of
+  // their sum.
+  const [plannerItems, termUiState] = await Promise.all([
+    listPlannerItems(db, sessionId, termCode),
+    loadPlannerTermUiState(db, sessionId, termCode),
+  ]);
   if (plannerItems.length === 0) {
     return {
       plannerItems,
@@ -128,43 +133,55 @@ export async function loadPlannerCatalogBootstrap(
   const allCrns = new Set<string>([...displayCrns, ...courseSectionCrns]);
   const crnListForBundles = [...allCrns];
 
-  const anchoredBundles =
+  // `anchoredBundles` and `memberBundleHits` query different tables and are
+  // independent. Fan them out in parallel so wall time is the slowest query
+  // rather than their sum.
+  const [anchoredBundles, memberBundleHits] =
     crnListForBundles.length === 0
-      ? []
-      : await db
-          .select({
-            id: schema.linkedBundles.id,
-            anchorCrn: schema.linkedBundles.anchorCrn,
-            bundleIndex: schema.linkedBundles.bundleIndex,
-          })
-          .from(schema.linkedBundles)
-          .where(
-            and(
-              eq(schema.linkedBundles.termCode, termCode),
-              inArray(schema.linkedBundles.anchorCrn, crnListForBundles),
+      ? [
+          [] as {
+            id: number;
+            anchorCrn: string;
+            bundleIndex: number;
+          }[],
+          [] as {
+            id: number;
+            anchorCrn: string;
+            bundleIndex: number;
+          }[],
+        ]
+      : await Promise.all([
+          db
+            .select({
+              id: schema.linkedBundles.id,
+              anchorCrn: schema.linkedBundles.anchorCrn,
+              bundleIndex: schema.linkedBundles.bundleIndex,
+            })
+            .from(schema.linkedBundles)
+            .where(
+              and(
+                eq(schema.linkedBundles.termCode, termCode),
+                inArray(schema.linkedBundles.anchorCrn, crnListForBundles),
+              ),
             ),
-          );
-
-  const memberBundleHits =
-    crnListForBundles.length === 0
-      ? []
-      : await db
-          .select({
-            id: schema.linkedBundles.id,
-            anchorCrn: schema.linkedBundles.anchorCrn,
-            bundleIndex: schema.linkedBundles.bundleIndex,
-          })
-          .from(schema.linkedBundleMembers)
-          .innerJoin(
-            schema.linkedBundles,
-            eq(schema.linkedBundles.id, schema.linkedBundleMembers.bundleId),
-          )
-          .where(
-            and(
-              eq(schema.linkedBundles.termCode, termCode),
-              inArray(schema.linkedBundleMembers.crn, crnListForBundles),
+          db
+            .select({
+              id: schema.linkedBundles.id,
+              anchorCrn: schema.linkedBundles.anchorCrn,
+              bundleIndex: schema.linkedBundles.bundleIndex,
+            })
+            .from(schema.linkedBundleMembers)
+            .innerJoin(
+              schema.linkedBundles,
+              eq(schema.linkedBundles.id, schema.linkedBundleMembers.bundleId),
+            )
+            .where(
+              and(
+                eq(schema.linkedBundles.termCode, termCode),
+                inArray(schema.linkedBundleMembers.crn, crnListForBundles),
+              ),
             ),
-          );
+        ]);
 
   const bundleMeta = new Map<
     number,

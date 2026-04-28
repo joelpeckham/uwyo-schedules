@@ -2,7 +2,7 @@ import { createDb } from "@/db";
 import { BannerSsbClient } from "@/lib/banner-ssb/client";
 import { scrapeFullTermToDatabase } from "@/lib/banner-ssb/scrape-full-term";
 
-export type BannerIngestWorkflowInput = {
+type BannerIngestWorkflowInput = {
   mode: "hot" | "archive";
   /** When `mode=archive`, set true to run `fetchLinkedSections` per course (default false). */
   includeLinkedArchive?: boolean;

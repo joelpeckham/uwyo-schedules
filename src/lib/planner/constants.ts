@@ -7,8 +7,6 @@ export const UUID_RE =
 /** Guardrail against unbounded list growth / abuse per session+term. */
 export const MAX_PLANNER_COURSES_PER_TERM = 40;
 
-export { DEFAULT_COURSE_DISPLAY_COLOR as DEFAULT_DISPLAY_COLOR } from "./course-colors";
-
 /** First hour row (4:00–4:59 a.m.). */
 export const CALENDAR_START_HOUR = 4;
 /** Last hour row (11:00 p.m.–11:59 p.m.). */

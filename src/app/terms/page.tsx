@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { createDb } from "@/db/index";
-import { listTerms } from "@/lib/planner/data";
+import { listTermsForSeo } from "@/lib/seo/queries";
 import { absoluteUrl } from "@/lib/seo/site";
 
 export const metadata: Metadata = {
@@ -13,8 +12,7 @@ export const metadata: Metadata = {
 };
 
 export default async function TermsIndexPage() {
-  const db = createDb();
-  const terms = await listTerms(db);
+  const terms = await listTermsForSeo();
   if (terms.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">

@@ -1,8 +1,8 @@
 import { normalizeScheduleTypeKey } from "@/lib/planner/swap-helpers";
 
-export const SECTION_PINS_DOC_VERSION = 1 as const;
+const SECTION_PINS_DOC_VERSION = 1 as const;
 
-export type PlannerSectionPinsDocV1 = {
+type PlannerSectionPinsDocV1 = {
   v: typeof SECTION_PINS_DOC_VERSION;
   /** Normalized schedule-type key → pinned CRN for that type only. */
   byType: Record<string, string>;

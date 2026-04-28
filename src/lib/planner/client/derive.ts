@@ -238,7 +238,7 @@ export function listSameTypeSwapGhostsFromCatalog(
   return ghosts;
 }
 
-export function findLinkedBundlesContainingCrnClient(
+function findLinkedBundlesContainingCrnClient(
   crn: string,
   bundles: ClientLinkedBundleRow[],
   members: ClientLinkedBundleMemberRow[],

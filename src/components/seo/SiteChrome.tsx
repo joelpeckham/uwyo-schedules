@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 
 import { HeaderNav } from "./HeaderNav";
@@ -22,7 +22,12 @@ export function SiteChrome({
           >
             <LogoWordmark className="shrink-0" />
           </Link>
-          <HeaderNav actions={actions} />
+          {/* `HeaderNav` calls `usePathname()` for active-link styling, which
+              is uncached/dynamic data under Cache Components. Wrap it in a
+              boundary so the surrounding shell can still prerender. */}
+          <Suspense fallback={null}>
+            <HeaderNav actions={actions} />
+          </Suspense>
         </div>
       </header>
       <main

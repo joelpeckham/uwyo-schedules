@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createDb } from "@/db/index";
-import { getLatestTermRow } from "@/lib/terms/labels";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
+  getLatestTermRowForSeo,
   listCoursesForSubjectAndTermForSeo,
   pathSegmentToSubject,
   subjectToPathSegment,
@@ -31,10 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { subject: seg } = await params;
   const code = pathSegmentToSubject(seg);
   const canonical = `/courses/${subjectToPathSegment(code)}`;
-  const { createDb } = await import("@/db/index");
-  const { getLatestTermRow: latestTerm } = await import("@/lib/terms/labels");
-  const db = createDb();
-  const termRow = await latestTerm(db);
+  const termRow = await getLatestTermRowForSeo();
   const termPhrase = termRow?.description
     ? termRow.description
     : "the latest available term";
@@ -52,8 +48,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function SubjectCoursesPage({ params }: Props) {
   const { subject: seg } = await params;
   const subject = pathSegmentToSubject(seg);
-  const db = createDb();
-  const termRow = await getLatestTermRow(db);
+  const termRow = await getLatestTermRowForSeo();
   if (!termRow) notFound();
 
   const courses = await listCoursesForSubjectAndTermForSeo(termRow.code, subject);

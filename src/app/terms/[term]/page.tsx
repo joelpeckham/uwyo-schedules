@@ -1,31 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createDb } from "@/db/index";
-import { listTerms } from "@/lib/planner/data";
-import { getTermDescriptionByCode } from "@/lib/terms/labels";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
+  getTermDescriptionByCodeForSeo,
   listSubjectsForTermForSeo,
+  listTermsForSeo,
   subjectToPathSegment,
+  termExistsForSeo,
 } from "@/lib/seo/queries";
 
 type Props = { params: Promise<{ term: string }> };
 
 export async function generateStaticParams() {
-  const { createDb } = await import("@/db/index");
-  const { listTerms } = await import("@/lib/planner/data");
-  const db = createDb();
-  const terms = await listTerms(db);
+  const terms = await listTermsForSeo();
   return terms.map((t) => ({ term: t.code }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { term } = await params;
   const canonical = `/terms/${encodeURIComponent(term)}`;
-  const label = (await getTermDescriptionByCode(term)) ?? term;
+  const label = (await getTermDescriptionByCodeForSeo(term)) ?? term;
   return {
     title: label,
     description: `Browse University of Wyoming subjects for ${label}.`,
@@ -39,13 +36,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function TermPage({ params }: Props) {
   const { term } = await params;
-  const db = createDb();
-  const terms = await listTerms(db);
-  if (!terms.some((t) => t.code === term)) notFound();
+  if (!(await termExistsForSeo(term))) notFound();
 
-  const description = (await getTermDescriptionByCode(term)) ?? term;
-
-  const subjects = await listSubjectsForTermForSeo(term);
+  const [description, subjects] = await Promise.all([
+    getTermDescriptionByCodeForSeo(term).then((d) => d ?? term),
+    listSubjectsForTermForSeo(term),
+  ]);
   const canonicalPath = `/terms/${encodeURIComponent(term)}`;
 
   const collectionJson = {

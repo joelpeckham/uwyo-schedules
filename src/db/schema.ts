@@ -89,6 +89,11 @@ export const sections = pgTable(
     index("sections_term_subject_idx").on(t.termCode, t.subject),
     index("sections_term_linked_idx").on(t.termCode, t.isSectionLinked),
     index("sections_term_link_id_idx").on(t.termCode, t.linkIdentifier),
+    // Cross-term `(subject, course_number)` lookups for evergreen course pages
+    // (`getCourseSeoDetail`, `listAllDistinctCourseKeys`). The existing
+    // `(term_code, subject)` indexes can't satisfy these queries because they
+    // are anchored on `term_code`.
+    index("sections_subject_course_idx").on(t.subject, t.courseNumber),
   ],
 );
 
@@ -254,6 +259,35 @@ export const plannerItems = pgTable(
     index("planner_items_session_term_idx").on(t.sessionId, t.termCode),
   ],
 );
+
+/**
+ * Lightweight idempotency / leasing primitive for cron jobs and other
+ * fire-once-per-window background tasks. Each `key` represents one logical
+ * job (e.g. `banner-ingest:hot`); a fresh row means the lease was just
+ * acquired and the caller may proceed, while an existing row inside the lease
+ * window means another invocation is still running and the caller must skip.
+ */
+export const cronLease = pgTable("cron_lease", {
+  key: text("key").primaryKey(),
+  acquiredAt: timestamp("acquired_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * Fixed-window rate limit counters shared across Vercel function instances.
+ * Each row tracks the number of requests for one `client_key` since
+ * `window_start`. The atomic upsert in `takeCatalogActionRateLimit`
+ * either rolls the window forward (when expired) or increments `count`,
+ * so concurrent calls cannot race past the cap.
+ */
+export const catalogActionRateLimit = pgTable("catalog_action_rate_limit", {
+  clientKey: text("client_key").primaryKey(),
+  windowStart: timestamp("window_start", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  count: integer("count").notNull().default(0),
+});
 
 /** Last-viewed / favorite schedule indices for paging valid combinations (per session + term). */
 export const plannerTermUiState = pgTable(
