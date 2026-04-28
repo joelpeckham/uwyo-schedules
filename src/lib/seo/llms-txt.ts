@@ -19,7 +19,7 @@ export function buildLlmsTxt(
 ): string {
   const lines: string[] = [
     "# uwyoschedule",
-    "> Independent University of Wyoming class schedule planner for UW students: search UW course catalog data, combine sections, and keep a best conflict-free week in sync with optional preferences, busy times, pins, and same-type swaps. Not an official UW product; does not register you for classes.",
+    "> Independent University of Wyoming class schedule planner for UW students. Search the UW course catalog, combine sections, and keep a conflict-free week in sync with preferences, busy times, pins, and same-type swaps. Not an official UW product. Does not register you for classes.",
     "",
     "## Key pages",
     "",
@@ -69,7 +69,7 @@ export function buildLlmsFullTxt(
     : "Instructor profile URLs are not published in the sitemap by default.";
 
   return `# uwyoschedule — full context for AI systems
-> Same product summary as /llms.txt: an independent UW student planner built on cached UW course catalog data, with a solver that keeps a best conflict-free week in sync as the course list and constraints change. Not official UW; planning only, not registration.
+> Same product summary as /llms.txt. An independent UW student planner built on cached UW course catalog data. The solver keeps a conflict-free week in sync as the course list and constraints change. Not official UW. Planning only, not registration.
 
 ## Product behavior
 

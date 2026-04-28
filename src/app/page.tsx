@@ -11,18 +11,20 @@ import { HomeOrgFaqJsonLd } from "@/components/seo/HomeOrgFaqJsonLd";
 import { LandingFooter } from "@/components/seo/LandingFooter";
 import { SiteChrome } from "@/components/seo/SiteChrome";
 import { getLatestTermRowForSeo } from "@/lib/seo/queries";
-import { absoluteUrl } from "@/lib/seo/site";
+import {
+  SITE_DESCRIPTION,
+  SITE_DESCRIPTION_SHORT,
+  absoluteUrl,
+} from "@/lib/seo/site";
 
 export const metadata: Metadata = {
   title: "uwyoschedule — University of Wyoming class schedule planner",
-  description:
-    "Plan a University of Wyoming class schedule that fits your life. Add courses from the live catalog and watch a best conflict-free week stay in sync in the planner—pins, same-type swaps, and busy times included.",
+  description: SITE_DESCRIPTION,
   alternates: { canonical: "/" },
   openGraph: {
     url: absoluteUrl("/"),
     title: "uwyoschedule — University of Wyoming class schedule planner",
-    description:
-      "Plan a UW class schedule that fits your life. Browse courses, then open the planner for a live-updating conflict-free week.",
+    description: SITE_DESCRIPTION_SHORT,
   },
 };
 

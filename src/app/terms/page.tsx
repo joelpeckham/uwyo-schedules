@@ -6,7 +6,7 @@ import { absoluteUrl } from "@/lib/seo/site";
 export const metadata: Metadata = {
   title: "UW course terms",
   description:
-    "Browse University of Wyoming terms available in uwyoschedule — pick a term to explore subjects and courses.",
+    "Browse University of Wyoming terms available in uwyoschedule. Pick a term to see its subjects and courses.",
   alternates: { canonical: "/terms" },
   openGraph: { url: absoluteUrl("/terms"), title: "UW course terms · uwyoschedule" },
 };

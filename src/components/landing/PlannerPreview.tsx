@@ -1,43 +1,119 @@
-const ROW = 40;
-const DAY_H = 9 * ROW;
+import type { CalendarBlock } from "@/lib/planner/data";
+import { LANDING_PREVIEW_HOUR_AXIS } from "@/components/planner/week-calendar/axis-constants";
+import { WeekCalendarView } from "@/components/planner/week-calendar/WeekCalendarView";
 
-const HOURS = [
-  "8 a.m.",
-  "9 a.m.",
-  "10 a.m.",
-  "11 a.m.",
-  "12 p.m.",
-  "1 p.m.",
-  "2 p.m.",
-  "3 p.m.",
-  "4 p.m.",
-] as const;
+const PREVIEW_ROW_PX = 40;
+const VISIBLE_DAY_INDICES = [0, 1, 2, 3, 4] as const;
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+const COLOR_MATH = "#C4733F";
+const COLOR_ENGL = "#6A7C56";
+const COLOR_COSC = "#B8893A";
 
-function PreviewBlock({
-  topPx,
-  heightPx,
-  className,
-  code,
-  timeLabel,
-}: {
-  topPx: number;
-  heightPx: number;
-  className: string;
-  code: string;
-  timeLabel: string;
-}) {
-  return (
-    <div
-      className={`absolute left-0.5 right-0.5 overflow-hidden rounded-md px-1 py-0.5 text-[10px] leading-tight shadow-sm ring-1 ring-black/5 sm:left-1 sm:right-1 sm:px-1.5 sm:text-xs ${className}`}
-      style={{ top: topPx, height: heightPx }}
-    >
-      <div className="truncate font-mono font-semibold tabular-nums">{code}</div>
-      <div className="truncate opacity-90">{timeLabel}</div>
-    </div>
-  );
+function block(
+  partial: Pick<
+    CalendarBlock,
+    "key" | "dayIndex" | "startMinutes" | "endMinutes" | "label" | "color"
+  > &
+    Partial<CalendarBlock>,
+): CalendarBlock {
+  return {
+    plannerItemId: 0,
+    sectionCrn: partial.sectionCrn ?? "0000",
+    meetingId: partial.meetingId ?? 0,
+    sublabel: partial.sublabel ?? "",
+    instructorSublabel: partial.instructorSublabel ?? null,
+    subject: partial.subject ?? "",
+    courseNumber: partial.courseNumber ?? "",
+    sectionScheduleTypeKey: partial.sectionScheduleTypeKey ?? "lecture",
+    meetingScheduleType: partial.meetingScheduleType ?? null,
+    ...partial,
+  };
 }
+
+const SAMPLE_BLOCKS: CalendarBlock[] = [
+  block({
+    key: "math-mon",
+    dayIndex: 0,
+    startMinutes: 9 * 60,
+    endMinutes: 10 * 60,
+    label: "MATH 2200",
+    color: COLOR_MATH,
+    subject: "MATH",
+    courseNumber: "2200",
+  }),
+  block({
+    key: "math-wed",
+    dayIndex: 2,
+    startMinutes: 9 * 60,
+    endMinutes: 10 * 60,
+    label: "MATH 2200",
+    color: COLOR_MATH,
+    subject: "MATH",
+    courseNumber: "2200",
+  }),
+  block({
+    key: "math-fri",
+    dayIndex: 4,
+    startMinutes: 9 * 60,
+    endMinutes: 10 * 60,
+    label: "MATH 2200",
+    color: COLOR_MATH,
+    subject: "MATH",
+    courseNumber: "2200",
+  }),
+  block({
+    key: "engl-tue",
+    dayIndex: 1,
+    startMinutes: 11 * 60,
+    endMinutes: 12 * 60 + 15,
+    label: "ENGL 1010",
+    color: COLOR_ENGL,
+    subject: "ENGL",
+    courseNumber: "1010",
+  }),
+  block({
+    key: "engl-thu",
+    dayIndex: 3,
+    startMinutes: 11 * 60,
+    endMinutes: 12 * 60 + 15,
+    label: "ENGL 1010",
+    color: COLOR_ENGL,
+    subject: "ENGL",
+    courseNumber: "1010",
+  }),
+  block({
+    key: "cosc-mon",
+    dayIndex: 0,
+    startMinutes: 14 * 60,
+    endMinutes: 15 * 60 + 15,
+    label: "COSC 2030",
+    color: COLOR_COSC,
+    subject: "COSC",
+    courseNumber: "2030",
+  }),
+  block({
+    key: "cosc-wed",
+    dayIndex: 2,
+    startMinutes: 14 * 60,
+    endMinutes: 15 * 60 + 15,
+    label: "COSC 2030",
+    color: COLOR_COSC,
+    subject: "COSC",
+    courseNumber: "2030",
+  }),
+  block({
+    key: "cosc-lab-thu",
+    dayIndex: 3,
+    startMinutes: 15 * 60,
+    endMinutes: 16 * 60,
+    label: "COSC 2030 lab",
+    color: COLOR_COSC,
+    subject: "COSC",
+    courseNumber: "2030",
+    sectionScheduleTypeKey: "lab",
+    meetingScheduleType: "Lab",
+  }),
+];
 
 export function PlannerPreview() {
   return (
@@ -50,135 +126,25 @@ export function PlannerPreview() {
           id="preview-heading"
           className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
         >
-          What a solved week can look like
+          Sample week
         </h2>
         <p className="sr-only">
           Sample week preview: MATH 2200 meets Monday, Wednesday, and Friday
-          9–10 a.m.; ENGL 1010 meets Tuesday and Thursday 11 a.m.–12:15 p.m.;
-          COSC 2030 meets Monday and Wednesday 2–3:15 p.m. with a linked lab
-          Thursday 3–4 p.m. Three courses, no overlaps, lab linked automatically.
+          9 to 10 a.m. ENGL 1010 meets Tuesday and Thursday 11 a.m. to 12:15
+          p.m. COSC 2030 meets Monday and Wednesday 2 to 3:15 p.m. with a
+          linked lab Thursday 3 to 4 p.m. Three courses, no overlaps.
         </p>
         <figure className="mt-8" aria-hidden>
           <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
-            <div
-              className="grid min-w-[520px] grid-cols-[3.25rem_repeat(5,minmax(0,1fr))] text-left"
-              style={{ gridTemplateRows: `auto ${DAY_H}px` }}
-            >
-              <div className="border-b border-r bg-muted/40 p-2" />
-              {DAYS.map((d, i) => (
-                <div
-                  key={d}
-                  className={`border-b border-r bg-muted/40 p-2 text-center text-xs font-medium text-foreground ${i === DAYS.length - 1 ? "border-r-0" : ""}`}
-                >
-                  {d}
-                </div>
-              ))}
-
-              <div
-                className="border-r bg-muted/20 py-1 text-[10px] text-muted-foreground"
-                style={{ height: DAY_H }}
-              >
-                {HOURS.slice(0, -1).map((h) => (
-                  <div
-                    key={h}
-                    className="flex items-start justify-end pr-1 font-mono tabular-nums"
-                    style={{ height: ROW }}
-                  >
-                    {h}
-                  </div>
-                ))}
-              </div>
-
-              {/* Mon */}
-              <div
-                className="relative border-r border-border bg-background/80"
-                style={{ height: DAY_H }}
-              >
-                <PreviewBlock
-                  topPx={ROW}
-                  heightPx={ROW}
-                  className="bg-primary text-primary-foreground"
-                  code="MATH 2200"
-                  timeLabel="9–10 a.m."
-                />
-                <PreviewBlock
-                  topPx={6 * ROW}
-                  heightPx={Math.round(1.25 * ROW)}
-                  className="border border-[var(--ochre-300)] bg-[var(--ochre-100)] text-[var(--ochre-500)]"
-                  code="COSC 2030"
-                  timeLabel="2–3:15 p.m."
-                />
-              </div>
-              {/* Tue */}
-              <div
-                className="relative border-r border-border bg-background/80"
-                style={{ height: DAY_H }}
-              >
-                <PreviewBlock
-                  topPx={3 * ROW}
-                  heightPx={Math.round(1.25 * ROW)}
-                  className="bg-secondary text-secondary-foreground"
-                  code="ENGL 1010"
-                  timeLabel="11 a.m.–12:15 p.m."
-                />
-              </div>
-              {/* Wed */}
-              <div
-                className="relative border-r border-border bg-background/80"
-                style={{ height: DAY_H }}
-              >
-                <PreviewBlock
-                  topPx={ROW}
-                  heightPx={ROW}
-                  className="bg-primary text-primary-foreground"
-                  code="MATH 2200"
-                  timeLabel="9–10 a.m."
-                />
-                <PreviewBlock
-                  topPx={6 * ROW}
-                  heightPx={Math.round(1.25 * ROW)}
-                  className="border border-[var(--ochre-300)] bg-[var(--ochre-100)] text-[var(--ochre-500)]"
-                  code="COSC 2030"
-                  timeLabel="2–3:15 p.m."
-                />
-              </div>
-              {/* Thu */}
-              <div
-                className="relative border-r border-border bg-background/80"
-                style={{ height: DAY_H }}
-              >
-                <PreviewBlock
-                  topPx={3 * ROW}
-                  heightPx={Math.round(1.25 * ROW)}
-                  className="bg-secondary text-secondary-foreground"
-                  code="ENGL 1010"
-                  timeLabel="11 a.m.–12:15 p.m."
-                />
-                <PreviewBlock
-                  topPx={7 * ROW}
-                  heightPx={ROW}
-                  className="border border-dashed border-[var(--ochre-500)] bg-[var(--ochre-100)]/90 text-[var(--ochre-500)]"
-                  code="Lab"
-                  timeLabel="3–4 p.m."
-                />
-              </div>
-              {/* Fri */}
-              <div
-                className="relative border-r border-border bg-background/80 last:border-r-0"
-                style={{ height: DAY_H }}
-              >
-                <PreviewBlock
-                  topPx={ROW}
-                  heightPx={ROW}
-                  className="bg-primary text-primary-foreground"
-                  code="MATH 2200"
-                  timeLabel="9–10 a.m."
-                />
-              </div>
-            </div>
+            <WeekCalendarView
+              blocks={SAMPLE_BLOCKS}
+              visibleDayIndices={VISIBLE_DAY_INDICES}
+              rowPx={PREVIEW_ROW_PX}
+              hourAxis={LANDING_PREVIEW_HOUR_AXIS}
+            />
           </div>
           <figcaption className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">
-            Illustrative week — not your real schedule. Three courses, no
+            Illustrative week, not your real schedule. Three courses, no
             overlaps, lab linked automatically.
           </figcaption>
         </figure>

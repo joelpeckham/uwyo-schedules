@@ -11,6 +11,10 @@ import {
   numberField,
   stringField,
 } from "@/lib/planner/section-detail-view";
+import {
+  classifyDeliveryMode,
+  deliveryModeLabel,
+} from "@/lib/sections/delivery-mode";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -114,6 +118,11 @@ export function SectionDetailPanels({ root }: Props) {
   const courseTitle = stringField(root, "courseTitle");
   const scheduleType = stringField(root, "scheduleTypeDescription");
   const campus = stringField(root, "campusDescription");
+  const instructionalMethod = stringField(root, "instructionalMethod");
+  const instructionalMethodDescription = stringField(
+    root,
+    "instructionalMethodDescription",
+  );
   const partTerm = stringField(root, "partOfTerm");
   const term =
     stringField(root, "termDesc") ?? stringField(root, "term");
@@ -210,6 +219,14 @@ export function SectionDetailPanels({ root }: Props) {
   const firstMeeting = meetingShown[0];
   const moreMeetings = meetingShown.length - 1;
 
+  const hasTimedMeetings = meetingBlocks.some((m) => m.days && m.time);
+  const deliveryMode = classifyDeliveryMode({
+    instructionalMethod,
+    instructionalMethodDescription,
+    hasTimedMeetings,
+  });
+  const deliveryPill = deliveryModeLabel(deliveryMode);
+
   const attrRows = asRecordArray(root.sectionAttributes).map((a, i) => ({
     key: stringField(a, "code") ?? String(i),
     code: stringField(a, "code"),
@@ -242,6 +259,8 @@ export function SectionDetailPanels({ root }: Props) {
     { label: "Sequence", value: seq },
     { label: "Part of term", value: partTerm },
     { label: "Term", value: term },
+    { label: "Delivery", value: instructionalMethodDescription },
+    { label: "Delivery code", value: instructionalMethod },
     { label: "Linked section", value: booleanField(root, "isSectionLinked") },
     { label: "Link group", value: stringField(root, "linkIdentifier") },
     { label: "Open section", value: booleanField(root, "openSection") },
@@ -271,6 +290,13 @@ export function SectionDetailPanels({ root }: Props) {
             ) : null}
             {crn ? <span>CRN {crn}</span> : null}
             {campus ? <span>{campus}</span> : null}
+            {deliveryPill ? (
+              <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium not-italic text-foreground">
+                {deliveryPill}
+              </span>
+            ) : instructionalMethodDescription ? (
+              <span>{instructionalMethodDescription}</span>
+            ) : null}
           </div>
         }
       >

@@ -8,6 +8,10 @@ export function seoCourseTag(subject: string, courseNumber: string): string {
   return `seo-course:${subject.toUpperCase()}:${courseNumber}`;
 }
 
+export function seoCrnTag(termCode: string, crn: string): string {
+  return `seo-crn:${termCode}:${crn}`;
+}
+
 export function seoTermSubjectTag(termCode: string, subject: string): string {
   return `seo-term-subject:${termCode}:${subject.toUpperCase()}`;
 }

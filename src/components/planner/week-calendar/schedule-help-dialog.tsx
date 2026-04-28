@@ -18,10 +18,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  CALENDAR_END_HOUR,
-  CALENDAR_START_HOUR,
-} from "@/lib/planner/constants";
+import { CALENDAR_HOUR_AXIS, DAY_LABELS } from "./axis-constants";
+
+export { CALENDAR_HOUR_AXIS, DAY_LABELS };
 
 export const GESTURE_TIP_STORAGE_KEY = "uwyo.planner.weekCalTipDismissed";
 
@@ -64,14 +63,6 @@ const SCHEDULE_HELP: readonly {
     body: "Turn on “Mark busy time” and drag on a day column to block time. Tap a busy block to fine-tune times or add a label. Busy blocks are respected while the planner finds a best-fit week. Two fingers still pan and zoom the week.",
   },
 ] as const;
-
-/** Hour labels along the axis (same range as the grid). */
-export const CALENDAR_HOUR_AXIS = Array.from(
-  { length: CALENDAR_END_HOUR - CALENDAR_START_HOUR + 1 },
-  (_, i) => CALENDAR_START_HOUR + i,
-);
-
-export const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 export function ScheduleHelpDialog() {
   return (

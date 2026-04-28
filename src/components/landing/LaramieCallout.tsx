@@ -22,9 +22,9 @@ export function LaramieCallout() {
           Built for UW students in Laramie
         </h2>
         <p className="mt-4 text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
-          Independent, free, and not affiliated with the University of Wyoming.
-          We read the public UW course catalog so you can plan faster — then you register
-          through official UW systems when your window opens.
+          Independent and free. Not affiliated with the University of Wyoming.
+          We read the public UW course catalog so you can plan your week here.
+          You register through official UW systems when your window opens.
         </p>
       </div>
     </section>

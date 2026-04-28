@@ -4,7 +4,11 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Inter, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { SkipToMain } from "@/components/seo/SkipToMain";
-import { SITE_URL } from "@/lib/seo/site";
+import {
+  SITE_DESCRIPTION,
+  SITE_DESCRIPTION_SHORT,
+  SITE_URL,
+} from "@/lib/seo/site";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -36,8 +40,7 @@ export const metadata: Metadata = {
       "uwyoschedule — University of Wyoming class schedule planner",
     template: "%s · uwyoschedule",
   },
-  description:
-    "Build a University of Wyoming class schedule that fits, fast and automatic. Add courses from the live UW catalog; the planner keeps a best conflict-free week in sync as you set preferences, busy times, and refine from the week view.",
+  description: SITE_DESCRIPTION,
   applicationName: "uwyoschedule",
   robots: {
     index: true,
@@ -58,8 +61,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "uwyoschedule",
-    description:
-      "Build a UW class schedule, fast and automatic.",
+    description: SITE_DESCRIPTION_SHORT,
     images: ["/opengraph-image"],
   },
   icons: {

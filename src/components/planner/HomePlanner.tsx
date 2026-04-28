@@ -11,6 +11,7 @@ import type { PlannerItemRow } from "@/lib/planner/data";
 import { parseBlackoutsJson } from "@/lib/planner/blackouts";
 
 import { CourseManager } from "./CourseManager";
+import { NotOnGridRail } from "./NotOnGridRail";
 import { PlannerProvider } from "./PlannerContext";
 
 // Loaded only when the user opens a section block; the modal owns a
@@ -69,6 +70,11 @@ export function HomePlanner({
     setModalOpen(true);
   }, []);
 
+  const onCrnActivate = useCallback((crn: string) => {
+    setModalCrn(crn);
+    setModalOpen(true);
+  }, []);
+
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:max-w-[90rem]">
@@ -116,6 +122,7 @@ export function HomePlanner({
                 </div>
                 <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
                   <WeekCalendar onBlockActivate={onBlockActivate} />
+                  <NotOnGridRail onCrnActivate={onCrnActivate} />
                 </div>
               </div>
             </PlannerProvider>

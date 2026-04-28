@@ -15,16 +15,17 @@ import {
 import { readPlannerSessionIdFromCookies } from "@/lib/planner/session";
 import { absoluteUrl } from "@/lib/seo/site";
 
+const PLANNER_DESCRIPTION =
+  "Pick UW courses, set preferences, and mark busy times. The planner keeps a conflict-free week in sync. Pin sections you want to keep, or drag a block to try same-type alternatives on the calendar.";
+
 export const metadata: Metadata = {
   title: "Schedule planner",
-  description:
-    "Pick UW courses, set optional preferences and busy times, and watch a best conflict-free week stay in sync—pin sections or drag for same-type alternatives on the calendar.",
+  description: PLANNER_DESCRIPTION,
   alternates: { canonical: "/planner" },
   openGraph: {
     url: absoluteUrl("/planner"),
     title: "Schedule planner · uwyoschedule",
-    description:
-      "Pick UW courses and preferences; the planner keeps a best conflict-free week in sync as you pin sections or try same-type alternatives.",
+    description: PLANNER_DESCRIPTION,
   },
 };
 

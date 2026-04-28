@@ -1,11 +1,11 @@
 import type { MetadataRoute } from "next";
+import { SITE_DESCRIPTION_SHORT } from "@/lib/seo/site";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "uwyoschedule",
     short_name: "uwyoschedule",
-    description:
-      "Build a University of Wyoming class schedule that fits, fast and automatic.",
+    description: SITE_DESCRIPTION_SHORT,
     start_url: "/",
     display: "standalone",
     background_color: "#FBF7F0",

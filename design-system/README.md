@@ -1,8 +1,8 @@
 # uwyoschedule — Design System
 
-**Tagline:** _Finding your University of Wyoming class schedule, fast and automatic._
+**Tagline:** _From course list to class schedule._
 
-uwyoschedule helps UW students go from "course list" to "weekly schedule that actually works" in minutes — without the soul-crushing back-and-forth of WyoWeb's registration screens. The product is calm, focused, and locally rooted: it feels like Wyoming, not like generic ed-tech.
+uwyoschedule helps UW students turn a course list into a weekly schedule that works, without the back-and-forth of juggling WyoWeb registration screens. The product is calm, focused, and locally rooted. It feels like Wyoming.
 
 This design system is the canonical source of truth for the brand's visual and content language: typography, color, components, tone, and the assets needed to ship anything from a marketing page to an in-app modal.
 
@@ -82,7 +82,7 @@ The voice is **warm, plainspoken, and quietly confident** — like a friend who 
 | CTA | "Build a schedule" | "Get Started Now →" |
 | Loading | "Pulling courses from the catalog…" | "Loading..." |
 | Success | "Saved. 4 schedules ready." | "Success! Your schedule has been saved." |
-| Tagline | "From course list to class schedule, in minutes." | "Revolutionizing UW registration!" |
+| Tagline | "From course list to class schedule." | "Revolutionizing UW registration!" |
 
 ### The Wyoming specificity
 

@@ -3,16 +3,20 @@ import { createDb } from "@/db/index";
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { canonicalAggregateCourseTitle } from "@/lib/catalog/canonicalCourseTitleSql";
+import { sanitizeSectionRawJson } from "@/lib/planner/section-detail-sanitize";
+import { meetingHasTimeBlock } from "@/lib/sections/delivery-mode";
 import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 import {
   SEO_SITEMAP_TAG,
   seoCourseTag,
+  seoCrnTag,
   seoInstructorTag,
   seoTermSubjectTag,
   seoTermTag,
 } from "@/lib/seo/cache-tags";
 import {
   getLatestTermCode,
+  getSectionDetail,
   listTerms,
   termExists,
 } from "@/lib/planner/data";
@@ -192,6 +196,9 @@ type SectionTableRow = {
   maximumEnrollment: number | null;
   facultyNames: string | null;
   meetingSummary: string | null;
+  instructionalMethod: string | null;
+  instructionalMethodDescription: string | null;
+  hasTimedMeetings: boolean;
 };
 
 function formatMeetingRow(m: typeof schema.sectionMeetings.$inferSelect): string {
@@ -203,9 +210,9 @@ function formatMeetingRow(m: typeof schema.sectionMeetings.$inferSelect): string
   if (m.friday) days.push("F");
   if (m.saturday) days.push("Sa");
   if (m.sunday) days.push("Su");
-  const dayPart = days.length > 0 ? days.join("") : "—";
+  const dayPart = days.length > 0 ? days.join("") : null;
   const time =
-    m.beginTime && m.endTime ? `${m.beginTime}–${m.endTime}` : "Time TBA";
+    m.beginTime && m.endTime ? `${m.beginTime}–${m.endTime}` : null;
   const b = decodeHtmlEntities(m.building);
   const rm = decodeHtmlEntities(m.room);
   const bd = decodeHtmlEntities(m.buildingDescription);
@@ -231,6 +238,9 @@ async function listSectionTableRowsForCourseTerm(
       seatsAvailable: schema.sections.seatsAvailable,
       enrollment: schema.sections.enrollment,
       maximumEnrollment: schema.sections.maximumEnrollment,
+      instructionalMethod: schema.sections.instructionalMethod,
+      instructionalMethodDescription:
+        schema.sections.instructionalMethodDescription,
     })
     .from(schema.sections)
     .where(
@@ -295,8 +305,9 @@ async function listSectionTableRowsForCourseTerm(
 
   return sectionRows.map((s) => {
     const ms = meetingsByCrn.get(s.crn) ?? [];
-    const meetingSummary =
-      ms.length > 0 ? ms.map(formatMeetingRow).join("; ") : null;
+    const summaryParts = ms.map(formatMeetingRow).filter((line) => line.length > 0);
+    const meetingSummary = summaryParts.length > 0 ? summaryParts.join("; ") : null;
+    const hasTimedMeetings = ms.some((m) => meetingHasTimeBlock(m));
     const names = facultyByCrn.get(s.crn);
     return {
       crn: s.crn,
@@ -308,6 +319,11 @@ async function listSectionTableRowsForCourseTerm(
       maximumEnrollment: s.maximumEnrollment,
       facultyNames: names && names.length > 0 ? names.join(", ") : null,
       meetingSummary,
+      instructionalMethod: decodeHtmlEntities(s.instructionalMethod),
+      instructionalMethodDescription: decodeHtmlEntities(
+        s.instructionalMethodDescription,
+      ),
+      hasTimedMeetings,
     };
   });
 }
@@ -506,6 +522,128 @@ export async function listSectionTableRowsForCourseTermForSeo(
   cacheLife("hours");
   const db = createDb();
   return listSectionTableRowsForCourseTerm(db, termCode, subject, courseNumber);
+}
+
+export type SectionSeoDetail = {
+  termCode: string;
+  termDescription: string | null;
+  crn: string;
+  subject: string;
+  courseNumber: string;
+  subjectCourse: string | null;
+  sequenceNumber: string | null;
+  courseTitle: string | null;
+  scheduleTypeDescription: string | null;
+  /** Sanitized Banner detail JSON, ready to feed into `<SectionDetailPanels />`. */
+  detailRoot: Record<string, unknown> | null;
+  /** Comma-joined faculty display names for SEO metadata. */
+  facultyNames: string | null;
+};
+
+async function getSectionDetailForSeoInner(
+  db: Database,
+  termCode: string,
+  crn: string,
+): Promise<SectionSeoDetail | null> {
+  const row = await getSectionDetail(db, termCode, crn);
+  if (!row) return null;
+
+  const [termRow] = await db
+    .select({ description: schema.terms.description })
+    .from(schema.terms)
+    .where(eq(schema.terms.code, termCode))
+    .limit(1);
+
+  const facultyRows = await db
+    .select({
+      name: schema.sectionFaculty.displayName,
+      sort: schema.sectionFaculty.sortOrder,
+    })
+    .from(schema.sectionFaculty)
+    .where(
+      and(
+        eq(schema.sectionFaculty.termCode, termCode),
+        eq(schema.sectionFaculty.sectionCrn, crn),
+      ),
+    )
+    .orderBy(asc(schema.sectionFaculty.sortOrder));
+  const facultyNames =
+    facultyRows
+      .map((f) => decodeHtmlEntities(f.name) ?? f.name)
+      .filter((n): n is string => Boolean(n))
+      .join(", ") || null;
+
+  return {
+    termCode,
+    termDescription: decodeHtmlEntities(termRow?.description ?? null),
+    crn,
+    subject: row.subject,
+    courseNumber: row.courseNumber,
+    subjectCourse: row.subjectCourse ?? null,
+    sequenceNumber: row.sequenceNumber ?? null,
+    courseTitle: row.courseTitle ?? null,
+    scheduleTypeDescription: row.scheduleTypeDescription ?? null,
+    detailRoot: sanitizeSectionRawJson(row.rawJson),
+    facultyNames,
+  };
+}
+
+export async function getSectionDetailForSeo(termCode: string, crn: string) {
+  "use cache";
+  cacheTag(seoCrnTag(termCode, crn), seoTermTag(termCode));
+  cacheLife("hours");
+  const db = createDb();
+  return getSectionDetailForSeoInner(db, termCode, crn);
+}
+
+/**
+ * Latest-term CRNs sorted by section count of their parent course, used by
+ * `generateStaticParams` for the per-CRN page so the highest-traffic
+ * sections are baked at build time. The page is otherwise dynamic and
+ * still serves on demand for the long tail.
+ */
+export async function listTopCrnsForSeo(
+  limit: number,
+): Promise<{ termCode: string; subject: string; courseNumber: string; crn: string }[]> {
+  "use cache";
+  cacheTag(SEO_SITEMAP_TAG);
+  cacheLife("hours");
+  const db = createDb();
+  const latest = await getLatestTermCode(db);
+  if (!latest) return [];
+  const rows = await db
+    .select({
+      termCode: schema.sections.termCode,
+      subject: schema.sections.subject,
+      courseNumber: schema.sections.courseNumber,
+      crn: schema.sections.crn,
+    })
+    .from(schema.sections)
+    .where(eq(schema.sections.termCode, latest))
+    .orderBy(asc(schema.sections.subject), asc(schema.sections.courseNumber))
+    .limit(limit);
+  return rows;
+}
+
+/**
+ * Resolve the most recent term that has this CRN. CRNs are unique per term
+ * but Banner reuses them across terms, so we always pick the newest match
+ * for the public page. Returns `null` when no row exists at all.
+ */
+export async function findTermForCrnForSeo(
+  crn: string,
+): Promise<string | null> {
+  "use cache";
+  cacheTag(SEO_SITEMAP_TAG);
+  cacheLife("hours");
+  const db = createDb();
+  const [row] = await db
+    .select({ termCode: schema.sections.termCode })
+    .from(schema.sections)
+    .where(eq(schema.sections.crn, crn))
+    .orderBy(desc(schema.sections.termCode))
+    .limit(1);
+  return row?.termCode ?? null;
 }
 
 export async function listInstructorsIndexForSeo(minSections = 3) {

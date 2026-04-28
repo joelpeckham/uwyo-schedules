@@ -56,25 +56,17 @@ import {
   SNAP_MAX_DIST_PX,
 } from "./week-calendar/interaction";
 import {
-  calendarBlockPaddingPx,
-  calendarSecondaryTier,
-  calendarTitleFontPx,
-  formatHour,
-} from "./week-calendar/block-metrics";
-import {
-  CALENDAR_HOUR_AXIS,
-  DAY_LABELS,
   GESTURE_TIP_STORAGE_KEY,
   ScheduleHelpDialog,
 } from "./week-calendar/schedule-help-dialog";
 import {
   groupBlackoutsByDay,
-  groupBlocksByDay,
   groupSwapGhostsByDay,
 } from "./week-calendar/group-by-day";
 import { useViewportHourSizing } from "./week-calendar/use-viewport-hour-sizing";
 import { useWeekViewportGestures } from "./week-calendar/use-week-viewport-gestures";
 import { visibleDayIndicesMerged } from "./week-calendar/visible-days";
+import { WeekCalendarView } from "./week-calendar/WeekCalendarView";
 
 type Props = {
   onBlockActivate: (block: CalendarBlock) => void;
@@ -182,7 +174,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     () => visibleDayIndicesMerged(blocks, blackouts.items),
     [blocks, blackouts.items],
   );
-  const blocksByDay = useMemo(() => groupBlocksByDay(blocks), [blocks]);
   const blackoutsByDay = useMemo(
     () => groupBlackoutsByDay(blackouts.items),
     [blackouts.items],
@@ -1014,9 +1005,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
               ))}
             </ul>
           ) : null}
-          <p className="font-medium text-foreground">Nothing fits yet — try this</p>
+          <p className="font-medium text-foreground">Nothing fits yet</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            One or more of these usually unlocks a valid week:
+            Try one of these to make the week valid:
           </p>
           <ul className="mt-2 list-inside list-disc space-y-2 text-sm text-foreground">
             {requireOpenSections ? (
@@ -1050,7 +1041,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 </button>
                 <span className="text-muted-foreground">
                   {" "}
-                  — sometimes the opposite helps.
+                  if you want only open seats.
                 </span>
               </li>
             )}
@@ -1138,296 +1129,170 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       ) : null}
 
       <div ref={hScrollRef} className="overflow-x-auto">
-        <div
-          className="flex flex-col"
-          style={{ minWidth: `max(100%, ${gridMinWidthRem}rem)` }}
-        >
-          <div
-            ref={weekHeaderRef}
-            className="flex shrink-0 border-b border-border bg-muted/30"
-          >
-            <div className="w-14 shrink-0" aria-hidden />
-            {visibleDayIndices.map((dayIndex) => (
-              <div
-                key={dayIndex}
-                className="min-w-[4.5rem] flex-1 border-l border-border py-2 text-center font-mono text-xs font-medium text-muted-foreground"
-              >
-                {DAY_LABELS[dayIndex]}
-              </div>
-            ))}
-          </div>
-
-          <div
-            ref={viewportRef}
-            className="relative min-h-0 touch-none overflow-y-auto overscroll-y-contain"
-            style={{ height: "min(72vh, 40rem)" }}
-          >
-            <div
-              className="flex"
-              style={{ minWidth: `max(100%, ${gridMinWidthRem}rem)` }}
-            >
-              <div className="flex w-14 shrink-0 flex-col border-r border-border bg-muted/20">
-                {CALENDAR_HOUR_AXIS.map((h) => (
-                  <div
-                    key={h}
-                    className="flex items-start justify-end pr-1.5 font-mono text-[10px] leading-tight text-muted-foreground"
-                    style={{ height: rowPx, minHeight: rowPx }}
-                  >
-                    {formatHour(h)}
-                  </div>
-                ))}
-              </div>
-
-              <div ref={dayStripRef} className="flex min-w-0 flex-1">
-                {visibleDayIndices.map((dayIndex) => (
-                  <div
-                    key={dayIndex}
-                    role="presentation"
+        <WeekCalendarView
+          blocks={blocks}
+          visibleDayIndices={visibleDayIndices}
+          rowPx={rowPx}
+          gridMinWidthRem={gridMinWidthRem}
+          weekHeaderRef={weekHeaderRef}
+          viewportRef={viewportRef}
+          dayStripRef={dayStripRef}
+          viewportStyle={{ height: "min(72vh, 40rem)" }}
+          dayColumnClassName={
+            markBusyMode ? "cursor-crosshair touch-manipulation" : undefined
+          }
+          dayColumnHandlers={(dayIndex) => ({
+            onPointerDown: (e) => onDayColumnPointerDown(e, dayIndex),
+            onPointerMove: onDayColumnPointerMove,
+            onPointerUp: onDayColumnPointerUp,
+            onPointerCancel: onDayColumnPointerCancel,
+          })}
+          renderDayOverlay={(dayIndex) => (
+            <>
+              {(blackoutsByDay.get(dayIndex) ?? []).map((bo) => {
+                const topPx =
+                  ((bo.start - startMin) / totalMin) * gridHeightPx;
+                const rawH = ((bo.end - bo.start) / totalMin) * gridHeightPx;
+                const heightPx = Math.max(8, rawH);
+                const title =
+                  bo.label?.trim() ||
+                  `Busy ${formatQuarterHourLabel(bo.start)}–${formatQuarterHourLabel(bo.end)}`;
+                return (
+                  <button
+                    key={bo.id}
+                    type="button"
+                    title={title}
+                    aria-label={`Edit busy time: ${title}`}
                     className={cn(
-                      "relative min-w-[4.5rem] flex-1 border-l border-border",
-                      markBusyMode && "cursor-crosshair touch-manipulation",
+                      "absolute left-0.5 right-0.5 z-[12] overflow-hidden rounded-md border border-dashed border-muted-foreground/45 bg-muted/55 text-left shadow-none",
+                      "bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.06)_5px,rgba(0,0,0,0.06)_6px)] dark:bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(255,255,255,0.06)_5px,rgba(255,255,255,0.06)_6px)]",
                     )}
-                    style={{ height: gridHeightPx, minHeight: gridHeightPx }}
-                    onPointerDown={(e) => onDayColumnPointerDown(e, dayIndex)}
-                    onPointerMove={onDayColumnPointerMove}
-                    onPointerUp={onDayColumnPointerUp}
-                    onPointerCancel={onDayColumnPointerCancel}
+                    style={{
+                      top: topPx,
+                      height: heightPx,
+                      padding: "4px 6px",
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditBlackout(bo);
+                    }}
                   >
-                    <div className="pointer-events-none absolute inset-0 flex flex-col">
-                      {CALENDAR_HOUR_AXIS.map((h) => (
-                        <div
-                          key={h}
-                          className="border-b border-border/80"
-                          style={{ height: rowPx, minHeight: rowPx }}
-                        />
-                      ))}
-                    </div>
-                    {(blackoutsByDay.get(dayIndex) ?? []).map((bo) => {
-                        const topPx =
-                          ((bo.start - startMin) / totalMin) * gridHeightPx;
-                        const rawH =
-                          ((bo.end - bo.start) / totalMin) * gridHeightPx;
-                        const heightPx = Math.max(8, rawH);
-                        const title =
-                          bo.label?.trim() ||
-                          `Busy ${formatQuarterHourLabel(bo.start)}–${formatQuarterHourLabel(bo.end)}`;
-                        return (
-                          <button
-                            key={bo.id}
-                            type="button"
-                            title={title}
-                            aria-label={`Edit busy time: ${title}`}
-                            className={cn(
-                              "absolute left-0.5 right-0.5 z-[12] overflow-hidden rounded-md border border-dashed border-muted-foreground/45 bg-muted/55 text-left shadow-none",
-                              "bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.06)_5px,rgba(0,0,0,0.06)_6px)] dark:bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(255,255,255,0.06)_5px,rgba(255,255,255,0.06)_6px)]",
-                            )}
-                            style={{
-                              top: topPx,
-                              height: heightPx,
-                              padding: "4px 6px",
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEditBlackout(bo);
-                            }}
-                          >
-                            <span className="line-clamp-2 text-[10px] font-medium leading-tight text-muted-foreground">
-                              {bo.label?.trim() || "Busy"}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    {dragPreview && dragPreview.dayIndex === dayIndex ? (
+                    <span className="line-clamp-2 text-[10px] font-medium leading-tight text-muted-foreground">
+                      {bo.label?.trim() || "Busy"}
+                    </span>
+                  </button>
+                );
+              })}
+              {dragPreview && dragPreview.dayIndex === dayIndex ? (
+                <div
+                  className="pointer-events-none absolute left-0.5 right-0.5 z-[11] rounded-md border-2 border-dashed border-primary bg-primary/15"
+                  style={{
+                    top: dragPreview.topPx,
+                    height: dragPreview.heightPx,
+                  }}
+                  aria-hidden
+                />
+              ) : null}
+              {courseDragSession
+                ? (ghostsByDay.get(dayIndex) ?? []).map((g) => {
+                    const topPx =
+                      ((g.startMinutes - startMin) / totalMin) * gridHeightPx;
+                    const rawH =
+                      ((g.endMinutes - g.startMinutes) / totalMin) *
+                      gridHeightPx;
+                    const heightPx = Math.max(8, rawH);
+                    const sn = courseDragSession.snapped;
+                    const isSnap =
+                      !!sn &&
+                      sn.crn === g.crn &&
+                      sn.meetingId === g.meetingId &&
+                      sn.dayIndex === g.dayIndex &&
+                      sn.startMinutes === g.startMinutes &&
+                      sn.endMinutes === g.endMinutes;
+                    return (
                       <div
-                        className="pointer-events-none absolute left-0.5 right-0.5 z-[11] rounded-md border-2 border-dashed border-primary bg-primary/15"
-                        style={{
-                          top: dragPreview.topPx,
-                          height: dragPreview.heightPx,
-                        }}
+                        key={`ghost-${g.crn}-${g.meetingId}-${g.dayIndex}-${g.startMinutes}`}
+                        className={cn(
+                          "pointer-events-none absolute left-0.5 right-0.5 z-[30] rounded-md border border-dashed border-muted-foreground/50 bg-muted/25",
+                          isSnap &&
+                            "border-primary/70 bg-primary/10 ring-1 ring-primary/40",
+                        )}
+                        style={{ top: topPx, height: heightPx }}
                         aria-hidden
                       />
-                    ) : null}
-                    {courseDragSession
-                      ? (ghostsByDay.get(dayIndex) ?? []).map((g) => {
-                            const topPx =
-                              ((g.startMinutes - startMin) / totalMin) *
-                              gridHeightPx;
-                            const rawH =
-                              ((g.endMinutes - g.startMinutes) / totalMin) *
-                              gridHeightPx;
-                            const heightPx = Math.max(8, rawH);
-                            const sn = courseDragSession.snapped;
-                            const isSnap =
-                              !!sn &&
-                              sn.crn === g.crn &&
-                              sn.meetingId === g.meetingId &&
-                              sn.dayIndex === g.dayIndex &&
-                              sn.startMinutes === g.startMinutes &&
-                              sn.endMinutes === g.endMinutes;
-                            return (
-                              <div
-                                key={`ghost-${g.crn}-${g.meetingId}-${g.dayIndex}-${g.startMinutes}`}
-                                className={cn(
-                                  "pointer-events-none absolute left-0.5 right-0.5 z-[30] rounded-md border border-dashed border-muted-foreground/50 bg-muted/25",
-                                  isSnap &&
-                                    "border-primary/70 bg-primary/10 ring-1 ring-primary/40",
-                                )}
-                                style={{ top: topPx, height: heightPx }}
-                                aria-hidden
-                              />
-                            );
-                          })
-                      : null}
-                    {(blocksByDay.get(dayIndex) ?? []).map((b) => {
-                        const topPx =
-                          ((b.startMinutes - startMin) / totalMin) *
-                          gridHeightPx;
-                        const rawH =
-                          ((b.endMinutes - b.startMinutes) / totalMin) *
-                          gridHeightPx;
-                        const heightPx = Math.max(8, rawH);
-                        const pad = calendarBlockPaddingPx(heightPx);
-                        const titlePx = calendarTitleFontPx(heightPx);
-                        const secondaryPx = Math.max(7, titlePx - 1);
-                        const tier = calendarSecondaryTier(heightPx);
-                        const loc = b.sublabel.trim();
-                        const inst = b.instructorSublabel?.trim() ?? "";
-                        const titleAttr = [b.label, inst, loc]
-                          .filter(Boolean)
-                          .join(" · ");
-                        let showInstructor = false;
-                        let showLocation = false;
-                        if (tier === "both") {
-                          showInstructor = inst.length > 0;
-                          showLocation = loc.length > 0;
-                        } else if (tier === "one") {
-                          if (inst.length > 0) showInstructor = true;
-                          else if (loc.length > 0) showLocation = true;
-                        }
-                        const titleClampClass =
-                          tier === "none"
-                            ? "truncate"
-                            : "line-clamp-2 min-h-0 break-words";
-                        const rowItem = plannerItemsById.get(b.plannerItemId);
-                        const showPin = rowItem?.selectionKind === "unresolved";
-                        const pinsDoc = rowItem
-                          ? parseSectionPinsJson(rowItem.sectionPins)
-                          : parseSectionPinsJson(null);
-                        const isPinnedThisBlock =
-                          pinsDoc.byType[b.sectionScheduleTypeKey] ===
-                          b.sectionCrn;
-                        const dimSource =
-                          !!courseDragSession &&
-                          courseDragSession.block.key === b.key &&
-                          (courseDragSession.ghosts.length > 0 ||
-                            courseDragSession.snapped != null);
-                        return (
-                          <div
-                            key={b.key}
-                            role="button"
-                            tabIndex={0}
-                            title={titleAttr}
-                            aria-label={titleAttr}
-                            className={cn(
-                              "touch-none absolute left-0.5 right-0.5 z-[20] cursor-pointer overflow-hidden rounded-md border border-border bg-card text-left shadow-sm outline-none active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                              "flex min-h-0 flex-col justify-start gap-0.5 border-l-[4px]",
-                              dimSource && "opacity-35",
-                            )}
-                            style={{
-                              top: topPx,
-                              height: heightPx,
-                              borderLeftColor: b.color,
-                              paddingTop: pad,
-                              paddingBottom: pad,
-                              paddingLeft: Math.min(10, pad + 4),
-                              paddingRight: Math.min(8, pad + 2),
-                            }}
-                            onPointerDown={(e) =>
-                              onCourseBlockPointerDown(e, b)
-                            }
-                            onPointerMove={onCourseBlockPointerMove}
-                            onPointerUp={onCourseBlockPointerUp}
-                            onPointerCancel={onCourseBlockPointerCancel}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                onBlockActivate(b);
-                              }
-                            }}
-                          >
-                            {showPin ? (
-                              <span
-                                className="pointer-events-auto absolute right-0.5 top-0.5 z-30"
-                                onPointerDown={(e) => e.stopPropagation()}
-                              >
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  size="icon"
-                                  className="size-6 touch-manipulation shadow-sm"
-                                  aria-label={
-                                    isPinnedThisBlock
-                                      ? `Unpin this ${b.subject} ${b.courseNumber} meeting`
-                                      : `Pin this ${b.subject} ${b.courseNumber} meeting`
-                                  }
-                                  title={
-                                    isPinnedThisBlock
-                                      ? "Unpin (same button)"
-                                      : "Pin this meeting type"
-                                  }
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleSectionPin(
-                                      b.plannerItemId,
-                                      b.sectionScheduleTypeKey,
-                                      b.sectionCrn,
-                                    );
-                                  }}
-                                >
-                                  <Pin
-                                    className={cn(
-                                      "size-3.5",
-                                      isPinnedThisBlock &&
-                                        "fill-primary text-primary",
-                                    )}
-                                    aria-hidden
-                                  />
-                                </Button>
-                              </span>
-                            ) : null}
-                            <span
-                              className={cn(
-                                "min-w-0 font-mono font-medium leading-tight text-foreground",
-                                titleClampClass,
-                              )}
-                              style={{ fontSize: titlePx }}
-                            >
-                              {b.label}
-                            </span>
-                            {showInstructor ? (
-                              <span
-                                className="line-clamp-1 min-w-0 font-mono leading-tight text-muted-foreground"
-                                style={{ fontSize: secondaryPx }}
-                              >
-                                {inst}
-                              </span>
-                            ) : null}
-                            {showLocation ? (
-                              <span
-                                className="line-clamp-1 min-w-0 font-mono leading-tight text-muted-foreground"
-                                style={{ fontSize: secondaryPx }}
-                              >
-                                {loc}
-                              </span>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                  </div>
-                ))}
-              </div>
-            </div>
-            {courseDragSession ? (
+                    );
+                  })
+                : null}
+            </>
+          )}
+          blockHandlers={(b) => ({
+            onPointerDown: (e) => onCourseBlockPointerDown(e, b),
+            onPointerMove: onCourseBlockPointerMove,
+            onPointerUp: onCourseBlockPointerUp,
+            onPointerCancel: onCourseBlockPointerCancel,
+            onKeyDown: (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onBlockActivate(b);
+              }
+            },
+          })}
+          blockClassName={(b) => {
+            const dimSource =
+              !!courseDragSession &&
+              courseDragSession.block.key === b.key &&
+              (courseDragSession.ghosts.length > 0 ||
+                courseDragSession.snapped != null);
+            return dimSource ? "opacity-35" : undefined;
+          }}
+          renderBlockOverlay={(b) => {
+            const rowItem = plannerItemsById.get(b.plannerItemId);
+            if (rowItem?.selectionKind !== "unresolved") return null;
+            const pinsDoc = parseSectionPinsJson(rowItem.sectionPins);
+            const isPinnedThisBlock =
+              pinsDoc.byType[b.sectionScheduleTypeKey] === b.sectionCrn;
+            return (
+              <span
+                className="pointer-events-auto absolute right-0.5 top-0.5 z-30"
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="size-6 touch-manipulation shadow-sm"
+                  aria-label={
+                    isPinnedThisBlock
+                      ? `Unpin this ${b.subject} ${b.courseNumber} meeting`
+                      : `Pin this ${b.subject} ${b.courseNumber} meeting`
+                  }
+                  title={
+                    isPinnedThisBlock
+                      ? "Unpin (same button)"
+                      : "Pin this meeting type"
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSectionPin(
+                      b.plannerItemId,
+                      b.sectionScheduleTypeKey,
+                      b.sectionCrn,
+                    );
+                  }}
+                >
+                  <Pin
+                    className={cn(
+                      "size-3.5",
+                      isPinnedThisBlock && "fill-primary text-primary",
+                    )}
+                    aria-hidden
+                  />
+                </Button>
+              </span>
+            );
+          }}
+          viewportFloatingOverlay={
+            courseDragSession ? (
               <div
                 className="pointer-events-none fixed z-[60] overflow-hidden rounded-md border border-border bg-card/95 py-1.5 pr-1 pl-2 shadow-lg backdrop-blur-sm"
                 style={{
@@ -1449,9 +1314,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                   </span>
                 ) : null}
               </div>
-            ) : null}
-          </div>
-        </div>
+            ) : null
+          }
+        />
       </div>
 
       <BusyTimeDialog

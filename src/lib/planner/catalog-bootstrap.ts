@@ -103,6 +103,9 @@ export async function loadPlannerCatalogBootstrap(
       scheduleTypeDescription: schema.sections.scheduleTypeDescription,
       sequenceNumber: schema.sections.sequenceNumber,
       subjectCourse: schema.sections.subjectCourse,
+      instructionalMethod: schema.sections.instructionalMethod,
+      instructionalMethodDescription:
+        schema.sections.instructionalMethodDescription,
     })
     .from(schema.sections)
     .where(
@@ -126,6 +129,10 @@ export async function loadPlannerCatalogBootstrap(
       scheduleTypeDescription: decodeHtmlEntities(r.scheduleTypeDescription),
       sequenceNumber: decodeHtmlEntities(r.sequenceNumber),
       subjectCourse: decodeHtmlEntities(r.subjectCourse),
+      instructionalMethod: decodeHtmlEntities(r.instructionalMethod),
+      instructionalMethodDescription: decodeHtmlEntities(
+        r.instructionalMethodDescription,
+      ),
     });
   }
 
@@ -227,6 +234,9 @@ export async function loadPlannerCatalogBootstrap(
         scheduleTypeDescription: schema.sections.scheduleTypeDescription,
         sequenceNumber: schema.sections.sequenceNumber,
         subjectCourse: schema.sections.subjectCourse,
+        instructionalMethod: schema.sections.instructionalMethod,
+        instructionalMethodDescription:
+          schema.sections.instructionalMethodDescription,
       })
       .from(schema.sections)
       .where(
@@ -241,6 +251,10 @@ export async function loadPlannerCatalogBootstrap(
         scheduleTypeDescription: decodeHtmlEntities(r.scheduleTypeDescription),
         sequenceNumber: decodeHtmlEntities(r.sequenceNumber),
         subjectCourse: decodeHtmlEntities(r.subjectCourse),
+        instructionalMethod: decodeHtmlEntities(r.instructionalMethod),
+        instructionalMethodDescription: decodeHtmlEntities(
+          r.instructionalMethodDescription,
+        ),
       });
     }
   }

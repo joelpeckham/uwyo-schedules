@@ -1,21 +1,20 @@
 import { ImageResponse } from "next/og";
+import {
+  DAY_LABELS,
+  LANDING_PREVIEW_HOUR_AXIS,
+} from "@/components/planner/week-calendar/axis-constants";
+import { formatHour } from "@/components/planner/week-calendar/block-metrics";
 
 /** Matches landing PlannerPreview sample week (scaled ROW). */
 const ROW = 32;
-const DAY_H = 9 * ROW;
+const DAY_H = LANDING_PREVIEW_HOUR_AXIS.length * ROW;
 
-const HOUR_LABELS = [
-  "8 a.m.",
-  "9 a.m.",
-  "10 a.m.",
-  "11 a.m.",
-  "12 p.m.",
-  "1 p.m.",
-  "2 p.m.",
-  "3 p.m.",
-] as const;
+/** OG label set drops the trailing 4 p.m. row so the visual rhythm stays even. */
+const HOUR_LABELS = LANDING_PREVIEW_HOUR_AXIS.slice(0, -1).map((h) =>
+  formatHour(h),
+);
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+const DAYS = DAY_LABELS.slice(0, 5);
 
 const COLORS = {
   cream50: "#FBF7F0",
@@ -419,7 +418,7 @@ export default function OpengraphImage() {
               fontFamily: "ui-sans-serif, system-ui, sans-serif",
             }}
           >
-            From course list to class schedule, in minutes.
+            From course list to class schedule.
           </div>
         </div>
       </div>

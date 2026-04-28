@@ -12,6 +12,10 @@ import {
   subjectToPathSegment,
 } from "@/lib/seo/queries";
 import { uwyoOrganization } from "@/lib/seo/schema-org";
+import {
+  classifyDeliveryMode,
+  deliveryModeLabel,
+} from "@/lib/sections/delivery-mode";
 
 type Props = { params: Promise<{ subject: string; number: string }> };
 
@@ -142,23 +146,47 @@ export default async function CourseDetailPage({ params }: Props) {
                   </td>
                 </tr>
               ) : (
-                sectionRows.map((row) => (
-                  <tr key={row.crn} className="border-t border-border">
-                    <td className="px-3 py-2 font-mono">{row.crn}</td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {row.scheduleTypeDescription ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {row.facultyNames ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {row.meetingSummary ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                      {row.seatsAvailable ?? "—"}
-                    </td>
-                  </tr>
-                ))
+                sectionRows.map((row) => {
+                  const mode = classifyDeliveryMode({
+                    instructionalMethod: row.instructionalMethod,
+                    instructionalMethodDescription:
+                      row.instructionalMethodDescription,
+                    hasTimedMeetings: row.hasTimedMeetings,
+                  });
+                  const pill = deliveryModeLabel(mode);
+                  const crnHref = `${canonicalPath}/${encodeURIComponent(row.crn)}`;
+                  return (
+                    <tr key={row.crn} className="border-t border-border">
+                      <td className="px-3 py-2 font-mono">
+                        <Link
+                          href={crnHref}
+                          className="text-primary underline-offset-4 hover:underline"
+                        >
+                          {row.crn}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{row.scheduleTypeDescription ?? "—"}</span>
+                          {pill ? (
+                            <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[0.65rem] font-medium not-italic text-foreground sm:text-xs">
+                              {pill}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {row.facultyNames ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {row.meetingSummary ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        {row.seatsAvailable ?? "—"}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

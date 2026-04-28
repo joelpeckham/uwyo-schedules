@@ -18,8 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+import { DAY_LABELS } from "./axis-constants";
 
 type BusyTimeOption = { value: number; label: string };
 

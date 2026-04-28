@@ -7,13 +7,13 @@ const steps = [
     icon: ListPlus,
   },
   {
-    title: "Set preferences and blackouts",
-    body: "Optional instructor picks and busy times keep the solver honest about what “fits” really means for you.",
+    title: "Set preferences and busy times",
+    body: "Tell the planner which instructors you prefer and when you are not available. Both are optional. The planner respects them.",
     icon: SlidersHorizontal,
   },
   {
     title: "See a week that fits",
-    body: "The planner continuously scores a conflict-free week against your list, busy times, and preferences. Pin what you like or drag a block to try same-type alternatives—no spreadsheet gymnastics.",
+    body: "The planner shows a conflict-free week that satisfies your list, busy times, and preferences. Pin sections you want to keep, or drag a block to try same-type alternatives.",
     icon: CalendarCheck2,
   },
 ] as const;

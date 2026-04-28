@@ -15,6 +15,8 @@ const minimalCatalog: PlannerCatalogJson = {
       scheduleTypeDescription: "Lecture",
       sequenceNumber: "1",
       subjectCourse: "MATH 2200",
+      instructionalMethod: "TR",
+      instructionalMethodDescription: "Traditional",
     },
     {
       crn: "10002",
@@ -23,6 +25,8 @@ const minimalCatalog: PlannerCatalogJson = {
       scheduleTypeDescription: "Lecture",
       sequenceNumber: "2",
       subjectCourse: "MATH 2200",
+      instructionalMethod: "TR",
+      instructionalMethodDescription: "Traditional",
     },
   ],
   meetings: [
