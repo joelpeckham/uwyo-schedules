@@ -18,6 +18,7 @@ import { PlannerProvider } from "./PlannerContext";
 import { PlannerEmptyHero } from "./PlannerEmptyHero";
 import { ShareLinkApplier } from "./ShareLinkApplier";
 import { TimePrefsCard } from "./TimePrefsCard";
+import { WeekCalendarLoadingPlaceholder } from "./WeekCalendarLoadingPlaceholder";
 
 // Loaded only when the user opens a section block; the modal owns a
 // non-trivial JSON tree view that we keep out of the initial bundle.
@@ -29,15 +30,7 @@ const SectionJsonModal = dynamic(
 const WeekCalendar = dynamic(
   () => import("./WeekCalendar").then((m) => m.WeekCalendar),
   {
-    loading: () => (
-      <div
-        className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 px-4 py-12 text-sm text-muted-foreground"
-        role="status"
-        aria-live="polite"
-      >
-        Loading calendar…
-      </div>
-    ),
+    loading: () => <WeekCalendarLoadingPlaceholder />,
   },
 );
 

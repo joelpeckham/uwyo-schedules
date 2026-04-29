@@ -63,6 +63,7 @@ import {
 } from "./week-calendar/group-by-day";
 import { useViewportHourSizing } from "./week-calendar/use-viewport-hour-sizing";
 import { useWeekViewportGestures } from "./week-calendar/use-week-viewport-gestures";
+import { PLANNER_WEEK_VIEWPORT_HEIGHT } from "./week-calendar/constants";
 import { visibleDayIndicesMerged } from "./week-calendar/visible-days";
 import { WeekCalendarView } from "./week-calendar/WeekCalendarView";
 import { SolutionsPager } from "./SolutionsPager";
@@ -1079,7 +1080,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           weekHeaderRef={weekHeaderRef}
           viewportRef={viewportRef}
           dayStripRef={dayStripRef}
-          viewportStyle={{ height: "min(72vh, 40rem)" }}
+          viewportStyle={{ height: PLANNER_WEEK_VIEWPORT_HEIGHT }}
           dayColumnClassName={
             markBusyMode ? "cursor-crosshair touch-manipulation" : undefined
           }

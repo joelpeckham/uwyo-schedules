@@ -1,5 +1,14 @@
 import { SiteChrome } from "@/components/seo/SiteChrome";
 
+import { WeekCalendarLoadingPlaceholder } from "./WeekCalendarLoadingPlaceholder";
+
+const headerTermSelectStub = (
+  <div
+    aria-hidden
+    className="h-9 min-w-48 rounded-md border border-border bg-muted/30 sm:w-56"
+  />
+);
+
 /**
  * Suspense fallback that mirrors the planner page shell and reserves the
  * same vertical real estate as the eventual `<WeekCalendar />`. Replaces a
@@ -8,7 +17,7 @@ import { SiteChrome } from "@/components/seo/SiteChrome";
  */
 export function PlannerSkeleton() {
   return (
-    <SiteChrome>
+    <SiteChrome actions={headerTermSelectStub}>
       <div className="flex min-w-0 flex-1 flex-col bg-background">
         <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:max-w-[90rem]">
           <div className="space-y-2">
@@ -23,13 +32,7 @@ export function PlannerSkeleton() {
               <div className="h-32 rounded-lg border border-dashed border-border bg-muted/20" />
             </div>
             <div className="mt-6 lg:mt-0">
-              <div
-                className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 px-4 py-12 text-sm text-muted-foreground"
-                role="status"
-                aria-live="polite"
-              >
-                Loading calendar…
-              </div>
+              <WeekCalendarLoadingPlaceholder />
             </div>
           </div>
         </div>
