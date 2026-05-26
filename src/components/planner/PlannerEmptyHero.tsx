@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics/track";
 import { cn } from "@/lib/utils";
 
-import { usePlanner } from "./PlannerContext";
+import { usePlannerData, usePlannerSolve } from "./PlannerContext";
 
 const EXAMPLE_COURSES = [
   { subject: "CHEM", courseNumber: "1020" },
@@ -26,8 +26,8 @@ type Props = {
  * a sensible undergrad starter pack so the user can see the planner in motion.
  */
 export function PlannerEmptyHero({ termCode }: Props) {
-  const { refreshCatalogFromServer, recalculateSolutions, plannerItems } =
-    usePlanner();
+  const { refreshCatalogFromServer, plannerItems } = usePlannerData();
+  const { recalculateSolutions } = usePlannerSolve();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,8 +59,6 @@ export function PlannerEmptyHero({ termCode }: Props) {
       setPending(false);
     }
   }, [termCode, refreshCatalogFromServer, recalculateSolutions, plannerItems.length]);
-
-  if (plannerItems.length > 0) return null;
 
   return (
     <section

@@ -18,7 +18,7 @@ import {
 } from "@/lib/planner/time-prefs";
 import { cn } from "@/lib/utils";
 
-import { usePlanner } from "./PlannerContext";
+import { usePlannerSolve, usePlannerUi } from "./PlannerContext";
 
 const NO_BEFORE_OPTIONS = [
   { value: 8 * 60, label: "8 a.m." },
@@ -38,6 +38,7 @@ const NO_AFTER_OPTIONS = [
 const NONE = "none";
 
 export function FiltersCard() {
+  const { scheduleRecalculateSolutions } = usePlannerSolve();
   const {
     timePrefs,
     setTimePrefs,
@@ -47,8 +48,7 @@ export function FiltersCard() {
     setExcludeTba,
     excludeOnlineAsync,
     setExcludeOnlineAsync,
-    recalculateSolutions,
-  } = usePlanner();
+  } = usePlannerUi();
 
   const setNoFridays = useCallback(
     (next: boolean) => {
@@ -154,7 +154,7 @@ export function FiltersCard() {
           onCheckedChange={(next) => {
             setRequireOpenSections(next);
             track("planner_exclude_full_toggled", { on: next });
-            void recalculateSolutions({ requireOpenSections: next });
+            scheduleRecalculateSolutions({ requireOpenSections: next });
           }}
         />
         <FilterSwitchRow
@@ -164,7 +164,7 @@ export function FiltersCard() {
           onCheckedChange={(next) => {
             setExcludeTba(next);
             track("planner_exclude_tba_toggled", { on: next });
-            void recalculateSolutions({ excludeTba: next });
+            scheduleRecalculateSolutions({ excludeTba: next });
           }}
         />
         <FilterSwitchRow
@@ -174,7 +174,7 @@ export function FiltersCard() {
           onCheckedChange={(next) => {
             setExcludeOnlineAsync(next);
             track("planner_exclude_online_async_toggled", { on: next });
-            void recalculateSolutions({ excludeOnlineAsync: next });
+            scheduleRecalculateSolutions({ excludeOnlineAsync: next });
           }}
         />
       </div>

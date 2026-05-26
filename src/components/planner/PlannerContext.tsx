@@ -106,79 +106,76 @@ function clampSolutionIndex(i: number, total: number): number {
   return Math.floor(i);
 }
 
-type PlannerContextValue = {
+type PlannerDataContextValue = {
   termCode: string;
   plannerItems: PlannerItemRow[];
   catalog: PlannerCatalogJson;
-  /** Calendar reflects the best solution preview merged in memory. */
-  effectivePlannerItems: PlannerItemRow[];
-  calendarBlocks: CalendarBlock[];
-  syncError: string | null;
-  clearSyncError: () => void;
-  /** Set when a pin or section change would leave no valid full schedule (client packs only). */
-  scheduleFeasibilityError: string | null;
-  clearScheduleFeasibilityError: () => void;
   refreshCatalogFromServer: () => Promise<boolean>;
   setPlannerItems: (items: PlannerItemRow[]) => void;
   removePlannerItem: (id: number) => void;
   updatePlannerItem: (id: number, patch: Partial<PlannerItemRow>) => void;
   schedulePersist: () => void;
-  /** Pin or unpin this schedule-type slice (lecture vs lab vs discussion) for an auto row. */
   toggleSectionPin: (itemId: number, scheduleTypeKey: string, sectionCrn: string) => void;
-  /** After a validated same-type drag, persist only that type's CRN pin. */
   setSectionPinFromDrag: (
     itemId: number,
     scheduleTypeKey: string,
     sectionCrn: string,
   ) => void;
-  /** Set full section selection (legacy resolved rows). */
   applyPlannerItemSelection: (
     itemId: number,
     sel: ResolvedPlannerSelection,
   ) => void;
+  solvePacks: Record<string, CourseSolvePack>;
+  mergeSolvePack: (pack: CourseSolvePack) => void;
+  mergedPackConstraintMaps: ReturnType<typeof mergePackConstraintMaps>;
+};
+
+type PlannerSolveContextValue = {
+  /** Planner items with the active solution's section selections applied. */
+  effectivePlannerItems: PlannerItemRow[];
+  calendarBlocks: CalendarBlock[];
+  syncError: string | null;
+  clearSyncError: () => void;
+  scheduleFeasibilityError: string | null;
+  clearScheduleFeasibilityError: () => void;
   solutions: ScheduleSolution[];
   solutionsCapped: boolean;
   solutionsTimedOut: boolean;
-  /** Index into `solutions` for the schedule the user is currently viewing. */
   currentSolutionIndex: number;
-  /** Move the active schedule by one (or to a specific index). */
   setCurrentSolutionIndex: (
     next: number,
     method?: "next" | "prev" | "first" | "last" | "keep" | "drop",
   ) => void;
-  /** Fingerprint keys (CRN-set joins) of the schedules the user has kept. */
   keptSolutions: PlannerKeptSolutionsDocV1;
-  /** True if the active schedule is in the kept pile. */
   isCurrentSolutionKept: boolean;
-  /** Toggle the active schedule's "kept" status. */
   toggleCurrentSolutionKept: () => void;
-  /** Indices of kept schedules in the current `solutions` array (only the matched ones). */
   keptSolutionIndices: number[];
-  /** Hints when no schedule fits (requires complete solve packs). */
   infeasibilityHints: string[];
+  recalculateSolutions: (
+    filterOverrides?: Partial<PlannerScheduleFilters>,
+  ) => Promise<void>;
+  /** Trailing 50 ms debounce; merges filter overrides from rapid toggles. */
+  scheduleRecalculateSolutions: (
+    filterOverrides?: Partial<PlannerScheduleFilters>,
+  ) => void;
+  isRecalculatingSolutions: boolean;
+  /** False until the first `recalculateSolutions` completes for this term mount. */
+  hasAttemptedSolve: boolean;
+};
+
+type PlannerUiContextValue = {
   requireOpenSections: boolean;
   setRequireOpenSections: (v: boolean) => void;
   excludeTba: boolean;
   setExcludeTba: (v: boolean) => void;
   excludeOnlineAsync: boolean;
   setExcludeOnlineAsync: (v: boolean) => void;
-  recalculateSolutions: (
-    filterOverrides?: Partial<PlannerScheduleFilters>,
-  ) => Promise<void>;
-  /** True while a server or client solve is in progress (nested calls supported). */
-  isRecalculatingSolutions: boolean;
-  /** Prefetched per-course solve payloads (client-side DFS when complete). */
-  solvePacks: Record<string, CourseSolvePack>;
-  mergeSolvePack: (pack: CourseSolvePack) => void;
-  /** Merged seats/faculty/schedule-type maps from solve packs (swap feasibility). */
-  mergedPackConstraintMaps: ReturnType<typeof mergePackConstraintMaps>;
   blackouts: PlannerBlackoutsDocV1;
   setBlackouts: (
     doc:
       | PlannerBlackoutsDocV1
       | ((prev: PlannerBlackoutsDocV1) => PlannerBlackoutsDocV1),
   ) => void;
-  /** Soft time-of-day preferences that bias schedule scoring. */
   timePrefs: PlannerTimePrefsV1;
   setTimePrefs: (
     next:
@@ -187,7 +184,9 @@ type PlannerContextValue = {
   ) => void;
 };
 
-const PlannerContext = createContext<PlannerContextValue | null>(null);
+const PlannerDataContext = createContext<PlannerDataContextValue | null>(null);
+const PlannerSolveContext = createContext<PlannerSolveContextValue | null>(null);
+const PlannerUiContext = createContext<PlannerUiContextValue | null>(null);
 
 type ProviderProps = {
   termCode: string;
@@ -254,8 +253,17 @@ export function PlannerProvider({
   const [solvePacks, setSolvePacks] = useState<Record<string, CourseSolvePack>>(
     {},
   );
-  const [isRecalculatingSolutions, setIsRecalculatingSolutions] = useState(false);
+  const [isRecalculatingSolutions, setIsRecalculatingSolutions] = useState(
+    () => initialPlannerItems.length > 0,
+  );
+  const [hasAttemptedSolve, setHasAttemptedSolve] = useState(false);
   const recalcDepthRef = useRef(0);
+  const recalcDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const recalcFilterOverridesRef = useRef<
+    Partial<PlannerScheduleFilters> | undefined
+  >(undefined);
   /** Bumps on each recalc start so stale async/server results cannot overwrite newer solves. */
   const recalcGenRef = useRef(0);
   const solvePacksRef = useRef(solvePacks);
@@ -656,42 +664,6 @@ export function PlannerProvider({
     return () => window.removeEventListener("pagehide", onLeave);
   }, [flushPersist, flushBlackoutPersist, flushKeptPersist, flushTimePrefsPersist]);
 
-  const refreshCatalogFromServer = useCallback(async (): Promise<boolean> => {
-    const res = await loadPlannerCatalogBootstrapAction(termCode);
-    if (!res.ok) {
-      setSyncError(res.error);
-      return false;
-    }
-    itemsRef.current = res.plannerItems;
-    setPlannerItems(res.plannerItems);
-    setCatalog(res.catalog);
-    setSolutions([]);
-    const nextBlackouts = res.termUiState?.blackouts ?? EMPTY_BLACKOUTS;
-    blackoutsRef.current = nextBlackouts;
-    setBlackoutsState(nextBlackouts);
-    const nextKept = res.termUiState?.keptSolutions ?? EMPTY_KEPT_SOLUTIONS;
-    keptSolutionsRef.current = nextKept;
-    setKeptSolutionsState(nextKept);
-    const nextPrefs = res.termUiState?.timePrefs ?? EMPTY_TIME_PREFS;
-    timePrefsRef.current = nextPrefs;
-    setTimePrefsState(nextPrefs);
-    const nextIdx = res.termUiState?.lastSolutionIndex ?? 0;
-    currentSolutionIndexRef.current = nextIdx;
-    setCurrentSolutionIndexState(nextIdx);
-    // Treat the refresh as the new "synced" baseline so subsequent flushes do
-    // not race against the data we just pulled.
-    persistFlushedGenRef.current = persistDirtyGenRef.current;
-    blackoutPersistFlushedGenRef.current = blackoutPersistDirtyGenRef.current;
-    keptPersistFlushedGenRef.current = keptPersistDirtyGenRef.current;
-    timePrefsPersistFlushedGenRef.current = timePrefsPersistDirtyGenRef.current;
-    setSyncError(null);
-    return true;
-  }, [termCode]);
-
-  useEffect(() => {
-    refreshCatalogFromServerRef.current = refreshCatalogFromServer;
-  }, [refreshCatalogFromServer]);
-
   const removePlannerItem = useCallback(
     (id: number) => {
       setPlannerItems((prev) => {
@@ -829,14 +801,77 @@ export function PlannerProvider({
       }
     } finally {
       recalcDepthRef.current -= 1;
-      if (recalcDepthRef.current === 0) setIsRecalculatingSolutions(false);
+      if (recalcDepthRef.current === 0) {
+        setIsRecalculatingSolutions(false);
+        if (itemsRef.current.length > 0) {
+          setHasAttemptedSolve(true);
+        }
+      }
     }
   }, []);
 
-  const recalculateSolutionsRef = useRef(recalculateSolutions);
+  const scheduleRecalculateSolutions = useCallback(
+    (filterOverrides?: Partial<PlannerScheduleFilters>) => {
+      if (filterOverrides) {
+        recalcFilterOverridesRef.current = {
+          ...recalcFilterOverridesRef.current,
+          ...filterOverrides,
+        };
+      }
+      if (recalcDebounceTimerRef.current) {
+        clearTimeout(recalcDebounceTimerRef.current);
+      }
+      recalcDebounceTimerRef.current = setTimeout(() => {
+        recalcDebounceTimerRef.current = null;
+        const overrides = recalcFilterOverridesRef.current;
+        recalcFilterOverridesRef.current = undefined;
+        void recalculateSolutions(overrides);
+      }, 50);
+    },
+    [recalculateSolutions],
+  );
+
   useEffect(() => {
-    recalculateSolutionsRef.current = recalculateSolutions;
-  }, [recalculateSolutions]);
+    return () => {
+      if (recalcDebounceTimerRef.current) {
+        clearTimeout(recalcDebounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const refreshCatalogFromServer = useCallback(async (): Promise<boolean> => {
+    const res = await loadPlannerCatalogBootstrapAction(termCode);
+    if (!res.ok) {
+      setSyncError(res.error);
+      return false;
+    }
+    itemsRef.current = res.plannerItems;
+    setPlannerItems(res.plannerItems);
+    setCatalog(res.catalog);
+    const nextBlackouts = res.termUiState?.blackouts ?? EMPTY_BLACKOUTS;
+    blackoutsRef.current = nextBlackouts;
+    setBlackoutsState(nextBlackouts);
+    const nextKept = res.termUiState?.keptSolutions ?? EMPTY_KEPT_SOLUTIONS;
+    keptSolutionsRef.current = nextKept;
+    setKeptSolutionsState(nextKept);
+    const nextPrefs = res.termUiState?.timePrefs ?? EMPTY_TIME_PREFS;
+    timePrefsRef.current = nextPrefs;
+    setTimePrefsState(nextPrefs);
+    const nextIdx = res.termUiState?.lastSolutionIndex ?? 0;
+    currentSolutionIndexRef.current = nextIdx;
+    setCurrentSolutionIndexState(nextIdx);
+    persistFlushedGenRef.current = persistDirtyGenRef.current;
+    blackoutPersistFlushedGenRef.current = blackoutPersistDirtyGenRef.current;
+    keptPersistFlushedGenRef.current = keptPersistDirtyGenRef.current;
+    timePrefsPersistFlushedGenRef.current = timePrefsPersistDirtyGenRef.current;
+    setSyncError(null);
+    scheduleRecalculateSolutions();
+    return true;
+  }, [termCode, scheduleRecalculateSolutions]);
+
+  useEffect(() => {
+    refreshCatalogFromServerRef.current = refreshCatalogFromServer;
+  }, [refreshCatalogFromServer]);
 
   const applyPlannerItemSelection = useCallback(
     (itemId: number, sel: ResolvedPlannerSelection) => {
@@ -872,11 +907,9 @@ export function PlannerProvider({
         return next;
       });
       schedulePersist();
-      queueMicrotask(() => {
-        void recalculateSolutionsRef.current();
-      });
+      scheduleRecalculateSolutions();
     },
-    [schedulePersist],
+    [schedulePersist, scheduleRecalculateSolutions],
   );
 
   const toggleSectionPin = useCallback(
@@ -918,11 +951,9 @@ export function PlannerProvider({
         return next;
       });
       schedulePersist();
-      queueMicrotask(() => {
-        void recalculateSolutionsRef.current();
-      });
+      scheduleRecalculateSolutions();
     },
-    [schedulePersist],
+    [schedulePersist, scheduleRecalculateSolutions],
   );
 
   const setSectionPinFromDrag = useCallback(
@@ -959,11 +990,9 @@ export function PlannerProvider({
         return next;
       });
       schedulePersist();
-      queueMicrotask(() => {
-        void recalculateSolutionsRef.current();
-      });
+      scheduleRecalculateSolutions();
     },
-    [schedulePersist],
+    [schedulePersist, scheduleRecalculateSolutions],
   );
 
   // Counter bumped only by user-initiated `setBlackouts`. The side-effect
@@ -997,8 +1026,8 @@ export function PlannerProvider({
     }
     blackoutsHandledGenRef.current = blackoutsUserGenRef.current;
     scheduleBlackoutPersist();
-    void recalculateSolutionsRef.current();
-  }, [blackouts, scheduleBlackoutPersist]);
+    scheduleRecalculateSolutions();
+  }, [blackouts, scheduleBlackoutPersist, scheduleRecalculateSolutions]);
 
   // Stable signature of which courses are in the cart, so unrelated edits
   // (color, instructor prefs, pin toggles) don't restart the debounce timer
@@ -1034,7 +1063,7 @@ export function PlannerProvider({
         ([k]) => !solvePacksRef.current[k],
       );
       if (missing.length === 0) {
-        void recalculateSolutionsRef.current();
+        scheduleRecalculateSolutions();
         return;
       }
       void (async () => {
@@ -1049,14 +1078,14 @@ export function PlannerProvider({
         for (const res of results) {
           if (res.ok) mergeSolvePack(res.pack);
         }
-        void recalculateSolutionsRef.current();
+        scheduleRecalculateSolutions();
       })();
     }, PACK_PREFETCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [termCode, plannerCourseKeysSignature, mergeSolvePack]);
+  }, [termCode, plannerCourseKeysSignature, mergeSolvePack, scheduleRecalculateSolutions]);
 
   const setCurrentSolutionIndex = useCallback(
     (
@@ -1138,20 +1167,14 @@ export function PlannerProvider({
     }
     timePrefsHandledGenRef.current = timePrefsUserGenRef.current;
     scheduleTimePrefsPersist();
-    void recalculateSolutionsRef.current();
-  }, [timePrefs, scheduleTimePrefsPersist]);
+    scheduleRecalculateSolutions();
+  }, [timePrefs, scheduleTimePrefsPersist, scheduleRecalculateSolutions]);
 
-  const value = useMemo<PlannerContextValue>(
+  const dataValue = useMemo<PlannerDataContextValue>(
     () => ({
       termCode,
       plannerItems,
       catalog,
-      effectivePlannerItems,
-      calendarBlocks,
-      syncError,
-      clearSyncError,
-      scheduleFeasibilityError,
-      clearScheduleFeasibilityError,
       refreshCatalogFromServer,
       setPlannerItems: setPlannerItemsFromContext,
       removePlannerItem,
@@ -1160,6 +1183,36 @@ export function PlannerProvider({
       toggleSectionPin,
       setSectionPinFromDrag,
       applyPlannerItemSelection,
+      solvePacks,
+      mergeSolvePack,
+      mergedPackConstraintMaps,
+    }),
+    [
+      termCode,
+      plannerItems,
+      catalog,
+      refreshCatalogFromServer,
+      setPlannerItemsFromContext,
+      removePlannerItem,
+      updatePlannerItem,
+      schedulePersist,
+      toggleSectionPin,
+      setSectionPinFromDrag,
+      applyPlannerItemSelection,
+      solvePacks,
+      mergeSolvePack,
+      mergedPackConstraintMaps,
+    ],
+  );
+
+  const solveValue = useMemo<PlannerSolveContextValue>(
+    () => ({
+      effectivePlannerItems,
+      calendarBlocks,
+      syncError,
+      clearSyncError,
+      scheduleFeasibilityError,
+      clearScheduleFeasibilityError,
       solutions,
       solutionsCapped,
       solutionsTimedOut,
@@ -1170,40 +1223,18 @@ export function PlannerProvider({
       toggleCurrentSolutionKept,
       keptSolutionIndices,
       infeasibilityHints,
-      requireOpenSections,
-      setRequireOpenSections,
-      excludeTba,
-      setExcludeTba,
-      excludeOnlineAsync,
-      setExcludeOnlineAsync,
       recalculateSolutions,
+      scheduleRecalculateSolutions,
       isRecalculatingSolutions,
-      solvePacks,
-      mergeSolvePack,
-      mergedPackConstraintMaps,
-      blackouts,
-      setBlackouts,
-      timePrefs,
-      setTimePrefs,
+      hasAttemptedSolve,
     }),
     [
-      termCode,
-      plannerItems,
-      catalog,
       effectivePlannerItems,
       calendarBlocks,
       syncError,
       scheduleFeasibilityError,
-      refreshCatalogFromServer,
       clearSyncError,
       clearScheduleFeasibilityError,
-      setPlannerItemsFromContext,
-      removePlannerItem,
-      updatePlannerItem,
-      schedulePersist,
-      toggleSectionPin,
-      setSectionPinFromDrag,
-      applyPlannerItemSelection,
       solutions,
       solutionsCapped,
       solutionsTimedOut,
@@ -1214,28 +1245,62 @@ export function PlannerProvider({
       toggleCurrentSolutionKept,
       keptSolutionIndices,
       infeasibilityHints,
-      requireOpenSections,
-      excludeTba,
-      excludeOnlineAsync,
       recalculateSolutions,
+      scheduleRecalculateSolutions,
       isRecalculatingSolutions,
-      solvePacks,
-      mergeSolvePack,
-      mergedPackConstraintMaps,
+      hasAttemptedSolve,
+    ],
+  );
+
+  const uiValue = useMemo<PlannerUiContextValue>(
+    () => ({
+      requireOpenSections,
+      setRequireOpenSections,
+      excludeTba,
+      setExcludeTba,
+      excludeOnlineAsync,
+      setExcludeOnlineAsync,
       blackouts,
       setBlackouts,
       timePrefs,
+      setTimePrefs,
+    }),
+    [
+      requireOpenSections,
+      excludeTba,
+      excludeOnlineAsync,
+      blackouts,
+      timePrefs,
+      setBlackouts,
       setTimePrefs,
     ],
   );
 
   return (
-    <PlannerContext.Provider value={value}>{children}</PlannerContext.Provider>
+    <PlannerDataContext.Provider value={dataValue}>
+      <PlannerSolveContext.Provider value={solveValue}>
+        <PlannerUiContext.Provider value={uiValue}>
+          {children}
+        </PlannerUiContext.Provider>
+      </PlannerSolveContext.Provider>
+    </PlannerDataContext.Provider>
   );
 }
 
-export function usePlanner() {
-  const ctx = useContext(PlannerContext);
-  if (!ctx) throw new Error("usePlanner must be used within PlannerProvider");
+export function usePlannerData(): PlannerDataContextValue {
+  const ctx = useContext(PlannerDataContext);
+  if (!ctx) throw new Error("usePlannerData must be used within PlannerProvider");
+  return ctx;
+}
+
+export function usePlannerSolve(): PlannerSolveContextValue {
+  const ctx = useContext(PlannerSolveContext);
+  if (!ctx) throw new Error("usePlannerSolve must be used within PlannerProvider");
+  return ctx;
+}
+
+export function usePlannerUi(): PlannerUiContextValue {
+  const ctx = useContext(PlannerUiContext);
+  if (!ctx) throw new Error("usePlannerUi must be used within PlannerProvider");
   return ctx;
 }

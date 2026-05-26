@@ -34,16 +34,9 @@ import {
   useTransition,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import {
-  Ban,
-  Loader2,
-  Minus,
-  Pin,
-  X,
-  ZoomIn,
-} from "lucide-react";
+import { Ban, Minus, Pin, ZoomIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { usePlanner } from "./PlannerContext";
+import { usePlannerData, usePlannerSolve, usePlannerUi } from "./PlannerContext";
 import { BusyTimeDialog } from "./week-calendar/BusyTimeDialog";
 import {
   buildFloatStyle,
@@ -53,20 +46,30 @@ import {
   scrollToId,
   SNAP_MAX_DIST_PX,
 } from "./week-calendar/interaction";
-import {
-  GESTURE_TIP_STORAGE_KEY,
-  ScheduleHelpDialog,
-} from "./week-calendar/schedule-help-dialog";
+import { ScheduleHelpDialog } from "./week-calendar/schedule-help-dialog";
+import { FirstRunTourSlot } from "./week-calendar/FirstRunTourSlot";
 import {
   groupBlackoutsByDay,
   groupSwapGhostsByDay,
 } from "./week-calendar/group-by-day";
 import { useViewportHourSizing } from "./week-calendar/use-viewport-hour-sizing";
 import { useWeekViewportGestures } from "./week-calendar/use-week-viewport-gestures";
-import { PLANNER_WEEK_VIEWPORT_HEIGHT } from "./week-calendar/constants";
-import { visibleDayIndicesMerged } from "./week-calendar/visible-days";
-import { WeekCalendarView } from "./week-calendar/WeekCalendarView";
-import { SolutionsPager } from "./SolutionsPager";
+import {
+  PLANNER_GRID_MIN_WIDTH_REM,
+  PLANNER_WEEK_VIEWPORT_HEIGHT,
+} from "./week-calendar/constants";
+import {
+  isPlannerWeekendDayMuted,
+  plannerGridDayIndices,
+} from "./week-calendar/visible-days";
+import {
+  applyCourseDragFloatStyle,
+  courseDragSnapKey,
+  type CourseDragSession,
+} from "./week-calendar/course-drag";
+import { WeekCalendarDayGhosts } from "./week-calendar/WeekCalendarDayGhosts";
+import { WeekCalendarGrid } from "./week-calendar/WeekCalendarGrid";
+import { WeekCalendarShell } from "./week-calendar/WeekCalendarShell";
 import { activeTimePrefsCount } from "@/lib/planner/time-prefs";
 import { ExportMenu } from "./ExportMenu";
 
@@ -74,44 +77,41 @@ type Props = {
   onBlockActivate: (block: CalendarBlock) => void;
 };
 
-type DragSessionState = {
-  block: CalendarBlock;
-  pointerId: number;
-  clientX: number;
-  clientY: number;
-  grabDx: number;
-  grabDy: number;
-  ghosts: SwapGhostMeeting[];
-  snapped: SwapGhostMeeting | null;
-  floatStyle: { left: number; top: number; width: number; height: number };
-};
+const WEEK_VIEWPORT_STYLE = {
+  height: PLANNER_WEEK_VIEWPORT_HEIGHT,
+} as const;
 
 export function WeekCalendar({ onBlockActivate }: Props) {
   const {
-    calendarBlocks: blocks,
-    blackouts,
-    setBlackouts,
     catalog,
     plannerItems,
+    mergedPackConstraintMaps,
+    solvePacks,
+    applyPlannerItemSelection,
+    setSectionPinFromDrag,
+    toggleSectionPin,
+  } = usePlannerData();
+  const {
+    calendarBlocks: blocks,
     effectivePlannerItems,
     solutions,
-    requireOpenSections,
-    setRequireOpenSections,
-    excludeTba,
-    excludeOnlineAsync,
     recalculateSolutions,
     isRecalculatingSolutions,
+    hasAttemptedSolve,
     syncError,
     clearSyncError,
     scheduleFeasibilityError,
     clearScheduleFeasibilityError,
-    solvePacks,
     infeasibilityHints,
-    mergedPackConstraintMaps,
-    applyPlannerItemSelection,
-    setSectionPinFromDrag,
-    toggleSectionPin,
-  } = usePlanner();
+  } = usePlannerSolve();
+  const {
+    blackouts,
+    setBlackouts,
+    requireOpenSections,
+    setRequireOpenSections,
+    excludeTba,
+    excludeOnlineAsync,
+  } = usePlannerUi();
 
   const plannerItemsById = useMemo(() => {
     const m = new Map<number, PlannerItemRow>();
@@ -131,23 +131,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     topPx: number;
     heightPx: number;
   } | null>(null);
-  const [tourStep, setTourStep] = useState<number | null>(null);
-
-  useEffect(() => {
-    try {
-      if (!localStorage.getItem(GESTURE_TIP_STORAGE_KEY)) {
-        queueMicrotask(() => setTourStep(0));
-      }
-    } catch {
-      /* private mode or blocked */
-    }
-  }, []);
-
-  useEffect(() => {
-    if (tourStep == null) return;
-    if (plannerItems.length === 0) return;
-    track("planner_tour_step_seen", { step: tourStep + 1 });
-  }, [tourStep, plannerItems.length]);
   const blackoutDragRef = useRef<{
     dayIndex: number;
     columnEl: HTMLElement;
@@ -158,12 +141,12 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   const [swapError, setSwapError] = useState<string | null>(null);
   const [courseDragSession, setCourseDragSession] =
-    useState<DragSessionState | null>(null);
+    useState<CourseDragSession | null>(null);
   const [, startSwapTransition] = useTransition();
   const dayStripRef = useRef<HTMLDivElement | null>(null);
   const courseDragGenRef = useRef(0);
   const courseDragActiveRef = useRef(false);
-  const courseDragSessionRef = useRef<DragSessionState | null>(null);
+  const courseDragSessionRef = useRef<CourseDragSession | null>(null);
   const coursePointerDownRef = useRef<{
     block: CalendarBlock;
     clientX: number;
@@ -173,13 +156,18 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   const courseGrabOffsetRef = useRef({ dx: 0, dy: 0 });
   const capturedCourseBlockElRef = useRef<HTMLElement | null>(null);
   const lastCoursePointerRef = useRef({ x: 0, y: 0 });
+  const dragFloatElRef = useRef<HTMLDivElement | null>(null);
+  const dragRafRef = useRef<number | null>(null);
+  const dragSnapKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     courseDragSessionRef.current = courseDragSession;
   }, [courseDragSession]);
 
-  const visibleDayIndices = useMemo(
-    () => visibleDayIndicesMerged(blocks, blackouts.items),
+  const visibleDayIndices = plannerGridDayIndices();
+  const isDayMuted = useCallback(
+    (dayIndex: number) =>
+      isPlannerWeekendDayMuted(dayIndex, blocks, blackouts.items),
     [blocks, blackouts.items],
   );
   const blackoutsByDay = useMemo(
@@ -193,11 +181,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       ),
     [courseDragSession],
   );
-  const isWeekdaysOnlyView = visibleDayIndices.length === 5;
-  const gridMinWidthRem =
-    visibleDayIndices.length === 7
-      ? 40.5
-      : 3.5 + visibleDayIndices.length * 4.5;
+  const gridMinWidthRem = PLANNER_GRID_MIN_WIDTH_REM;
 
   const hScrollRef = useRef<HTMLDivElement | null>(null);
   const weekHeaderRef = useRef<HTMLDivElement | null>(null);
@@ -212,11 +196,26 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     setHourRowPx,
     hourRowPxRef,
     clampRowPx,
-    minRowPx,
   } = useViewportHourSizing(hourCount);
 
-  const rowPx = hourRowPx ?? Math.max(44, minRowPx);
+  const rowPx = hourRowPx;
   const gridHeightPx = hourCount * rowPx;
+
+  const scheduleDragFrame = useCallback((next: CourseDragSession) => {
+    courseDragSessionRef.current = next;
+    if (dragRafRef.current != null) return;
+    dragRafRef.current = requestAnimationFrame(() => {
+      dragRafRef.current = null;
+      const sess = courseDragSessionRef.current;
+      if (!sess) return;
+      applyCourseDragFloatStyle(dragFloatElRef.current, sess);
+      const snapKey = courseDragSnapKey(sess.snapped);
+      if (snapKey !== dragSnapKeyRef.current) {
+        dragSnapKeyRef.current = snapKey;
+        setCourseDragSession(sess);
+      }
+    });
+  }, []);
 
   const endCourseDrag = useCallback(() => {
     courseDragGenRef.current += 1;
@@ -224,11 +223,16 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     courseDragSessionRef.current = null;
     coursePointerDownRef.current = null;
     capturedCourseBlockElRef.current = null;
+    dragSnapKeyRef.current = null;
+    if (dragRafRef.current != null) {
+      cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = null;
+    }
     setCourseDragSession(null);
   }, []);
 
   const finalizeCourseDragSession = useCallback(
-    (s: Omit<DragSessionState, "floatStyle">): DragSessionState => ({
+    (s: Omit<CourseDragSession, "floatStyle">): CourseDragSession => ({
       ...s,
       floatStyle: buildFloatStyle(
         dayStripRef.current,
@@ -500,12 +504,102 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   );
 
   const zoomCalendarIn = useCallback(() => {
-    setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) * 1.08));
-  }, [clampRowPx, minRowPx, setHourRowPx]);
+    setHourRowPx((prev) => clampRowPx(prev * 1.08));
+  }, [clampRowPx, setHourRowPx]);
 
   const zoomCalendarOut = useCallback(() => {
-    setHourRowPx((prev) => clampRowPx((prev ?? minRowPx) / 1.08));
-  }, [clampRowPx, minRowPx, setHourRowPx]);
+    setHourRowPx((prev) => clampRowPx(prev / 1.08));
+  }, [clampRowPx, setHourRowPx]);
+
+  const dayColumnClassName = useMemo(
+    () => (markBusyMode ? "cursor-crosshair touch-manipulation" : undefined),
+    [markBusyMode],
+  );
+
+  const dayColumnHandlers = useCallback(
+    (dayIndex: number) => ({
+      onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) =>
+        onDayColumnPointerDown(e, dayIndex),
+      onPointerMove: onDayColumnPointerMove,
+      onPointerUp: onDayColumnPointerUp,
+      onPointerCancel: onDayColumnPointerCancel,
+    }),
+    [
+      onDayColumnPointerDown,
+      onDayColumnPointerMove,
+      onDayColumnPointerUp,
+      onDayColumnPointerCancel,
+    ],
+  );
+
+  const renderDayOverlay = useCallback(
+    (dayIndex: number) => (
+      <>
+        {(blackoutsByDay.get(dayIndex) ?? []).map((bo) => {
+          const topPx = ((bo.start - startMin) / totalMin) * gridHeightPx;
+          const rawH = ((bo.end - bo.start) / totalMin) * gridHeightPx;
+          const heightPx = Math.max(8, rawH);
+          const title =
+            bo.label?.trim() ||
+            `Busy ${formatQuarterHourLabel(bo.start)}–${formatQuarterHourLabel(bo.end)}`;
+          return (
+            <button
+              key={bo.id}
+              type="button"
+              title={title}
+              aria-label={`Edit busy time: ${title}`}
+              className={cn(
+                "absolute left-0.5 right-0.5 z-[12] overflow-hidden rounded-md border border-dashed border-muted-foreground/45 bg-muted/55 text-left shadow-none",
+                "bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.06)_5px,rgba(0,0,0,0.06)_6px)] dark:bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(255,255,255,0.06)_5px,rgba(255,255,255,0.06)_6px)]",
+              )}
+              style={{
+                top: topPx,
+                height: heightPx,
+                padding: "4px 6px",
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                openEditBlackout(bo);
+              }}
+            >
+              <span className="line-clamp-2 text-[10px] font-medium leading-tight text-muted-foreground">
+                {bo.label?.trim() || "Busy"}
+              </span>
+            </button>
+          );
+        })}
+        {dragPreview && dragPreview.dayIndex === dayIndex ? (
+          <div
+            className="pointer-events-none absolute left-0.5 right-0.5 z-[11] rounded-md border-2 border-dashed border-primary bg-primary/15"
+            style={{
+              top: dragPreview.topPx,
+              height: dragPreview.heightPx,
+            }}
+            aria-hidden
+          />
+        ) : null}
+        {courseDragSession ? (
+          <WeekCalendarDayGhosts
+            ghosts={ghostsByDay.get(dayIndex) ?? []}
+            snapped={courseDragSession.snapped}
+            startMin={startMin}
+            totalMin={totalMin}
+            gridHeightPx={gridHeightPx}
+          />
+        ) : null}
+      </>
+    ),
+    [
+      blackoutsByDay,
+      startMin,
+      totalMin,
+      gridHeightPx,
+      openEditBlackout,
+      dragPreview,
+      courseDragSession,
+      ghostsByDay,
+    ],
+  );
 
   useEffect(() => {
     if (!courseDragSession) return;
@@ -664,8 +758,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           ghosts,
           snapped,
         });
+        dragSnapKeyRef.current = courseDragSnapKey(next.snapped);
         courseDragSessionRef.current = next;
         setCourseDragSession(next);
+        applyCourseDragFloatStyle(dragFloatElRef.current, next);
         return;
       }
 
@@ -689,8 +785,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           ghosts: sess.ghosts,
           snapped,
         });
-        courseDragSessionRef.current = next;
-        setCourseDragSession(next);
+        scheduleDragFrame(next);
       }
     },
     [
@@ -705,6 +800,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       mergedPackConstraintMaps.seatsByCrn,
       pickCourseSnap,
       pinDragFeasiblePinnedCrnsForBlock,
+      scheduleDragFrame,
       requireOpenSections,
       excludeTba,
       excludeOnlineAsync,
@@ -800,80 +896,111 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     [endCourseDrag],
   );
 
+  const blockHandlers = useCallback(
+    (b: CalendarBlock) => ({
+      onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) =>
+        onCourseBlockPointerDown(e, b),
+      onPointerMove: onCourseBlockPointerMove,
+      onPointerUp: onCourseBlockPointerUp,
+      onPointerCancel: onCourseBlockPointerCancel,
+      onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onBlockActivate(b);
+        }
+      },
+    }),
+    [
+      onCourseBlockPointerDown,
+      onCourseBlockPointerMove,
+      onCourseBlockPointerUp,
+      onCourseBlockPointerCancel,
+      onBlockActivate,
+    ],
+  );
+
+  const blockClassName = useCallback(
+    (b: CalendarBlock) => {
+      const dimSource =
+        !!courseDragSession &&
+        courseDragSession.block.key === b.key &&
+        (courseDragSession.ghosts.length > 0 ||
+          courseDragSession.snapped != null);
+      return dimSource ? "opacity-35" : undefined;
+    },
+    [courseDragSession],
+  );
+
+  const renderBlockOverlay = useCallback(
+    (b: CalendarBlock) => {
+      const rowItem = plannerItemsById.get(b.plannerItemId);
+      if (rowItem?.selectionKind !== "unresolved") return null;
+      const pinsDoc = parseSectionPinsJson(rowItem.sectionPins);
+      const isPinnedThisBlock =
+        pinsDoc.byType[b.sectionScheduleTypeKey] === b.sectionCrn;
+      return (
+        <span
+          className="pointer-events-auto absolute right-0.5 top-0.5 z-30"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="size-6 touch-manipulation shadow-sm"
+            aria-label={
+              isPinnedThisBlock
+                ? `Unpin this ${b.subject} ${b.courseNumber} meeting`
+                : `Pin this ${b.subject} ${b.courseNumber} meeting`
+            }
+            title={
+              isPinnedThisBlock
+                ? "Unpin (same button)"
+                : "Pin this meeting type"
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSectionPin(
+                b.plannerItemId,
+                b.sectionScheduleTypeKey,
+                b.sectionCrn,
+              );
+            }}
+          >
+            <Pin
+              className={cn(
+                "size-3.5",
+                isPinnedThisBlock && "fill-primary text-primary",
+              )}
+              aria-hidden
+            />
+          </Button>
+        </span>
+      );
+    },
+    [plannerItemsById, toggleSectionPin],
+  );
+
   const showNoSchedulesHelp =
-    solutions.length === 0 && plannerItems.length > 0;
+    hasAttemptedSolve &&
+    !isRecalculatingSolutions &&
+    solutions.length === 0 &&
+    plannerItems.length > 0;
   const busyCount = blackouts.items.length;
 
   return (
-    <section
-      id="planner-week-calendar"
-      className={cn(
-        "scroll-mt-20 min-w-0 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm",
-        courseDragSession && "select-none",
-      )}
-      aria-labelledby="planner-week-calendar-heading"
-    >
-      {isWeekdaysOnlyView ? (
-        <p className="sr-only">
-          Showing Monday through Friday. Saturday or Sunday columns appear when
-          a selected course or busy time uses that day.
-        </p>
-      ) : null}
+    <WeekCalendarShell
+      isDragging={courseDragSession != null}
+      syncError={syncError}
+      onClearSyncError={clearSyncError}
+      scheduleFeasibilityError={scheduleFeasibilityError}
+      onClearScheduleFeasibilityError={clearScheduleFeasibilityError}
+      swapError={swapError}
+      onClearSwapError={() => setSwapError(null)}
+      isRecalculatingSolutions={isRecalculatingSolutions}
+      toolbar={
       <div className="border-b border-border p-3 sm:p-4" id="planner-week-calendar-toolbar">
-        {tourStep != null && plannerItems.length > 0 ? (
-          <FirstRunTour
-            step={tourStep}
-            onAdvance={() => setTourStep((s) => (s == null ? 0 : s + 1))}
-            onDismiss={() => {
-              try {
-                localStorage.setItem(GESTURE_TIP_STORAGE_KEY, "1");
-              } catch {
-                /* ignore */
-              }
-              track("planner_tour_dismissed", { step: (tourStep ?? 0) + 1 });
-              setTourStep(null);
-            }}
-          />
-        ) : null}
-        {syncError ? (
-          <div
-            className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            role="alert"
-          >
-            {syncError}
-            <button
-              type="button"
-              className="ml-2 underline"
-              onClick={() => clearSyncError()}
-            >
-              Dismiss
-            </button>
-          </div>
-        ) : null}
-        {scheduleFeasibilityError ? (
-          <div
-            className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            role="alert"
-          >
-            {scheduleFeasibilityError}
-            <button
-              type="button"
-              className="ml-2 underline"
-              onClick={() => clearScheduleFeasibilityError()}
-            >
-              Dismiss
-            </button>
-          </div>
-        ) : null}
-        {isRecalculatingSolutions ? (
-          <p
-            className="mb-3 flex items-center gap-2 text-sm text-muted-foreground"
-            aria-live="polite"
-          >
-            <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
-            Building this week&hellip;
-          </p>
-        ) : null}
+        <FirstRunTourSlot plannerItemCount={plannerItems.length} />
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2
@@ -933,8 +1060,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           view. Use the CRNs to register in WyoWeb.
         </p>
       </div>
-
-      {showNoSchedulesHelp ? (
+      }
+      noSchedulesHelp={showNoSchedulesHelp ? (
         <div className="border-b border-border bg-muted/20 p-3 sm:p-4">
           {infeasibilityHints.length > 0 ? (
             <ul className="mb-3 list-inside list-disc space-y-2 text-sm text-foreground">
@@ -1054,215 +1181,27 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           </ul>
         </div>
       ) : null}
-
-      {swapError ? (
-        <div
-          className="border-b border-border px-3 py-2.5 text-xs text-destructive sm:px-4"
-          role="alert"
-        >
-          {swapError}
-          <button
-            type="button"
-            className="ml-2 underline"
-            onClick={() => setSwapError(null)}
-          >
-            Dismiss
-          </button>
-        </div>
-      ) : null}
-
-      <SolutionsPager />
-
-      <div ref={hScrollRef} className="overflow-x-auto">
-        <WeekCalendarView
-          blocks={blocks}
-          visibleDayIndices={visibleDayIndices}
-          rowPx={rowPx}
-          gridMinWidthRem={gridMinWidthRem}
-          weekHeaderRef={weekHeaderRef}
-          viewportRef={viewportRef}
-          dayStripRef={dayStripRef}
-          viewportStyle={{ height: PLANNER_WEEK_VIEWPORT_HEIGHT }}
-          dayColumnClassName={
-            markBusyMode ? "cursor-crosshair touch-manipulation" : undefined
-          }
-          dayColumnHandlers={(dayIndex) => ({
-            onPointerDown: (e) => onDayColumnPointerDown(e, dayIndex),
-            onPointerMove: onDayColumnPointerMove,
-            onPointerUp: onDayColumnPointerUp,
-            onPointerCancel: onDayColumnPointerCancel,
-          })}
-          renderDayOverlay={(dayIndex) => (
-            <>
-              {(blackoutsByDay.get(dayIndex) ?? []).map((bo) => {
-                const topPx =
-                  ((bo.start - startMin) / totalMin) * gridHeightPx;
-                const rawH = ((bo.end - bo.start) / totalMin) * gridHeightPx;
-                const heightPx = Math.max(8, rawH);
-                const title =
-                  bo.label?.trim() ||
-                  `Busy ${formatQuarterHourLabel(bo.start)}–${formatQuarterHourLabel(bo.end)}`;
-                return (
-                  <button
-                    key={bo.id}
-                    type="button"
-                    title={title}
-                    aria-label={`Edit busy time: ${title}`}
-                    className={cn(
-                      "absolute left-0.5 right-0.5 z-[12] overflow-hidden rounded-md border border-dashed border-muted-foreground/45 bg-muted/55 text-left shadow-none",
-                      "bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.06)_5px,rgba(0,0,0,0.06)_6px)] dark:bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(255,255,255,0.06)_5px,rgba(255,255,255,0.06)_6px)]",
-                    )}
-                    style={{
-                      top: topPx,
-                      height: heightPx,
-                      padding: "4px 6px",
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditBlackout(bo);
-                    }}
-                  >
-                    <span className="line-clamp-2 text-[10px] font-medium leading-tight text-muted-foreground">
-                      {bo.label?.trim() || "Busy"}
-                    </span>
-                  </button>
-                );
-              })}
-              {dragPreview && dragPreview.dayIndex === dayIndex ? (
-                <div
-                  className="pointer-events-none absolute left-0.5 right-0.5 z-[11] rounded-md border-2 border-dashed border-primary bg-primary/15"
-                  style={{
-                    top: dragPreview.topPx,
-                    height: dragPreview.heightPx,
-                  }}
-                  aria-hidden
-                />
-              ) : null}
-              {courseDragSession
-                ? (ghostsByDay.get(dayIndex) ?? []).map((g) => {
-                    const topPx =
-                      ((g.startMinutes - startMin) / totalMin) * gridHeightPx;
-                    const rawH =
-                      ((g.endMinutes - g.startMinutes) / totalMin) *
-                      gridHeightPx;
-                    const heightPx = Math.max(8, rawH);
-                    const sn = courseDragSession.snapped;
-                    const isSnap =
-                      !!sn &&
-                      sn.crn === g.crn &&
-                      sn.meetingId === g.meetingId &&
-                      sn.dayIndex === g.dayIndex &&
-                      sn.startMinutes === g.startMinutes &&
-                      sn.endMinutes === g.endMinutes;
-                    return (
-                      <div
-                        key={`ghost-${g.crn}-${g.meetingId}-${g.dayIndex}-${g.startMinutes}`}
-                        className={cn(
-                          "pointer-events-none absolute left-0.5 right-0.5 z-[30] rounded-md border border-dashed border-muted-foreground/50 bg-muted/25",
-                          isSnap &&
-                            "border-primary/70 bg-primary/10 ring-1 ring-primary/40",
-                        )}
-                        style={{ top: topPx, height: heightPx }}
-                        aria-hidden
-                      />
-                    );
-                  })
-                : null}
-            </>
-          )}
-          blockHandlers={(b) => ({
-            onPointerDown: (e) => onCourseBlockPointerDown(e, b),
-            onPointerMove: onCourseBlockPointerMove,
-            onPointerUp: onCourseBlockPointerUp,
-            onPointerCancel: onCourseBlockPointerCancel,
-            onKeyDown: (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onBlockActivate(b);
-              }
-            },
-          })}
-          blockClassName={(b) => {
-            const dimSource =
-              !!courseDragSession &&
-              courseDragSession.block.key === b.key &&
-              (courseDragSession.ghosts.length > 0 ||
-                courseDragSession.snapped != null);
-            return dimSource ? "opacity-35" : undefined;
-          }}
-          renderBlockOverlay={(b) => {
-            const rowItem = plannerItemsById.get(b.plannerItemId);
-            if (rowItem?.selectionKind !== "unresolved") return null;
-            const pinsDoc = parseSectionPinsJson(rowItem.sectionPins);
-            const isPinnedThisBlock =
-              pinsDoc.byType[b.sectionScheduleTypeKey] === b.sectionCrn;
-            return (
-              <span
-                className="pointer-events-auto absolute right-0.5 top-0.5 z-30"
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="size-6 touch-manipulation shadow-sm"
-                  aria-label={
-                    isPinnedThisBlock
-                      ? `Unpin this ${b.subject} ${b.courseNumber} meeting`
-                      : `Pin this ${b.subject} ${b.courseNumber} meeting`
-                  }
-                  title={
-                    isPinnedThisBlock
-                      ? "Unpin (same button)"
-                      : "Pin this meeting type"
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleSectionPin(
-                      b.plannerItemId,
-                      b.sectionScheduleTypeKey,
-                      b.sectionCrn,
-                    );
-                  }}
-                >
-                  <Pin
-                    className={cn(
-                      "size-3.5",
-                      isPinnedThisBlock && "fill-primary text-primary",
-                    )}
-                    aria-hidden
-                  />
-                </Button>
-              </span>
-            );
-          }}
-          viewportFloatingOverlay={
-            courseDragSession ? (
-              <div
-                className="pointer-events-none fixed z-[60] overflow-hidden rounded-md border border-border bg-card/95 py-1.5 pr-1 pl-2 shadow-lg backdrop-blur-sm"
-                style={{
-                  left: courseDragSession.floatStyle.left,
-                  top: courseDragSession.floatStyle.top,
-                  width: courseDragSession.floatStyle.width,
-                  height: courseDragSession.floatStyle.height,
-                  borderLeftWidth: 4,
-                  borderLeftColor: courseDragSession.block.color,
-                }}
-                aria-hidden
-              >
-                <span className="line-clamp-3 font-mono text-[10px] font-medium leading-tight text-foreground">
-                  {courseDragSession.block.label}
-                </span>
-                {courseDragSession.block.sublabel.trim() ? (
-                  <span className="line-clamp-2 font-mono text-[9px] text-muted-foreground">
-                    {courseDragSession.block.sublabel}
-                  </span>
-                ) : null}
-              </div>
-            ) : null
-          }
-        />
-      </div>
+    >
+      <WeekCalendarGrid
+        hScrollRef={hScrollRef}
+        courseDragSession={courseDragSession}
+        dragFloatRef={dragFloatElRef}
+        blocks={blocks}
+        visibleDayIndices={visibleDayIndices}
+        isDayMuted={isDayMuted}
+        rowPx={rowPx}
+        gridMinWidthRem={gridMinWidthRem}
+        weekHeaderRef={weekHeaderRef}
+        viewportRef={viewportRef}
+        dayStripRef={dayStripRef}
+        viewportStyle={WEEK_VIEWPORT_STYLE}
+        dayColumnClassName={dayColumnClassName}
+        dayColumnHandlers={dayColumnHandlers}
+        renderDayOverlay={renderDayOverlay}
+        blockHandlers={blockHandlers}
+        blockClassName={blockClassName}
+        renderBlockOverlay={renderBlockOverlay}
+      />
 
       <BusyTimeDialog
         open={busyDialogOpen}
@@ -1281,12 +1220,13 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         onCancel={() => handleBusyDialogOpenChange(false)}
         onSave={commitBusyForm}
       />
-    </section>
+    </WeekCalendarShell>
   );
 }
 
 function CreditHoursPill() {
-  const { effectivePlannerItems, calendarBlocks, catalog } = usePlanner();
+  const { catalog } = usePlannerData();
+  const { effectivePlannerItems, calendarBlocks } = usePlannerSolve();
   const total = useMemo(() => {
     if (effectivePlannerItems.length === 0) return 0;
     const sectionByCrn = new Map<string, number | null>();
@@ -1344,7 +1284,7 @@ function CreditHoursPill() {
 }
 
 function TimePrefsBadge() {
-  const { timePrefs } = usePlanner();
+  const { timePrefs } = usePlannerUi();
   const count = activeTimePrefsCount(timePrefs);
   if (count === 0) return null;
   const label = `${count} time ${count === 1 ? "preference" : "preferences"} active`;
@@ -1361,90 +1301,3 @@ function TimePrefsBadge() {
   );
 }
 
-const TOUR_STEPS: readonly { title: string; body: React.ReactNode }[] = [
-  {
-    title: "Pin a section",
-    body: (
-      <>
-        Tap the pin on any block (or in the section list on the left) to lock
-        that lecture, lab, or discussion. The planner keeps everything else
-        flexible.
-      </>
-    ),
-  },
-  {
-    title: "Try other times",
-    body: (
-      <>
-        Drag a block to preview other meetings of the same type. Highlighted
-        slots fit; release on one to swap.
-      </>
-    ),
-  },
-  {
-    title: "Pan and zoom",
-    body: (
-      <>
-        On touch, use two fingers to pan; pinch to zoom. On a trackpad, hold{" "}
-        <kbd className="rounded border border-border bg-background px-1 font-mono text-[10px]">
-          Ctrl
-        </kbd>{" "}
-        and scroll &mdash; or use + / &minus; in the toolbar.
-      </>
-    ),
-  },
-];
-
-function FirstRunTour({
-  step,
-  onAdvance,
-  onDismiss,
-}: {
-  step: number;
-  onAdvance: () => void;
-  onDismiss: () => void;
-}) {
-  const idx = Math.max(0, Math.min(step, TOUR_STEPS.length - 1));
-  const current = TOUR_STEPS[idx]!;
-  const isLast = idx === TOUR_STEPS.length - 1;
-  return (
-    <div className="mb-3 flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground sm:flex-row sm:items-start sm:gap-3">
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-2">
-          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-            {idx + 1} / {TOUR_STEPS.length}
-          </span>
-          <span className="font-medium text-foreground">{current.title}</span>
-        </p>
-        <p className="mt-1 leading-relaxed text-muted-foreground">{current.body}</p>
-      </div>
-      <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2 text-xs text-muted-foreground"
-          onClick={onDismiss}
-        >
-          Skip
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          className="h-8 px-3 text-xs"
-          onClick={isLast ? onDismiss : onAdvance}
-        >
-          {isLast ? "Got it" : "Next"}
-        </Button>
-        <button
-          type="button"
-          aria-label="Dismiss tour"
-          className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-foreground"
-          onClick={onDismiss}
-        >
-          <X className="size-4" />
-        </button>
-      </div>
-    </div>
-  );
-}

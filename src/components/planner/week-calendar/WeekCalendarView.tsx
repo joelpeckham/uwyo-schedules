@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   type CSSProperties,
   type ComponentProps,
   type ReactNode,
@@ -50,7 +51,7 @@ type DivPointerHandlers = Pick<
   | "onKeyDown"
 >;
 
-type WeekCalendarViewProps = {
+export type WeekCalendarViewProps = {
   blocks: readonly CalendarBlock[];
   visibleDayIndices: readonly number[];
   rowPx: number;
@@ -84,9 +85,59 @@ type WeekCalendarViewProps = {
   viewportFloatingOverlay?: ReactNode;
   /** Min width of the inner grid in rem; auto-derived from day count when omitted. */
   gridMinWidthRem?: number;
+  /** When true, the day column is visually de-emphasized (empty weekend). */
+  isDayMuted?: (dayIndex: number) => boolean;
 };
 
-export function WeekCalendarView({
+type BackToBackChip = {
+  key: string;
+  atMinute: number;
+  label: string;
+  title: string;
+};
+
+const BACK_TO_BACK_GAP_THRESHOLD_MIN = 15;
+
+function computeBackToBackChips(
+  blocksByDay: Map<number, CalendarBlock[]>,
+): Map<number, BackToBackChip[]> {
+  const out = new Map<number, BackToBackChip[]>();
+  for (const [dayIndex, list] of blocksByDay.entries()) {
+    const sorted = [...list].sort((a, b) => a.startMinutes - b.startMinutes);
+    const chips: BackToBackChip[] = [];
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const a = sorted[i];
+      const b = sorted[i + 1];
+      if (b.startMinutes <= a.endMinutes) continue;
+      if (a.plannerItemId === b.plannerItemId) continue;
+      const gap = b.startMinutes - a.endMinutes;
+      if (gap >= BACK_TO_BACK_GAP_THRESHOLD_MIN) continue;
+      const fromBuilding = a.buildingShort?.trim();
+      const toBuilding = b.buildingShort?.trim();
+      if (!fromBuilding || !toBuilding) continue;
+      if (fromBuilding === toBuilding) continue;
+      const fromShort = shortenBuilding(fromBuilding);
+      const toShort = shortenBuilding(toBuilding);
+      chips.push({
+        key: `${a.key}->${b.key}`,
+        atMinute: a.endMinutes + gap / 2,
+        label: `${gap} min · ${fromShort} → ${toShort}`,
+        title: `${gap}-minute walk from ${fromBuilding} to ${toBuilding}`,
+      });
+    }
+    if (chips.length > 0) out.set(dayIndex, chips);
+  }
+  return out;
+}
+
+function shortenBuilding(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length <= 14) return trimmed;
+  const first = trimmed.split(/\s+/)[0] ?? trimmed;
+  return first.length > 1 ? first : trimmed.slice(0, 12);
+}
+
+function WeekCalendarViewInner({
   blocks,
   visibleDayIndices,
   rowPx,
@@ -104,6 +155,7 @@ export function WeekCalendarView({
   blockClassName,
   viewportFloatingOverlay,
   gridMinWidthRem,
+  isDayMuted,
 }: WeekCalendarViewProps) {
   const startHour = hourAxis[0] ?? 0;
   const startMin = startHour * 60;
@@ -135,7 +187,10 @@ export function WeekCalendarView({
         {visibleDayIndices.map((dayIndex) => (
           <div
             key={dayIndex}
-            className="min-w-[4.5rem] flex-1 border-l border-border py-2 text-center font-mono text-xs font-medium text-muted-foreground"
+            className={cn(
+              "min-w-[4.5rem] flex-1 border-l border-border py-2 text-center font-mono text-xs font-medium text-muted-foreground",
+              isDayMuted?.(dayIndex) && "opacity-40",
+            )}
           >
             {DAY_LABELS[dayIndex]}
           </div>
@@ -164,30 +219,92 @@ export function WeekCalendarView({
           </div>
 
           <div ref={dayStripRef} className="flex min-w-0 flex-1">
-            {visibleDayIndices.map((dayIndex) => {
-              const handlers = dayColumnHandlers?.(dayIndex) ?? {};
-              return (
-                <div
-                  key={dayIndex}
-                  role="presentation"
-                  className={cn(
-                    "relative min-w-[4.5rem] flex-1 border-l border-border",
-                    dayColumnClassName,
-                  )}
-                  style={{ height: gridHeightPx, minHeight: gridHeightPx }}
-                  {...handlers}
-                >
-                  <div className="pointer-events-none absolute inset-0 flex flex-col">
-                    {hourAxis.map((h) => (
-                      <div
-                        key={h}
-                        className="border-b border-border/80"
-                        style={{ height: rowPx, minHeight: rowPx }}
-                      />
-                    ))}
-                  </div>
-                  {renderDayOverlay?.(dayIndex, layout)}
-                  {(backToBackChipsByDay.get(dayIndex) ?? []).map((chip) => {
+            {visibleDayIndices.map((dayIndex) => (
+              <WeekCalendarDayColumn
+                key={dayIndex}
+                dayIndex={dayIndex}
+                dayBlocks={blocksByDay.get(dayIndex) ?? []}
+                backToBackChips={backToBackChipsByDay.get(dayIndex) ?? []}
+                rowPx={rowPx}
+                hourAxis={hourAxis}
+                layout={layout}
+                gridHeightPx={gridHeightPx}
+                isMuted={isDayMuted?.(dayIndex) ?? false}
+                dayColumnClassName={dayColumnClassName}
+                dayColumnHandlers={dayColumnHandlers?.(dayIndex)}
+                renderDayOverlay={renderDayOverlay}
+                blockHandlers={blockHandlers}
+                renderBlockOverlay={renderBlockOverlay}
+                blockClassName={blockClassName}
+              />
+            ))}
+          </div>
+        </div>
+        {viewportFloatingOverlay}
+      </div>
+    </div>
+  );
+}
+
+export const WeekCalendarView = memo(WeekCalendarViewInner);
+
+type WeekCalendarDayColumnProps = {
+  dayIndex: number;
+  dayBlocks: readonly CalendarBlock[];
+  backToBackChips: BackToBackChip[];
+  rowPx: number;
+  hourAxis: readonly number[];
+  layout: WeekCalendarLayout;
+  gridHeightPx: number;
+  isMuted: boolean;
+  dayColumnClassName?: string;
+  dayColumnHandlers?: DivPointerHandlers;
+  renderDayOverlay?: WeekCalendarViewProps["renderDayOverlay"];
+  blockHandlers?: WeekCalendarViewProps["blockHandlers"];
+  renderBlockOverlay?: WeekCalendarViewProps["renderBlockOverlay"];
+  blockClassName?: WeekCalendarViewProps["blockClassName"];
+};
+
+const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
+  dayIndex,
+  dayBlocks,
+  backToBackChips,
+  rowPx,
+  hourAxis,
+  layout,
+  gridHeightPx,
+  isMuted,
+  dayColumnClassName,
+  dayColumnHandlers,
+  renderDayOverlay,
+  blockHandlers,
+  renderBlockOverlay,
+  blockClassName,
+}: WeekCalendarDayColumnProps) {
+  const { startMin, totalMin } = layout;
+
+  return (
+    <div
+      role="presentation"
+      className={cn(
+        "relative min-w-[4.5rem] flex-1 border-l border-border",
+        isMuted && "opacity-40",
+        dayColumnClassName,
+      )}
+      style={{ height: gridHeightPx, minHeight: gridHeightPx }}
+      {...(dayColumnHandlers ?? {})}
+    >
+      <div className="pointer-events-none absolute inset-0 flex flex-col">
+        {hourAxis.map((h) => (
+          <div
+            key={h}
+            className="border-b border-border/80"
+            style={{ height: rowPx, minHeight: rowPx }}
+          />
+        ))}
+      </div>
+      {renderDayOverlay?.(dayIndex, layout)}
+      {backToBackChips.map((chip) => {
                     const topPx = ((chip.atMinute - startMin) / totalMin) * gridHeightPx;
                     return (
                       <div
@@ -204,8 +321,8 @@ export function WeekCalendarView({
                         </span>
                       </div>
                     );
-                  })}
-                  {(blocksByDay.get(dayIndex) ?? []).map((b) => {
+      })}
+      {dayBlocks.map((b) => {
                     const topPx =
                       ((b.startMinutes - startMin) / totalMin) * gridHeightPx;
                     const rawH =
@@ -333,69 +450,8 @@ export function WeekCalendarView({
                           </span>
                         ) : null}
                       </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        {viewportFloatingOverlay}
-      </div>
+        );
+      })}
     </div>
   );
-}
-
-type BackToBackChip = {
-  key: string;
-  /** Render the chip at this minute-of-day (centered vertically). */
-  atMinute: number;
-  /** Short body, e.g. `12 min · Ross → Engineering`. */
-  label: string;
-  /** Long-form tooltip with both buildings spelled out. */
-  title: string;
-};
-
-const BACK_TO_BACK_GAP_THRESHOLD_MIN = 15;
-
-function computeBackToBackChips(
-  blocksByDay: Map<number, CalendarBlock[]>,
-): Map<number, BackToBackChip[]> {
-  const out = new Map<number, BackToBackChip[]>();
-  for (const [dayIndex, list] of blocksByDay.entries()) {
-    const sorted = [...list].sort((a, b) => a.startMinutes - b.startMinutes);
-    const chips: BackToBackChip[] = [];
-    for (let i = 0; i < sorted.length - 1; i++) {
-      const a = sorted[i];
-      const b = sorted[i + 1];
-      // Skip overlaps (same item double meeting or genuine conflict — those
-      // aren't a tight passing-period story).
-      if (b.startMinutes <= a.endMinutes) continue;
-      if (a.plannerItemId === b.plannerItemId) continue;
-      const gap = b.startMinutes - a.endMinutes;
-      if (gap >= BACK_TO_BACK_GAP_THRESHOLD_MIN) continue;
-      const fromBuilding = a.buildingShort?.trim();
-      const toBuilding = b.buildingShort?.trim();
-      if (!fromBuilding || !toBuilding) continue;
-      if (fromBuilding === toBuilding) continue;
-      const fromShort = shortenBuilding(fromBuilding);
-      const toShort = shortenBuilding(toBuilding);
-      chips.push({
-        key: `${a.key}->${b.key}`,
-        atMinute: a.endMinutes + gap / 2,
-        label: `${gap} min · ${fromShort} → ${toShort}`,
-        title: `${gap}-minute walk from ${fromBuilding} to ${toBuilding}`,
-      });
-    }
-    if (chips.length > 0) out.set(dayIndex, chips);
-  }
-  return out;
-}
-
-function shortenBuilding(name: string): string {
-  const trimmed = name.trim();
-  if (trimmed.length <= 14) return trimmed;
-  // Use the first capitalized token if a longer phrase was returned by Banner.
-  const first = trimmed.split(/\s+/)[0] ?? trimmed;
-  return first.length > 1 ? first : trimmed.slice(0, 12);
-}
+});

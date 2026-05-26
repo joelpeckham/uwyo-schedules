@@ -12,19 +12,14 @@ import { encodeShareState, type SharePinV1 } from "@/lib/planner/share-state";
 import { track } from "@/lib/analytics/track";
 import { cn } from "@/lib/utils";
 
-import { usePlanner } from "./PlannerContext";
+import { usePlannerData, usePlannerSolve, usePlannerUi } from "./PlannerContext";
 
 type Status = "idle" | "ok" | "err";
 
 export function ExportMenu() {
-  const {
-    termCode,
-    plannerItems,
-    effectivePlannerItems,
-    catalog,
-    blackouts,
-    timePrefs,
-  } = usePlanner();
+  const { termCode, plannerItems, catalog } = usePlannerData();
+  const { effectivePlannerItems } = usePlannerSolve();
+  const { blackouts, timePrefs } = usePlannerUi();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [statusMessage, setStatusMessage] = useState<string>("");

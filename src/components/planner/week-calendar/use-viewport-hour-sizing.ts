@@ -10,27 +10,37 @@ import {
   useRef,
   useState,
 } from "react";
-import { MAX_HOUR_ROW_PX } from "./interaction";
+import {
+  initialPlannerHourRowPx,
+  MAX_HOUR_ROW_PX,
+  MIN_HOUR_ROW_PX,
+} from "./constants";
 
 /**
  * Measures the scroll viewport height and derives an hour-row pixel size with
  * pinch/zoom clamps. Keeps `hourRowPxRef` in sync for non-React listeners.
+ *
+ * `hourRowPx` is initialized from the same CSS viewport expression as the grid
+ * (`min(72vh, 40rem) / hourCount`) so the first paint does not jump when
+ * ResizeObserver runs.
  */
 export function useViewportHourSizing(hourCount: number): {
   viewportRef: RefObject<HTMLDivElement | null>;
-  viewportH: number;
-  hourRowPx: number | null;
-  setHourRowPx: Dispatch<SetStateAction<number | null>>;
+  hourRowPx: number;
+  setHourRowPx: Dispatch<SetStateAction<number>>;
   hourRowPxRef: MutableRefObject<number>;
   clampRowPx: (v: number) => number;
   minRowPx: number;
 } {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [viewportH, setViewportH] = useState(0);
-  const [hourRowPx, setHourRowPx] = useState<number | null>(null);
-  const hourRowPxRef = useRef(44);
+  const [hourRowPx, setHourRowPx] = useState(() =>
+    initialPlannerHourRowPx(hourCount),
+  );
+  const hourRowPxRef = useRef(hourRowPx);
 
-  const minRowPx = viewportH > 0 ? viewportH / hourCount : 1;
+  const minRowPx =
+    viewportH > 0 ? viewportH / hourCount : initialPlannerHourRowPx(hourCount);
 
   const clampRowPx = useCallback(
     (v: number) => Math.min(MAX_HOUR_ROW_PX, Math.max(v, minRowPx)),
@@ -46,10 +56,9 @@ export function useViewportHourSizing(hourCount: number): {
       setViewportH(h);
       if (h <= 0) return;
       const floor = h / hourCount;
-      setHourRowPx((prev) => {
-        if (prev == null) return Math.max(44, floor);
-        return Math.min(MAX_HOUR_ROW_PX, Math.max(prev, floor));
-      });
+      setHourRowPx((prev) =>
+        Math.min(MAX_HOUR_ROW_PX, Math.max(prev, floor, MIN_HOUR_ROW_PX)),
+      );
     };
 
     measure();
@@ -59,12 +68,11 @@ export function useViewportHourSizing(hourCount: number): {
   }, [hourCount]);
 
   useLayoutEffect(() => {
-    hourRowPxRef.current = hourRowPx ?? Math.max(44, minRowPx);
-  }, [hourRowPx, minRowPx]);
+    hourRowPxRef.current = hourRowPx;
+  }, [hourRowPx]);
 
   return {
     viewportRef,
-    viewportH,
     hourRowPx,
     setHourRowPx,
     hourRowPxRef,

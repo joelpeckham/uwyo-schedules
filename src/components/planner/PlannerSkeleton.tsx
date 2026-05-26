@@ -11,9 +11,7 @@ const headerTermSelectStub = (
 
 /**
  * Suspense fallback that mirrors the planner page shell and reserves the
- * same vertical real estate as the eventual `<WeekCalendar />`. Replaces a
- * `null` fallback that would otherwise leave a blank page during
- * server-side data fetches.
+ * same vertical real estate as the eventual `<WeekCalendar />`.
  */
 export function PlannerSkeleton() {
   return (
@@ -26,12 +24,19 @@ export function PlannerSkeleton() {
             <div className="h-4 w-full max-w-prose rounded bg-muted/70" />
           </div>
           <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
-            <div className="min-w-0 space-y-3 lg:max-h-[min(100vh-2rem,56rem)]">
+            <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:z-1 lg:max-h-[min(100vh-2rem,56rem)] lg:self-start lg:overflow-y-auto">
               <div className="h-10 rounded-lg border border-dashed border-border bg-muted/30" />
               <div className="h-32 rounded-lg border border-dashed border-border bg-muted/20" />
               <div className="h-32 rounded-lg border border-dashed border-border bg-muted/20" />
             </div>
-            <div className="mt-6 lg:mt-0">
+            <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
+              <div
+                className="grid transition-[grid-template-rows] duration-200 ease-out"
+                style={{ gridTemplateRows: "0fr" }}
+                aria-hidden
+              >
+                <div className="min-h-0 overflow-hidden" />
+              </div>
               <WeekCalendarLoadingPlaceholder />
             </div>
           </div>

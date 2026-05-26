@@ -9,7 +9,9 @@ import {
   deliveryModeLabel,
   meetingHasTimeBlock,
 } from "@/lib/sections/delivery-mode";
-import { usePlanner } from "./PlannerContext";
+import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
+import type { PlannerItemRow } from "@/lib/planner/data";
+import { usePlannerData, usePlannerSolve } from "./PlannerContext";
 
 /** When 4 or more rows are off-grid, the rail collapses by default. */
 const COLLAPSE_THRESHOLD = 4;
@@ -27,6 +29,75 @@ type Props = {
   onCrnActivate: (crn: string) => void;
 };
 
+function computeNotOnGridRows(
+  effectivePlannerItems: PlannerItemRow[],
+  catalog: PlannerCatalogJson,
+): RailRow[] {
+  if (effectivePlannerItems.length === 0) return [];
+  const membersByBundleId = buildMembersByBundleId(
+    catalog.linkedBundleMembers,
+  );
+
+  const meetingsByCrn = new Map<string, typeof catalog.meetings>();
+  for (const m of catalog.meetings) {
+    const list = meetingsByCrn.get(m.sectionCrn) ?? [];
+    list.push(m);
+    meetingsByCrn.set(m.sectionCrn, list);
+  }
+
+  const sectionByCrn = new Map<string, (typeof catalog.sections)[number]>();
+  for (const s of catalog.sections) sectionByCrn.set(s.crn, s);
+
+  const out: RailRow[] = [];
+  const seen = new Set<string>();
+
+  for (const item of effectivePlannerItems) {
+    const crns = resolveDisplayCrnsWithMemberMap(
+      {
+        selectionKind: item.selectionKind,
+        anchorCrn: item.anchorCrn,
+        linkedBundleId: item.linkedBundleId,
+      },
+      membersByBundleId,
+    );
+    for (const crn of crns) {
+      if (seen.has(crn)) continue;
+      const section = sectionByCrn.get(crn);
+      if (!section) continue;
+      const meetings = meetingsByCrn.get(crn) ?? [];
+      const hasTimedMeetings = meetings.some((m) => meetingHasTimeBlock(m));
+      if (hasTimedMeetings) continue;
+      const mode = classifyDeliveryMode({
+        instructionalMethod: section.instructionalMethod,
+        instructionalMethodDescription: section.instructionalMethodDescription,
+        hasTimedMeetings: false,
+      });
+      const courseLabel = `${item.subject} ${item.courseNumber}`;
+      const instructor = catalog.facultyByCrn[crn]?.trim() || null;
+      seen.add(crn);
+      out.push({
+        key: `${item.id}-${crn}`,
+        crn,
+        courseLabel,
+        scheduleType: section.scheduleTypeDescription,
+        pill: deliveryModeLabel(mode),
+        instructor,
+      });
+    }
+  }
+
+  return out;
+}
+
+export function useNotOnGridRailRows(): RailRow[] {
+  const { catalog } = usePlannerData();
+  const { effectivePlannerItems } = usePlannerSolve();
+  return useMemo(
+    () => computeNotOnGridRows(effectivePlannerItems, catalog),
+    [effectivePlannerItems, catalog],
+  );
+}
+
 /**
  * Sections that the student picked but that contribute zero blocks to the
  * weekly grid (online/asynchronous, or meetings still listed as TBA in
@@ -35,73 +106,10 @@ type Props = {
  * modal the calendar uses.
  */
 export function NotOnGridRail({ onCrnActivate }: Props) {
-  const { effectivePlannerItems, catalog } = usePlanner();
-
-  const rows = useMemo<RailRow[]>(() => {
-    if (effectivePlannerItems.length === 0) return [];
-    const membersByBundleId = buildMembersByBundleId(
-      catalog.linkedBundleMembers,
-    );
-
-    const meetingsByCrn = new Map<string, typeof catalog.meetings>();
-    for (const m of catalog.meetings) {
-      const list = meetingsByCrn.get(m.sectionCrn) ?? [];
-      list.push(m);
-      meetingsByCrn.set(m.sectionCrn, list);
-    }
-
-    const sectionByCrn = new Map<
-      string,
-      (typeof catalog.sections)[number]
-    >();
-    for (const s of catalog.sections) sectionByCrn.set(s.crn, s);
-
-    const out: RailRow[] = [];
-    const seen = new Set<string>();
-
-    for (const item of effectivePlannerItems) {
-      const crns = resolveDisplayCrnsWithMemberMap(
-        {
-          selectionKind: item.selectionKind,
-          anchorCrn: item.anchorCrn,
-          linkedBundleId: item.linkedBundleId,
-        },
-        membersByBundleId,
-      );
-      for (const crn of crns) {
-        if (seen.has(crn)) continue;
-        const section = sectionByCrn.get(crn);
-        if (!section) continue;
-        const meetings = meetingsByCrn.get(crn) ?? [];
-        const hasTimedMeetings = meetings.some((m) => meetingHasTimeBlock(m));
-        if (hasTimedMeetings) continue;
-        const mode = classifyDeliveryMode({
-          instructionalMethod: section.instructionalMethod,
-          instructionalMethodDescription:
-            section.instructionalMethodDescription,
-          hasTimedMeetings: false,
-        });
-        const courseLabel = `${item.subject} ${item.courseNumber}`;
-        const instructor = catalog.facultyByCrn[crn]?.trim() || null;
-        seen.add(crn);
-        out.push({
-          key: `${item.id}-${crn}`,
-          crn,
-          courseLabel,
-          scheduleType: section.scheduleTypeDescription,
-          pill: deliveryModeLabel(mode),
-          instructor,
-        });
-      }
-    }
-
-    return out;
-  }, [effectivePlannerItems, catalog]);
+  const rows = useNotOnGridRailRows();
 
   const collapsible = rows.length >= COLLAPSE_THRESHOLD;
   const [open, setOpen] = useState(!collapsible);
-
-  if (rows.length === 0) return null;
 
   const headingId = "not-on-grid-heading";
   const sectionListId = "not-on-grid-list";

@@ -4,12 +4,11 @@ import {
 } from "@/lib/planner/course-swap-snap";
 import {
   DRAG_THRESHOLD_PX,
-  MAX_HOUR_ROW_PX,
   PINCH_ZOOM_RESPONSE,
   SNAP_MAX_DIST_PX,
 } from "./constants";
 
-export { DRAG_THRESHOLD_PX, MAX_HOUR_ROW_PX, SNAP_MAX_DIST_PX };
+export { DRAG_THRESHOLD_PX, SNAP_MAX_DIST_PX };
 
 export function touchDistance(t: TouchList): number {
   const a = t[0];

@@ -25,7 +25,7 @@ import type {
 } from "@/lib/planner/solve-schedules-core";
 import { cn } from "@/lib/utils";
 
-import { usePlanner } from "./PlannerContext";
+import { usePlannerData, usePlannerSolve } from "./PlannerContext";
 
 type Props = {
   open: boolean;
@@ -153,7 +153,8 @@ function buildCourseRows(
 }
 
 export function SchedulesCompare({ open, onOpenChange, keptIndices, keptKeys }: Props) {
-  const { solutions, plannerItems, catalog } = usePlanner();
+  const { plannerItems, catalog } = usePlannerData();
+  const { solutions } = usePlannerSolve();
 
   const [aIdx, setAIdx] = useState<number>(() => keptIndices[0] ?? 0);
   const [bIdx, setBIdx] = useState<number>(

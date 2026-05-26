@@ -13,25 +13,19 @@ import { parseKeptSolutionsJson } from "@/lib/planner/kept-solutions";
 import { parseTimePrefs } from "@/lib/planner/time-prefs";
 
 import { CourseManager } from "./CourseManager";
-import { NotOnGridRail } from "./NotOnGridRail";
-import { PlannerProvider } from "./PlannerContext";
+import { NotOnGridRail, useNotOnGridRailRows } from "./NotOnGridRail";
+import { PlannerProvider, usePlannerData } from "./PlannerContext";
 import { PlannerEmptyHero } from "./PlannerEmptyHero";
+import { PlannerCollapsibleSlot } from "./PlannerCollapsibleSlot";
 import { ShareLinkApplier } from "./ShareLinkApplier";
 import { FiltersCard } from "./FiltersCard";
-import { WeekCalendarLoadingPlaceholder } from "./WeekCalendarLoadingPlaceholder";
+import { WeekCalendar } from "./WeekCalendar";
 
 // Loaded only when the user opens a section block; the modal owns a
 // non-trivial JSON tree view that we keep out of the initial bundle.
 const SectionJsonModal = dynamic(
   () => import("./SectionJsonModal").then((m) => m.SectionJsonModal),
   { ssr: false },
-);
-
-const WeekCalendar = dynamic(
-  () => import("./WeekCalendar").then((m) => m.WeekCalendar),
-  {
-    loading: () => <WeekCalendarLoadingPlaceholder />,
-  },
 );
 
 type Props = {
@@ -122,11 +116,11 @@ export function HomePlanner({
                   <CourseManager key={termCode} termCode={termCode} />
                   <FiltersCard />
                 </div>
-                <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
-                  <PlannerEmptyHero termCode={termCode} />
-                  <WeekCalendar onBlockActivate={onBlockActivate} />
-                  <NotOnGridRail onCrnActivate={onCrnActivate} />
-                </div>
+                <PlannerCalendarColumn
+                  termCode={termCode}
+                  onBlockActivate={onBlockActivate}
+                  onCrnActivate={onCrnActivate}
+                />
               </div>
             </PlannerProvider>
             {modalOpen ? (
@@ -140,6 +134,31 @@ export function HomePlanner({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function PlannerCalendarColumn({
+  termCode,
+  onBlockActivate,
+  onCrnActivate,
+}: {
+  termCode: string;
+  onBlockActivate: (block: CalendarBlock) => void;
+  onCrnActivate: (crn: string) => void;
+}) {
+  const { plannerItems } = usePlannerData();
+  const offGridRows = useNotOnGridRailRows();
+
+  return (
+    <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
+      <PlannerCollapsibleSlot show={plannerItems.length === 0}>
+        <PlannerEmptyHero termCode={termCode} />
+      </PlannerCollapsibleSlot>
+      <WeekCalendar onBlockActivate={onBlockActivate} />
+      <PlannerCollapsibleSlot show={offGridRows.length > 0}>
+        <NotOnGridRail onCrnActivate={onCrnActivate} />
+      </PlannerCollapsibleSlot>
     </div>
   );
 }

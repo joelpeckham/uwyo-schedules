@@ -54,7 +54,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { CourseSectionPicker } from "./CourseSectionPicker";
-import { usePlanner } from "./PlannerContext";
+import { usePlannerData, usePlannerSolve } from "./PlannerContext";
 
 type ColorCellProps = {
   itemId: number;
@@ -153,11 +153,11 @@ export function CourseManager({ termCode }: Props) {
     refreshCatalogFromServer,
     removePlannerItem,
     updatePlannerItem,
-    recalculateSolutions,
     solvePacks,
     mergeSolvePack,
     toggleSectionPin,
-  } = usePlanner();
+  } = usePlannerData();
+  const { recalculateSolutions } = usePlannerSolve();
 
   const [pending, startTransition] = useTransition();
   const [searchQ, setSearchQ] = useState("");
@@ -326,13 +326,15 @@ export function CourseManager({ termCode }: Props) {
 
   const handleColorPickById = useCallback(
     (id: number, hex: string) => {
+      updatePlannerItem(id, { displayColor: hex });
       startTransition(async () => {
-        await updatePlannerItemColorAction(id, hex);
-        await refreshCatalogFromServer();
-        void recalculateSolutions();
+        const res = await updatePlannerItemColorAction(id, hex);
+        if (!res.ok) {
+          await refreshCatalogFromServer();
+        }
       });
     },
-    [refreshCatalogFromServer, recalculateSolutions],
+    [updatePlannerItem, refreshCatalogFromServer],
   );
 
   const handleRemoveById = useCallback(

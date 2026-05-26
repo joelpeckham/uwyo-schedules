@@ -35,7 +35,7 @@ type Params = {
   hScrollRef: RefObject<HTMLDivElement | null>;
   hourRowPxRef: MutableRefObject<number>;
   clampRowPx: (v: number) => number;
-  setHourRowPx: Dispatch<SetStateAction<number | null>>;
+  setHourRowPx: Dispatch<SetStateAction<number>>;
   endCourseDrag: () => void;
   courseDragSessionRef: MutableRefObject<unknown>;
   coursePointerDownRef: MutableRefObject<{ pointerId: number } | null>;
