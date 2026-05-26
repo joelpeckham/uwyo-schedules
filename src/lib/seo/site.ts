@@ -10,13 +10,16 @@ export function absoluteUrl(path: string): string {
   return `${SITE_URL}${p}`;
 }
 
+/** Marketing tagline (OG image, hero subcopy). */
+export const SITE_TAGLINE = "From course list to class schedule.";
+
 /**
  * Canonical product description. Used by page metadata, openGraph, manifest,
  * and JSON-LD so the same words ship everywhere instead of drifting per file.
  */
 export const SITE_DESCRIPTION =
-  "Plan your University of Wyoming class schedule. Add courses from the live UW catalog. The planner keeps a conflict-free week in sync as you set preferences, mark busy times, and pin or swap sections on the calendar.";
+  "Plan your UW week in the class schedule planner: add courses from the live catalog, block busy times, set instructor preferences, and keep a conflict-free calendar in sync. Pin sections, try same-type swaps, compare alternate weeks, and share a link. Independent tool; does not register you.";
 
 /** Short form for Twitter cards, the web manifest, and other tight slots. */
 export const SITE_DESCRIPTION_SHORT =
-  "Plan your University of Wyoming class schedule. The planner keeps a conflict-free week in sync as you add courses, set preferences, and mark busy times.";
+  "UW class schedule planner: conflict-free week, busy times, instructor preferences, pins and swaps, compare alternates, share a link. Not official UW; planning only.";

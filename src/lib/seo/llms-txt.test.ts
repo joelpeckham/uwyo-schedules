@@ -22,6 +22,18 @@ describe("buildLlmsTxt", () => {
     expect(md).toContain(`${base}/sitemap.xml`);
   });
 
+  it("lists planner before home in Key pages", () => {
+    const md = buildLlmsTxt(base, { includeInstructorPages: false });
+    const plannerIdx = md.indexOf(`${base}/planner`);
+    const homeIdx = md.indexOf(`${base}/`);
+    const homeLinkIdx = md.indexOf(`[Home](${base}/)`);
+    expect(plannerIdx).toBeGreaterThan(-1);
+    expect(homeLinkIdx).toBeGreaterThan(-1);
+    expect(plannerIdx).toBeLessThan(homeLinkIdx);
+    expect(md).toContain("## Planner capabilities");
+    expect(homeIdx).toBeGreaterThan(-1);
+  });
+
   it("mentions optional instructor pages when enabled", () => {
     const on = buildLlmsTxt(base, { includeInstructorPages: true });
     expect(on).toContain("/instructors/");

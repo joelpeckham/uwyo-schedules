@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { SITE_TAGLINE } from "@/lib/seo/site";
+
 export function HeroSection() {
   return (
     <section
@@ -14,25 +16,23 @@ export function HeroSection() {
           id="landing-hero-heading"
           className="mt-3 max-w-3xl font-heading text-balance text-4xl font-medium tracking-tight text-foreground sm:text-5xl"
         >
-          Build a UW class schedule that fits your life.
+          UW class schedule planner with a conflict-free week view
         </h1>
         <p className="mt-6 max-w-prose text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl">
-          Add your courses from the live UW catalog. The planner keeps a
-          conflict-free week in sync as you set preferences, mark busy times,
-          and refine the calendar.
+          Add courses from the live catalog, block busy times, and set instructor
+          preferences. The planner keeps your calendar in sync as you pin
+          sections, try same-type swaps, compare alternate weeks, and share a
+          link.
+        </p>
+        <p className="mt-3 max-w-prose text-pretty text-base text-muted-foreground">
+          {SITE_TAGLINE}
         </p>
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <Link
             href="/planner"
             className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow-sm transition hover:opacity-95"
           >
-            Build a schedule
-          </Link>
-          <Link
-            href="/courses"
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Browse courses by subject
+            Open the planner
           </Link>
         </div>
       </div>

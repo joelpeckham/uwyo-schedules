@@ -131,8 +131,12 @@ export function PlannerPreview() {
           id="preview-heading"
           className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
         >
-          Sample week
+          Your week, conflict-free
         </h2>
+        <p className="mt-3 max-w-prose text-pretty text-base leading-relaxed text-muted-foreground">
+          The planner lays out meetings on a week calendar and removes overlaps
+          as you add courses and constraints.
+        </p>
         <p className="sr-only">
           Sample week preview: MATH 2200 meets Monday, Wednesday, and Friday
           9 to 10 a.m. ENGL 1010 meets Tuesday and Thursday 11 a.m. to 12:15
@@ -149,8 +153,8 @@ export function PlannerPreview() {
             />
           </div>
           <figcaption className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">
-            Illustrative week, not your real schedule. Three courses, no
-            overlaps, lab linked automatically.
+            Sample week only. Three courses, no overlaps, lab linked
+            automatically—open the planner to build yours.
           </figcaption>
         </figure>
       </div>

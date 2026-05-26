@@ -19,26 +19,36 @@ export function buildLlmsTxt(
 ): string {
   const lines: string[] = [
     "# uwyoschedule",
-    "> Independent University of Wyoming class schedule planner for UW students. Search the UW course catalog, combine sections, and keep a conflict-free week in sync with preferences, busy times, pins, and same-type swaps. Not an official UW product. Does not register you for classes.",
+    "> Independent University of Wyoming class schedule planner. Primary surface: `/planner` — add courses from the live UW catalog, block busy times, set instructor preferences, and keep a conflict-free week calendar in sync. Pin sections, same-type swaps, alternate weeks with compare, shareable links, and export. Not official UW; does not register you.",
+    "",
+    "## Planner capabilities",
+    "",
+    "- Solver-backed conflict-free week that updates as your course list and constraints change",
+    "- Busy-time blackouts and soft instructor preferences",
+    "- Section pins and same-type drag swaps on the week calendar",
+    "- Page alternate conflict-free weeks; keep favorites and compare two side by side",
+    "- Share link restores course list, blackouts, and time preferences (not section pins)",
+    "- Filters: open seats only, exclude TBA, exclude online or async, no Fridays, protect lunch, earliest or latest start",
+    "- Linked lecture, lab, and discussion sections treated as one choice when the catalog requires it",
     "",
     "## Key pages",
     "",
-    `- [Home](${u("/", siteUrl)}): Marketing landing and entry to the planner.`,
-    `- [Planner](${u("/planner", siteUrl)}): Interactive term picker, course bag, solver-backed week calendar (live best-fit week, pins, same-type swaps).`,
+    `- [Planner](${u("/planner", siteUrl)}): Main interactive planner — term picker, course list, week calendar, preferences, compare, share.`,
+    `- [Home](${u("/", siteUrl)}): Marketing landing; links to the planner.`,
     `- [Courses](${u("/courses", siteUrl)}): Browse courses by subject (stable catalog URLs).`,
     `- [Terms](${u("/terms", siteUrl)}): Browse terms available in the app.`,
     `- [About](${u("/about", siteUrl)}): Scope, independence from UW, and how we use UW course catalog data.`,
-    `- [FAQ](${u("/faq", siteUrl)}): Data freshness, registration, linked sections, preferences, and mobile use.`,
+    `- [FAQ](${u("/faq", siteUrl)}): How the planner works, data freshness, registration.`,
     "",
     "## What we do not do",
     "",
-    "- We are not affiliated with the University of Wyoming.",
-    "- We do not enroll you or replace WyoWeb registration.",
-    "- Always confirm CRN, prerequisites, seat counts, and linked labs in official UW systems before registering.",
+    "- Not affiliated with the University of Wyoming.",
+    "- Do not enroll you or replace WyoWeb registration.",
+    "- Confirm CRN, prerequisites, seat counts, and linked labs in official UW systems before registering.",
     "",
     "## Data",
     "",
-    "Section and meeting data are ingested from the public UW course catalog, cached for speed, and refreshed on a schedule. Details can change in the catalog after our last sync.",
+    "Section and meeting data come from the public UW course catalog, cached for speed, refreshed on a schedule. Details can change after our last sync.",
     "",
     "## Machine-readable discovery",
     "",
@@ -69,18 +79,21 @@ export function buildLlmsFullTxt(
     : "Instructor profile URLs are not published in the sitemap by default.";
 
   return `# uwyoschedule — full context for AI systems
-> Same product summary as /llms.txt. An independent UW student planner built on cached UW course catalog data. The solver keeps a conflict-free week in sync as the course list and constraints change. Not official UW. Planning only, not registration.
+> Independent UW class schedule planner. \`/planner\` is the primary interactive product: solver-backed conflict-free week, preferences, calendar refinements, alternates, compare, and share. Built on cached UW course catalog data. Not official UW. Planning only, not registration.
 
 ## Product behavior
 
-- Users pick a term, add courses (and sections where needed), set optional instructor preferences and busy-time blackouts; the planner continuously resolves a scored best-fit week (not a browsable list of full schedules).
-- Section pins and same-type drag swaps on the week calendar refine that week without leaving the conflict-free constraint.
-- Linked lecture/lab or discussion sections from the catalog are treated as combined choices so incompatible splits are avoided.
+- **Primary surface:** \`/planner\` — pick a term, add courses, set optional instructor preferences, busy-time blackouts, and schedule filters; the planner continuously resolves a scored best-fit conflict-free week (not a browsable list of full schedules).
+- **Refinements:** Section pins and same-type drag swaps on the week calendar; page through alternate conflict-free weeks; keep favorites and compare two weeks side by side.
+- **Share:** Encoded \`?s=\` links restore courses (as wish-list rows), blackouts, and time preferences for the same term. Section pins are not applied from share links — the recipient confirms sections in the planner.
+- **Export:** Calendar export and share link from the planner UI.
+- **Linked sections:** Lecture, lab, and discussion combinations required by the catalog are treated as single choices.
+- **Catalog browsing:** \`/courses\` and \`/terms\` support discovery; the planner is where schedules are built.
 - Seat counts and meetings reflect our last ingest; they can drift from the live catalog until the next sync.
 
 ## URL patterns (human-readable)
 
-- \`/\` — Landing.
+- \`/\` — Landing (marketing; use \`/planner\` for the product).
 - \`/planner\` — Main planner UI.
 - \`/courses\` — Subject index for catalog browsing.
 - \`/courses/{subject}\` — Courses for a subject (subject is a path segment; see site for encoding).

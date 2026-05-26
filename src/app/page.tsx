@@ -5,6 +5,7 @@ import { HeroSection } from "@/components/landing/HeroSection";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { LandingFaq } from "@/components/landing/LandingFaq";
 import { LaramieCallout } from "@/components/landing/LaramieCallout";
+import { PlannerCtaBand } from "@/components/landing/PlannerCtaBand";
 import { PlannerPreview } from "@/components/landing/PlannerPreview";
 import { TopSubjects } from "@/components/landing/TopSubjects";
 import { HomeOrgFaqJsonLd } from "@/components/seo/HomeOrgFaqJsonLd";
@@ -18,12 +19,12 @@ import {
 } from "@/lib/seo/site";
 
 export const metadata: Metadata = {
-  title: "uwyoschedule — University of Wyoming class schedule planner",
+  title: "UW class schedule planner · uwyoschedule",
   description: SITE_DESCRIPTION,
   alternates: { canonical: "/" },
   openGraph: {
     url: absoluteUrl("/"),
-    title: "uwyoschedule — University of Wyoming class schedule planner",
+    title: "UW class schedule planner · uwyoschedule",
     description: SITE_DESCRIPTION_SHORT,
   },
 };
@@ -57,6 +58,7 @@ export default async function Page({
         <HeroSection />
         <PlannerPreview />
         <HowItWorks />
+        <PlannerCtaBand />
         <LaramieCallout />
         <TopSubjects latestTerm={latestTerm} />
         <LandingFaq />

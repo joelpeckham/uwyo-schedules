@@ -52,7 +52,15 @@ export async function TopSubjects({
           Popular subjects this term
         </h2>
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-          By section count in <span className="text-foreground">{latestTerm.description}</span>.
+          By section count in{" "}
+          <span className="text-foreground">{latestTerm.description}</span>.{" "}
+          <Link
+            href="/planner"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Open the planner
+          </Link>{" "}
+          to build your week.
         </p>
         <ul className="mt-8 flex flex-wrap gap-2">
           {ranked.map((s) => (

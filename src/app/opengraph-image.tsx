@@ -4,6 +4,7 @@ import {
   LANDING_PREVIEW_HOUR_AXIS,
 } from "@/components/planner/week-calendar/axis-constants";
 import { formatHour } from "@/components/planner/week-calendar/block-metrics";
+import { SITE_TAGLINE } from "@/lib/seo/site";
 
 /** Matches landing PlannerPreview sample week (scaled ROW). */
 const ROW = 32;
@@ -92,7 +93,7 @@ function EventBlock({
 }
 
 export const alt =
-  "uwyoschedule logo and sample conflict-free week calendar (MATH 2200, ENGL 1010, COSC 2030 with lab)";
+  "uwyoschedule UW class schedule planner with sample conflict-free week (MATH 2200, ENGL 1010, COSC 2030 with lab)";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -184,7 +185,7 @@ export default function OpengraphImage() {
               fontFamily: "Georgia, serif",
             }}
           >
-            University of Wyoming class schedule planner
+            UW class schedule planner
           </div>
         </div>
 
@@ -418,7 +419,7 @@ export default function OpengraphImage() {
               fontFamily: "ui-sans-serif, system-ui, sans-serif",
             }}
           >
-            From course list to class schedule.
+            {SITE_TAGLINE}
           </div>
         </div>
       </div>

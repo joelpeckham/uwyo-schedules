@@ -36,8 +36,7 @@ const googleVerification = process.env.GOOGLE_SITE_VERIFICATION;
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default:
-      "uwyoschedule — University of Wyoming class schedule planner",
+    default: "UW class schedule planner · uwyoschedule",
     template: "%s · uwyoschedule",
   },
   description: SITE_DESCRIPTION,

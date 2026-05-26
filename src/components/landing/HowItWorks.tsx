@@ -1,20 +1,30 @@
-import { CalendarCheck2, ListPlus, SlidersHorizontal } from "lucide-react";
+import {
+  CalendarCheck2,
+  GitCompareArrows,
+  ListPlus,
+  SlidersHorizontal,
+} from "lucide-react";
 
 const steps = [
   {
-    title: "Pick your classes",
-    body: "Search the catalog for the term you care about, then add each course to your list.",
+    title: "Add your courses",
+    body: "Search the UW catalog for your term and add each class to your list. Linked labs and discussions stay matched automatically.",
     icon: ListPlus,
   },
   {
-    title: "Set preferences and busy times",
-    body: "Tell the planner which instructors you prefer and when you are not available. Both are optional. The planner respects them.",
+    title: "Set constraints",
+    body: "Mark busy times, rank instructor preferences, and turn on filters like no Fridays or open seats only. All optional—the planner ranks weeks that fit you higher.",
     icon: SlidersHorizontal,
   },
   {
-    title: "See a week that fits",
-    body: "The planner shows a conflict-free week that satisfies your list, busy times, and preferences. Pin sections you want to keep, or drag a block to try same-type alternatives.",
+    title: "Refine your week",
+    body: "See a conflict-free calendar that updates as you edit. Pin sections you want to keep, or drag a block to try a same-type alternative.",
     icon: CalendarCheck2,
+  },
+  {
+    title: "Compare and share",
+    body: "Page through other conflict-free weeks, keep favorites, and compare two side by side. Copy a share link so a friend can open your course list and constraints in the planner.",
+    icon: GitCompareArrows,
   },
 ] as const;
 
@@ -29,9 +39,9 @@ export function HowItWorks() {
           id="how-it-works-heading"
           className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
         >
-          How it works
+          What the planner does
         </h2>
-        <ol className="mt-10 grid gap-8 sm:grid-cols-3">
+        <ol className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map((step, i) => {
             const Icon = step.icon;
             return (
