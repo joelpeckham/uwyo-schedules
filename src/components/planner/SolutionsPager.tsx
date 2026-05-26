@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Star } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -41,12 +41,8 @@ export function SolutionsPager() {
     [keptSolutionIndices],
   );
 
-  useEffect(() => {
-    if (!compareOpen) return;
-    if (sortedKeptIndices.length < 2) {
-      setCompareOpen(false);
-    }
-  }, [compareOpen, sortedKeptIndices.length]);
+  const canCompare = sortedKeptIndices.length >= 2;
+  const compareDialogOpen = compareOpen && canCompare;
 
   if (total === 0) return null;
 
@@ -114,7 +110,7 @@ export function SolutionsPager() {
           variant="outline"
           size="sm"
           className="h-8 touch-manipulation"
-          disabled={sortedKeptIndices.length < 2}
+          disabled={!canCompare}
           onClick={() => {
             track("planner_compare_opened", {
               kept: sortedKeptIndices.length,
@@ -122,7 +118,7 @@ export function SolutionsPager() {
             setCompareOpen(true);
           }}
           title={
-            sortedKeptIndices.length < 2
+            !canCompare
               ? "Keep at least two schedules to compare"
               : undefined
           }
@@ -132,7 +128,7 @@ export function SolutionsPager() {
       </div>
       {compareOpen ? (
         <SchedulesCompare
-          open={compareOpen}
+          open={compareDialogOpen}
           onOpenChange={setCompareOpen}
           keptIndices={sortedKeptIndices}
           keptKeys={keptSolutions.keys}
