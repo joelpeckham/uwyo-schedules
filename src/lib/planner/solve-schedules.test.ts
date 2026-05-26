@@ -148,12 +148,19 @@ function basePack(
     facultyByCrn: partial.facultyByCrn,
     scheduleTypeByCrn: partial.scheduleTypeByCrn,
     seatsByCrn: partial.seatsByCrn,
+    deliveryModeByCrn: partial.deliveryModeByCrn ?? {},
   };
 }
 
+const relaxedFilters = {
+  requireOpenSections: false,
+  excludeTba: false,
+  excludeOnlineAsync: false,
+} as const;
+
 describe("solveSchedulesFromPacks", () => {
   it("returns empty when no planner items", () => {
-    const r = solveSchedulesFromPacks([], {}, { requireOpenSections: false });
+    const r = solveSchedulesFromPacks([], {}, relaxedFilters);
     expect(r.solutions).toEqual([]);
     expect(r.capped).toBe(false);
     expect(r.timedOut).toBe(false);
@@ -203,7 +210,7 @@ describe("solveSchedulesFromPacks", () => {
       itemStub({ id: 2, subject: "MATH", courseNumber: "2000" }),
     ];
     const r = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections: false,
+      ...relaxedFilters,
     });
     expect(r.solutions).toHaveLength(1);
     expect(r.solutions[0]!.selections[1]!.anchorCrn).toBe("A1");
@@ -233,7 +240,7 @@ describe("solveSchedulesFromPacks", () => {
     };
     const items = [itemStub({ id: 1, subject: "CS", courseNumber: "1000" })];
     const r = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections: false,
+      ...relaxedFilters,
       blackoutIntervals: [{ dayIndex: 0, start: 600, end: 660 }],
     });
     expect(r.solutions).toHaveLength(0);
@@ -283,7 +290,7 @@ describe("solveSchedulesFromPacks", () => {
       itemStub({ id: 2, subject: "MATH", courseNumber: "2000" }),
     ];
     const r = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections: false,
+      ...relaxedFilters,
       blackoutIntervals: [{ dayIndex: 1, start: 600, end: 720 }],
     });
     expect(r.solutions).toHaveLength(1);
@@ -333,7 +340,7 @@ describe("solveSchedulesFromPacks", () => {
       itemStub({ id: 11, subject: "MATH", courseNumber: "2000" }),
     ];
     const r = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections: false,
+      ...relaxedFilters,
     });
     expect(r.solutions).toHaveLength(0);
   });
@@ -360,10 +367,12 @@ describe("solveSchedulesFromPacks", () => {
     const items = [itemStub({ id: 3, subject: "X", courseNumber: "1" })];
     const open = solveSchedulesFromPacks(items, packs, {
       requireOpenSections: true,
+      excludeTba: false,
+      excludeOnlineAsync: false,
     });
     expect(open.solutions).toHaveLength(0);
     const any = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections: false,
+      ...relaxedFilters,
     });
     expect(any.solutions).toHaveLength(1);
   });
@@ -412,7 +421,7 @@ describe("solveSchedulesFromPacks", () => {
       }),
     ];
     const r = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections: false,
+      ...relaxedFilters,
     });
     expect(r.solutions).toHaveLength(1);
     expect(r.solutions[0]!.selections[1]!.anchorCrn).toBe("A1");
@@ -478,10 +487,104 @@ describe("solveSchedulesFromPacks", () => {
       }),
     ];
     const r = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections: false,
+      ...relaxedFilters,
     });
     expect(r.solutions).toHaveLength(1);
     expect(r.solutions[0]!.selections[2]!.anchorCrn).toBe("L2");
+  });
+
+  it("excludes TBA sections when excludeTba is on", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "TBA1",
+            linkedBundleId: null,
+            crns: ["TBA1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A1",
+            linkedBundleId: null,
+            crns: ["A1"],
+          },
+        ],
+        meetingsByCrn: {
+          TBA1: [],
+          A1: [{ dayIndex: 0, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: {},
+        seatsByCrn: {
+          TBA1: { seatsAvailable: 5, openSection: true },
+          A1: { seatsAvailable: 5, openSection: true },
+        },
+        deliveryModeByCrn: {
+          TBA1: "tba",
+          A1: "in_person",
+        },
+      }),
+    };
+    const items = [itemStub({ id: 1, subject: "CS", courseNumber: "1000" })];
+    const filtered = solveSchedulesFromPacks(items, packs, {
+      requireOpenSections: false,
+      excludeTba: true,
+      excludeOnlineAsync: false,
+    });
+    expect(filtered.solutions).toHaveLength(1);
+    expect(filtered.solutions[0]!.selections[1]!.anchorCrn).toBe("A1");
+
+    const allowed = solveSchedulesFromPacks(items, packs, {
+      requireOpenSections: false,
+      excludeTba: false,
+      excludeOnlineAsync: false,
+    });
+    expect(allowed.solutions).toHaveLength(1);
+    expect(allowed.solutions[0]!.selections[1]!.anchorCrn).toBe("TBA1");
+  });
+
+  it("excludes online_async sections when excludeOnlineAsync is on", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "O1",
+            linkedBundleId: null,
+            crns: ["O1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A1",
+            linkedBundleId: null,
+            crns: ["A1"],
+          },
+        ],
+        meetingsByCrn: {
+          O1: [],
+          A1: [{ dayIndex: 0, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: {},
+        seatsByCrn: {
+          O1: { seatsAvailable: 5, openSection: true },
+          A1: { seatsAvailable: 5, openSection: true },
+        },
+        deliveryModeByCrn: {
+          O1: "online_async",
+          A1: "in_person",
+        },
+      }),
+    };
+    const items = [itemStub({ id: 1, subject: "CS", courseNumber: "1000" })];
+    const filtered = solveSchedulesFromPacks(items, packs, {
+      requireOpenSections: false,
+      excludeTba: false,
+      excludeOnlineAsync: true,
+    });
+    expect(filtered.solutions).toHaveLength(1);
+    expect(filtered.solutions[0]!.selections[1]!.anchorCrn).toBe("A1");
   });
 });
 
@@ -530,11 +633,11 @@ describe("scheduleSolutionStillValidForItems", () => {
       itemStub({ id: 2, subject: "MATH", courseNumber: "2000" }),
     ];
     const sol = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections: false,
+      ...relaxedFilters,
     }).solutions[0]!;
     expect(
       scheduleSolutionStillValidForItems(items, packs, sol, {
-        requireOpenSections: false,
+        ...relaxedFilters,
       }),
     ).toBe(true);
   });
@@ -591,7 +694,7 @@ describe("scheduleSolutionStillValidForItems", () => {
     ];
     expect(
       scheduleSolutionStillValidForItems(items, packs, solution, {
-        requireOpenSections: false,
+        ...relaxedFilters,
       }),
     ).toBe(false);
   });

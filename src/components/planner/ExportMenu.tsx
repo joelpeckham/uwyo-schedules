@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { collectDisplayCrnsForItems } from "@/lib/planner/client/derive";
 import { buildIcsForPlannerWeek } from "@/lib/planner/ics";
+import { encodePrintSelections } from "@/lib/planner/print-state";
 import { encodeShareState, type SharePinV1 } from "@/lib/planner/share-state";
 import { track } from "@/lib/analytics/track";
 import { cn } from "@/lib/utils";
@@ -92,10 +93,12 @@ export function ExportMenu() {
   const onPrint = useCallback(() => {
     track("planner_export_used", { format: "print" });
     if (typeof window !== "undefined") {
-      window.open(`/planner/print?term=${termCode}`, "_blank");
+      const p = encodePrintSelections(effectivePlannerItems);
+      const qs = new URLSearchParams({ term: termCode, p });
+      window.open(`/planner/print?${qs.toString()}`, "_blank");
     }
     setOpen(false);
-  }, [termCode]);
+  }, [termCode, effectivePlannerItems]);
 
   const onShareLink = useCallback(async () => {
     const pins: SharePinV1[] = plannerItems.map((it) => ({

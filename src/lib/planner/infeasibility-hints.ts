@@ -1,6 +1,7 @@
 import { blackoutsDocToTimeIntervals, type PlannerBlackoutsDocV1 } from "./blackouts";
 import type { PlannerCatalogJson } from "./client/catalog-types";
 import type { PlannerItemRow } from "./data";
+import type { PlannerScheduleFilters } from "./schedule-filters";
 import {
   courseSolvePackCourseKey,
   intervalsOverlap,
@@ -19,6 +20,16 @@ function intervalsCrossList(a: TimeInterval[], b: TimeInterval[]): boolean {
   return false;
 }
 
+type InfeasibilityHintParams = PlannerScheduleFilters & {
+  items: PlannerItemRow[];
+  packs: Record<string, CourseSolvePack>;
+  blackouts: PlannerBlackoutsDocV1;
+  /** Optional catalog for per-course blackout wording. */
+  catalog?: PlannerCatalogJson | null;
+  /** Skip the base solve when the caller already knows it returns no schedules. */
+  baseAlreadyInfeasible?: boolean;
+};
+
 /**
  * When the planner has courses but no valid combined schedule, return short
  * user-facing hints (best-effort, not exhaustive proof).
@@ -27,31 +38,31 @@ function intervalsCrossList(a: TimeInterval[], b: TimeInterval[]): boolean {
  * planner just received an empty-solutions response from the server), pass
  * `baseAlreadyInfeasible: true` to skip the redundant base DFS pass.
  */
-export function computeInfeasibilityHints(params: {
-  items: PlannerItemRow[];
-  packs: Record<string, CourseSolvePack>;
-  blackouts: PlannerBlackoutsDocV1;
-  requireOpenSections: boolean;
-  /** Optional catalog for per-course blackout wording. */
-  catalog?: PlannerCatalogJson | null;
-  /** Skip the base solve when the caller already knows it returns no schedules. */
-  baseAlreadyInfeasible?: boolean;
-}): string[] {
+export function computeInfeasibilityHints(
+  params: InfeasibilityHintParams,
+): string[] {
   const {
     items,
     packs,
     blackouts,
     requireOpenSections,
+    excludeTba,
+    excludeOnlineAsync,
     catalog,
     baseAlreadyInfeasible = false,
   } = params;
   if (items.length === 0) return [];
 
   const blackoutIntervals = blackoutsDocToTimeIntervals(blackouts);
+  const activeFilters: PlannerScheduleFilters = {
+    requireOpenSections,
+    excludeTba,
+    excludeOnlineAsync,
+  };
 
   if (!baseAlreadyInfeasible) {
     const base = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections,
+      ...activeFilters,
       blackoutIntervals,
       maxSolutions: 1,
     });
@@ -65,7 +76,7 @@ export function computeInfeasibilityHints(params: {
   // infeasible.
   if (blackoutIntervals.length > 0) {
     const withoutBusy = solveSchedulesFromPacks(items, packs, {
-      requireOpenSections,
+      ...activeFilters,
       blackoutIntervals: [],
       maxSolutions: 1,
     });
@@ -78,6 +89,7 @@ export function computeInfeasibilityHints(params: {
 
   if (requireOpenSections) {
     const withSeatsOff = solveSchedulesFromPacks(items, packs, {
+      ...activeFilters,
       requireOpenSections: false,
       blackoutIntervals,
       maxSolutions: 1,
@@ -85,6 +97,34 @@ export function computeInfeasibilityHints(params: {
     if (withSeatsOff.solutions.length > 0) {
       hints.push(
         "Turn off “Exclude full” to allow full sections, then turn it on again once you see a pattern that works.",
+      );
+    }
+  }
+
+  if (excludeTba) {
+    const withTbaAllowed = solveSchedulesFromPacks(items, packs, {
+      ...activeFilters,
+      excludeTba: false,
+      blackoutIntervals,
+      maxSolutions: 1,
+    });
+    if (withTbaAllowed.solutions.length > 0) {
+      hints.push(
+        "Turn off “Exclude TBA times” to allow sections without a set meeting time.",
+      );
+    }
+  }
+
+  if (excludeOnlineAsync) {
+    const withOnlineAsyncAllowed = solveSchedulesFromPacks(items, packs, {
+      ...activeFilters,
+      excludeOnlineAsync: false,
+      blackoutIntervals,
+      maxSolutions: 1,
+    });
+    if (withOnlineAsyncAllowed.solutions.length > 0) {
+      hints.push(
+        "Turn off “Exclude online · async” to allow asynchronous online sections.",
       );
     }
   }

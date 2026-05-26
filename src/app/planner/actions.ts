@@ -23,6 +23,7 @@ import {
   serializeInstructorPrefs,
   type InstructorPrefsV1,
 } from "@/lib/planner/instructor-prefs";
+import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
 import type { CourseSolvePack } from "@/lib/planner/solve-schedules-core";
 import type { SolveSchedulesResult } from "@/lib/planner/solve-schedules";
 import {
@@ -199,7 +200,7 @@ export async function addPlannerCourseWishAction(input: {
 
 export async function solveSchedulesAction(
   termCode: string,
-  requireOpenSections: boolean,
+  filters: PlannerScheduleFilters,
 ): Promise<
   | { ok: true; result: SolveSchedulesResult }
   | { ok: false; error: string }
@@ -213,7 +214,7 @@ export async function solveSchedulesAction(
     const db = createDb();
     const items = await listPlannerItems(db, sessionId, termCode);
     const result = await solveSchedulesForTerm(db, termCode, items, {
-      requireOpenSections,
+      ...filters,
       maxSolutions: 25,
     });
     return { ok: true, result };

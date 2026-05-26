@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo } from "react";
 
+import { WeekCalendarView } from "@/components/planner/week-calendar/WeekCalendarView";
+import { CALENDAR_HOUR_AXIS } from "@/components/planner/week-calendar/axis-constants";
+import { visibleDayIndicesForBlocks } from "@/components/planner/week-calendar/visible-days";
 import {
   buildCalendarBlocksFromCatalog,
   collectDisplayCrnsForItems,
@@ -9,6 +12,7 @@ import {
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
 
+const PRINT_ROW_PX = 30;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type Props = {
@@ -24,6 +28,31 @@ function formatMinutes(min: number): string {
   const period = h >= 12 ? "p.m." : "a.m.";
   const hh = ((h + 11) % 12) + 1;
   return m === 0 ? `${hh} ${period}` : `${hh}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+function courseDetailLines(blocks: CalendarBlock[]): string[] {
+  const byKey = new Map<string, CalendarBlock[]>();
+  for (const b of blocks) {
+    const key = `${b.subject} ${b.courseNumber}`;
+    const list = byKey.get(key) ?? [];
+    list.push(b);
+    byKey.set(key, list);
+  }
+  const lines: string[] = [];
+  for (const [course, list] of byKey) {
+    list.sort((a, b) => a.dayIndex - b.dayIndex || a.startMinutes - b.startMinutes);
+    const parts = list.map((b) => {
+      const day = DAY_LABELS[b.dayIndex] ?? "?";
+      const time = `${formatMinutes(b.startMinutes)}–${formatMinutes(b.endMinutes)}`;
+      const loc = b.sublabel.trim();
+      const inst = b.instructorSublabel?.trim() ?? "";
+      const meta = [loc, inst].filter(Boolean).join(" · ");
+      return meta ? `${day} ${time} (${meta})` : `${day} ${time}`;
+    });
+    const crns = [...new Set(list.map((b) => b.sectionCrn))].join(", ");
+    lines.push(`${course} — CRN ${crns}: ${parts.join("; ")}`);
+  }
+  return lines;
 }
 
 export function PrintScheduleView({
@@ -52,23 +81,29 @@ export function PrintScheduleView({
     () => buildCalendarBlocksFromCatalog(plannerItems, catalog),
     [plannerItems, catalog],
   );
-  const blocksByDay = useMemo(() => {
-    const out = new Map<number, CalendarBlock[]>();
-    for (const b of blocks) {
-      const list = out.get(b.dayIndex) ?? [];
-      list.push(b);
-      out.set(b.dayIndex, list);
-    }
-    for (const list of out.values()) {
-      list.sort((a, b) => a.startMinutes - b.startMinutes);
-    }
-    return out;
-  }, [blocks]);
+  const visibleDayIndices = useMemo(
+    () => visibleDayIndicesForBlocks(blocks),
+    [blocks],
+  );
+  const courseLines = useMemo(() => courseDetailLines(blocks), [blocks]);
 
   const header = termDescription ?? termCode;
 
   return (
-    <main className="mx-auto max-w-4xl bg-white p-8 text-sm text-black print:p-4">
+    <main className="print-schedule mx-auto max-w-[11in] bg-white p-8 text-sm text-black print:p-4">
+      <style>{`
+        @media print {
+          @page {
+            size: landscape;
+            margin: 0.4in;
+          }
+          .print-schedule {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+        }
+      `}</style>
+
       <header className="border-b border-black/40 pb-3">
         <h1 className="text-xl font-medium">UW schedule — {header}</h1>
         <p className="mt-1 text-xs text-black/70">
@@ -83,6 +118,23 @@ export function PrintScheduleView({
         </p>
       ) : (
         <>
+          {blocks.length > 0 ? (
+            <section className="mt-4 print:break-inside-avoid">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-black/70">
+                Week at a glance
+              </h2>
+              <div className="mt-2 overflow-x-auto rounded border border-black/30 bg-white">
+                <WeekCalendarView
+                  blocks={blocks}
+                  visibleDayIndices={visibleDayIndices}
+                  rowPx={PRINT_ROW_PX}
+                  hourAxis={CALENDAR_HOUR_AXIS}
+                  className="min-w-160 text-black"
+                />
+              </div>
+            </section>
+          ) : null}
+
           <section className="mt-4">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-black/70">
               CRNs
@@ -92,48 +144,20 @@ export function PrintScheduleView({
             </p>
           </section>
 
-          <section className="mt-5">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-black/70">
-              Weekly meetings
-            </h2>
-            <ol className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {DAY_LABELS.map((label, idx) => {
-                const list = blocksByDay.get(idx) ?? [];
-                if (list.length === 0) return null;
-                return (
-                  <li key={label} className="rounded border border-black/30 p-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide">
-                      {label}
-                    </h3>
-                    <ul className="mt-1 space-y-1.5">
-                      {list.map((b) => (
-                        <li key={b.key} className="text-xs leading-snug">
-                          <span className="font-mono">
-                            {formatMinutes(b.startMinutes)}–
-                            {formatMinutes(b.endMinutes)}
-                          </span>{" "}
-                          <span className="font-mono font-medium">
-                            {b.subject} {b.courseNumber}
-                          </span>
-                          {b.instructorSublabel ? (
-                            <span className="text-black/70">
-                              {" "}
-                              · {b.instructorSublabel}
-                            </span>
-                          ) : null}
-                          {b.sublabel ? (
-                            <span className="text-black/70"> · {b.sublabel}</span>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                );
-              })}
-            </ol>
-          </section>
+          {courseLines.length > 0 ? (
+            <section className="mt-4">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-black/70">
+                Meeting details
+              </h2>
+              <ul className="mt-1 space-y-1.5 text-xs leading-snug">
+                {courseLines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
-          <section className="mt-5">
+          <section className="mt-4">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-black/70">
               Courses
             </h2>

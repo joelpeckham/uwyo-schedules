@@ -96,6 +96,59 @@ export function deliveryModeLabel(mode: DeliveryMode): string | null {
   }
 }
 
+export type DeliverySectionRow = {
+  crn: string;
+  instructionalMethod: string | null | undefined;
+  instructionalMethodDescription: string | null | undefined;
+};
+
+export type DeliveryMeetingRow = Parameters<typeof meetingHasTimeBlock>[0] & {
+  sectionCrn: string;
+};
+
+/** Per-CRN delivery mode for planner hard filters (solver + packs). */
+export function buildDeliveryModeByCrn(
+  sections: DeliverySectionRow[],
+  meetingRows: DeliveryMeetingRow[],
+): Record<string, DeliveryMode> {
+  const hasTimedByCrn = new Map<string, boolean>();
+  for (const m of meetingRows) {
+    if (meetingHasTimeBlock(m)) {
+      hasTimedByCrn.set(m.sectionCrn, true);
+    }
+  }
+  const out: Record<string, DeliveryMode> = {};
+  for (const s of sections) {
+    out[s.crn] = classifyDeliveryMode({
+      instructionalMethod: s.instructionalMethod,
+      instructionalMethodDescription: s.instructionalMethodDescription,
+      hasTimedMeetings: hasTimedByCrn.get(s.crn) ?? false,
+    });
+  }
+  return out;
+}
+
+export type ScheduleDeliveryFilters = {
+  excludeTba: boolean;
+  excludeOnlineAsync: boolean;
+};
+
+/** True when a candidate includes a CRN the active delivery filters reject. */
+export function candidateViolatesDeliveryFilters(
+  crns: readonly string[],
+  deliveryModeByCrn: Map<string, DeliveryMode>,
+  filters: ScheduleDeliveryFilters,
+): boolean {
+  if (!filters.excludeTba && !filters.excludeOnlineAsync) return false;
+  for (const crn of crns) {
+    const mode = deliveryModeByCrn.get(crn);
+    if (!mode) continue;
+    if (filters.excludeTba && mode === "tba") return true;
+    if (filters.excludeOnlineAsync && mode === "online_async") return true;
+  }
+  return false;
+}
+
 /** Short prose for SectionDetailPanels and the planner detail card. */
 export function deliveryModeDescription(mode: DeliveryMode): string {
   switch (mode) {

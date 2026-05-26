@@ -12,7 +12,10 @@ import {
   parseSectionPinsJson,
 } from "./section-pins";
 import { normalizeScheduleTypeKey } from "./swap-helpers";
+import type { PlannerScheduleFilters } from "./schedule-filters";
 import type { PlannerTimePrefsV1 } from "./time-prefs";
+import type { DeliveryMode } from "@/lib/sections/delivery-mode";
+import { candidateViolatesDeliveryFilters } from "@/lib/sections/delivery-mode";
 
 const DAY_FIELDS = [
   "monday",
@@ -109,6 +112,7 @@ export type CourseSolvePack = {
     string,
     { seatsAvailable: number | null; openSection: boolean | null }
   >;
+  deliveryModeByCrn: Record<string, DeliveryMode>;
 };
 
 function selectionFromCandidate(c: ScheduleCandidate): ResolvedPlannerSelection {
@@ -425,6 +429,29 @@ function mergeIntoSeatsMap(
   }
 }
 
+function mergeIntoDeliveryMap(
+  target: Map<string, DeliveryMode>,
+  from: Record<string, DeliveryMode> | undefined,
+): void {
+  if (!from) return;
+  for (const [k, v] of Object.entries(from)) {
+    if (target.has(k)) {
+      if (process.env.NODE_ENV === "development" && target.get(k) !== v) {
+        console.warn(
+          `[solve-pack] merge conflict for delivery mode CRN ${k}; keeping first pack`,
+        );
+      }
+      continue;
+    }
+    target.set(k, v);
+  }
+}
+
+export type SolveScheduleFilterOpts = Pick<
+  PlannerScheduleFilters,
+  "requireOpenSections" | "excludeTba" | "excludeOnlineAsync"
+>;
+
 function mergeBundleMembers(
   target: Map<number, string[]>,
   from: Record<string, string[]>,
@@ -501,7 +528,10 @@ export function runSolveSearch(params: {
   facultyByCrn: Map<string, { displayName: string | null; primaryIndicator: boolean | null }[]>;
   scheduleTypeByCrn: Map<string, string | null>;
   seatsByCrn: Map<string, { seatsAvailable: number | null; openSection: boolean | null }>;
+  deliveryModeByCrn: Map<string, DeliveryMode>;
   requireOpenSections: boolean;
+  excludeTba: boolean;
+  excludeOnlineAsync: boolean;
   /** User busy times; any overlap with a candidate section meeting rejects the candidate. */
   blackoutIntervals?: TimeInterval[];
   /** Soft time-of-day preferences that bias scoring (lower score per violation). */
@@ -516,8 +546,12 @@ export function runSolveSearch(params: {
     facultyByCrn,
     scheduleTypeByCrn,
     seatsByCrn,
+    deliveryModeByCrn,
     requireOpenSections,
+    excludeTba,
+    excludeOnlineAsync,
   } = params;
+  const deliveryFilters = { excludeTba, excludeOnlineAsync };
   const blackoutIntervalsRaw = params.blackoutIntervals ?? [];
   const blackoutIntervals = blackoutIntervalsRaw.slice().sort(intervalSortCmp);
   const timePrefs = params.timePrefs ?? null;
@@ -653,6 +687,15 @@ export function runSolveSearch(params: {
         continue;
       }
       if (
+        candidateViolatesDeliveryFilters(
+          cand.crns,
+          deliveryModeByCrn,
+          deliveryFilters,
+        )
+      ) {
+        continue;
+      }
+      if (
         candidateViolatesHardInstructorPrefs(
           cand,
           itemPrefs,
@@ -751,6 +794,7 @@ function mergePackMapsForSolve(
     string,
     { seatsAvailable: number | null; openSection: boolean | null }
   >;
+  deliveryModeByCrn: Map<string, DeliveryMode>;
   bundleMembersMerged: Map<number, string[]>;
 } {
   const meetingsByCrn = new Map<string, TimeInterval[]>();
@@ -763,6 +807,7 @@ function mergePackMapsForSolve(
     string,
     { seatsAvailable: number | null; openSection: boolean | null }
   >();
+  const deliveryModeByCrn = new Map<string, DeliveryMode>();
   const bundleMembersMerged = new Map<number, string[]>();
 
   const seenKeys = new Set<string>();
@@ -776,6 +821,7 @@ function mergePackMapsForSolve(
     mergeIntoFacultyMap(facultyByCrn, p.facultyByCrn);
     mergeIntoScheduleMap(scheduleTypeByCrn, p.scheduleTypeByCrn);
     mergeIntoSeatsMap(seatsByCrn, p.seatsByCrn);
+    mergeIntoDeliveryMap(deliveryModeByCrn, p.deliveryModeByCrn);
     mergeBundleMembers(bundleMembersMerged, p.bundleMembersById);
   }
 
@@ -784,6 +830,7 @@ function mergePackMapsForSolve(
     facultyByCrn,
     scheduleTypeByCrn,
     seatsByCrn,
+    deliveryModeByCrn,
     bundleMembersMerged,
   };
 }
@@ -814,8 +861,7 @@ export function scheduleSolutionStillValidForItems(
   items: PlannerItemRow[],
   packs: Record<string, CourseSolvePack>,
   solution: ScheduleSolution,
-  opts: {
-    requireOpenSections: boolean;
+  opts: SolveScheduleFilterOpts & {
     blackoutIntervals?: TimeInterval[];
   },
 ): boolean {
@@ -827,9 +873,14 @@ export function scheduleSolutionStillValidForItems(
     facultyByCrn,
     scheduleTypeByCrn,
     seatsByCrn,
+    deliveryModeByCrn,
     bundleMembersMerged,
   } = mergePackMapsForSolve(items, packs);
 
+  const deliveryFilters = {
+    excludeTba: opts.excludeTba,
+    excludeOnlineAsync: opts.excludeOnlineAsync,
+  };
   const blackoutIntervals = opts.blackoutIntervals ?? [];
   const chosen: ScheduleCandidate[] = [];
 
@@ -847,6 +898,15 @@ export function scheduleSolutionStillValidForItems(
     if (
       opts.requireOpenSections &&
       !allCrnsHaveOpenSeats(cand.crns, seatsByCrn)
+    ) {
+      return false;
+    }
+    if (
+      candidateViolatesDeliveryFilters(
+        cand.crns,
+        deliveryModeByCrn,
+        deliveryFilters,
+      )
     ) {
       return false;
     }
@@ -885,8 +945,7 @@ export function scheduleSolutionStillValidForItems(
 export function solveSchedulesFromPacks(
   items: PlannerItemRow[],
   packs: Record<string, CourseSolvePack>,
-  opts: {
-    requireOpenSections: boolean;
+  opts: SolveScheduleFilterOpts & {
     blackoutIntervals?: TimeInterval[];
     maxSolutions?: number;
     timeoutMs?: number;
@@ -903,6 +962,7 @@ export function solveSchedulesFromPacks(
     facultyByCrn,
     scheduleTypeByCrn,
     seatsByCrn,
+    deliveryModeByCrn,
     bundleMembersMerged,
   } = mergePackMapsForSolve(items, packs);
 
@@ -923,7 +983,10 @@ export function solveSchedulesFromPacks(
     facultyByCrn,
     scheduleTypeByCrn,
     seatsByCrn,
+    deliveryModeByCrn,
     requireOpenSections: opts.requireOpenSections,
+    excludeTba: opts.excludeTba,
+    excludeOnlineAsync: opts.excludeOnlineAsync,
     blackoutIntervals: opts.blackoutIntervals,
     maxSolutions: opts.maxSolutions,
     timeoutMs: opts.timeoutMs,
@@ -955,8 +1018,7 @@ type PlannerFeasibility = "feasible" | "infeasible" | "unknown";
 export function plannerItemsFeasibility(
   items: PlannerItemRow[],
   packs: Record<string, CourseSolvePack>,
-  opts: {
-    requireOpenSections: boolean;
+  opts: SolveScheduleFilterOpts & {
     blackoutIntervals?: TimeInterval[];
     maxSolutions?: number;
     /**
@@ -972,6 +1034,8 @@ export function plannerItemsFeasibility(
   if (!everyPlannerItemHasSolvePack(items, packs)) return "unknown";
   const result = solveSchedulesFromPacks(items, packs, {
     requireOpenSections: opts.requireOpenSections,
+    excludeTba: opts.excludeTba,
+    excludeOnlineAsync: opts.excludeOnlineAsync,
     blackoutIntervals: opts.blackoutIntervals ?? [],
     maxSolutions: opts.maxSolutions ?? DEFAULT_MAX_SOLUTIONS,
     timeoutMs: opts.timeoutMs,
@@ -998,8 +1062,7 @@ export function feasibleSinglePinChoicesForDrag(
   draggedItemId: number,
   scheduleTypeKey: string,
   candidatePinCrns: readonly string[],
-  opts: {
-    requireOpenSections: boolean;
+  opts: SolveScheduleFilterOpts & {
     blackoutIntervals?: TimeInterval[];
     timeoutMs?: number;
   },
@@ -1020,10 +1083,15 @@ export function feasibleSinglePinChoicesForDrag(
     facultyByCrn,
     scheduleTypeByCrn,
     seatsByCrn,
+    deliveryModeByCrn,
     bundleMembersMerged,
   } = mergePackMapsForSolve(items, packs);
 
   const requireOpenSections = opts.requireOpenSections;
+  const deliveryFilters = {
+    excludeTba: opts.excludeTba,
+    excludeOnlineAsync: opts.excludeOnlineAsync,
+  };
   const blackoutIntervalsRaw = opts.blackoutIntervals ?? [];
   const blackoutIntervals = blackoutIntervalsRaw.slice().sort(intervalSortCmp);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -1171,6 +1239,15 @@ export function feasibleSinglePinChoicesForDrag(
         continue;
       }
       if (
+        candidateViolatesDeliveryFilters(
+          cand.crns,
+          deliveryModeByCrn,
+          deliveryFilters,
+        )
+      ) {
+        continue;
+      }
+      if (
         candidateViolatesHardInstructorPrefs(
           cand,
           parseInstructorPrefs(draggedItem.instructorPrefs),
@@ -1210,6 +1287,15 @@ export function feasibleSinglePinChoicesForDrag(
       if (
         requireOpenSections &&
         !allCrnsHaveOpenSeats(cand.crns, seatsByCrn)
+      ) {
+        continue;
+      }
+      if (
+        candidateViolatesDeliveryFilters(
+          cand.crns,
+          deliveryModeByCrn,
+          deliveryFilters,
+        )
       ) {
         continue;
       }

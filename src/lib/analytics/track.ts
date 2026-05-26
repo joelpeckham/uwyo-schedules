@@ -33,6 +33,8 @@ export type PlannerAnalyticsEvent =
   | { name: "planner_compare_opened"; props: { kept: number } }
   | { name: "planner_time_pref_changed"; props: { kind: "noFridays" | "noBefore" | "noAfter" | "protectLunch"; on: boolean; minutes?: number } }
   | { name: "planner_exclude_full_toggled"; props: { on: boolean } }
+  | { name: "planner_exclude_tba_toggled"; props: { on: boolean } }
+  | { name: "planner_exclude_online_async_toggled"; props: { on: boolean } }
   | { name: "planner_export_used"; props: { format: "crns" | "crn_list" | "ics" | "print" } }
   | { name: "planner_share_link_copied"; props: { length: number } }
   | { name: "planner_section_detail_opened"; props: { source: "block" | "rail" | "course_picker" } }

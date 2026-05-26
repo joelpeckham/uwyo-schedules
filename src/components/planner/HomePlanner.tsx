@@ -17,7 +17,7 @@ import { NotOnGridRail } from "./NotOnGridRail";
 import { PlannerProvider } from "./PlannerContext";
 import { PlannerEmptyHero } from "./PlannerEmptyHero";
 import { ShareLinkApplier } from "./ShareLinkApplier";
-import { TimePrefsCard } from "./TimePrefsCard";
+import { FiltersCard } from "./FiltersCard";
 import { WeekCalendarLoadingPlaceholder } from "./WeekCalendarLoadingPlaceholder";
 
 // Loaded only when the user opens a section block; the modal owns a
@@ -120,7 +120,7 @@ export function HomePlanner({
               <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
                 <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:z-1 lg:max-h-[min(100vh-2rem,56rem)] lg:self-start lg:overflow-y-auto">
                   <CourseManager key={termCode} termCode={termCode} />
-                  <TimePrefsCard />
+                  <FiltersCard />
                 </div>
                 <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
                   <PlannerEmptyHero termCode={termCode} />

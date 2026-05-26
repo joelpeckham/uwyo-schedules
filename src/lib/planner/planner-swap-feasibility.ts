@@ -13,8 +13,13 @@ import {
   meetingRowToIntervals,
   type CourseSolvePack,
   type ScheduleCandidate,
+  type SolveScheduleFilterOpts,
   type TimeInterval,
 } from "./solve-schedules-core";
+import {
+  candidateViolatesDeliveryFilters,
+  type DeliveryMode,
+} from "@/lib/sections/delivery-mode";
 
 function intervalsForCrns(
   catalog: PlannerCatalogJson,
@@ -49,6 +54,7 @@ export function mergePackConstraintMaps(packs: Record<string, CourseSolvePack>):
     { displayName: string | null; primaryIndicator: boolean | null }[]
   >;
   scheduleTypeByCrn: Map<string, string | null>;
+  deliveryModeByCrn: Map<string, DeliveryMode>;
 } {
   const seatsByCrn = new Map<
     string,
@@ -59,6 +65,7 @@ export function mergePackConstraintMaps(packs: Record<string, CourseSolvePack>):
     { displayName: string | null; primaryIndicator: boolean | null }[]
   >();
   const scheduleTypeByCrn = new Map<string, string | null>();
+  const deliveryModeByCrn = new Map<string, DeliveryMode>();
   for (const p of Object.values(packs)) {
     for (const [k, v] of Object.entries(p.seatsByCrn)) {
       if (!seatsByCrn.has(k)) seatsByCrn.set(k, v);
@@ -69,8 +76,11 @@ export function mergePackConstraintMaps(packs: Record<string, CourseSolvePack>):
     for (const [k, v] of Object.entries(p.scheduleTypeByCrn)) {
       if (!scheduleTypeByCrn.has(k)) scheduleTypeByCrn.set(k, v);
     }
+    for (const [k, v] of Object.entries(p.deliveryModeByCrn ?? {})) {
+      if (!deliveryModeByCrn.has(k)) deliveryModeByCrn.set(k, v);
+    }
   }
-  return { seatsByCrn, facultyByCrn, scheduleTypeByCrn };
+  return { seatsByCrn, facultyByCrn, scheduleTypeByCrn, deliveryModeByCrn };
 }
 
 /**
@@ -84,7 +94,6 @@ export function filterFeasibleSwapGhosts(params: {
   /** Current schedule rows for other planner items (same order as DB). */
   otherEffectiveItems: PlannerItemRow[];
   blackoutIntervals: TimeInterval[];
-  requireOpenSections: boolean;
   seatsByCrn: Map<
     string,
     { seatsAvailable: number | null; openSection: boolean | null }
@@ -94,6 +103,7 @@ export function filterFeasibleSwapGhosts(params: {
     { displayName: string | null; primaryIndicator: boolean | null }[]
   >;
   scheduleTypeByCrn: Map<string, string | null>;
+  deliveryModeByCrn: Map<string, DeliveryMode>;
   rawGhosts: SwapGhostMeeting[];
   /**
    * When set (unresolved pin-drag), require ghost CRNs to be in this set in
@@ -105,7 +115,7 @@ export function filterFeasibleSwapGhosts(params: {
    * into one full DFS solve per ghost.
    */
   pinDragFeasiblePinnedCrns?: ReadonlySet<string> | null;
-}): SwapGhostMeeting[] {
+} & SolveScheduleFilterOpts): SwapGhostMeeting[] {
   const {
     catalog,
     draggedBlock,
@@ -113,12 +123,17 @@ export function filterFeasibleSwapGhosts(params: {
     otherEffectiveItems,
     blackoutIntervals,
     requireOpenSections,
+    excludeTba,
+    excludeOnlineAsync,
     seatsByCrn,
     facultyByCrn,
     scheduleTypeByCrn,
+    deliveryModeByCrn,
     rawGhosts,
     pinDragFeasiblePinnedCrns,
   } = params;
+
+  const deliveryFilters = { excludeTba, excludeOnlineAsync };
 
   const membersByBundleId = buildMembersByBundleId(
     catalog.linkedBundleMembers,
@@ -170,6 +185,12 @@ export function filterFeasibleSwapGhosts(params: {
     if (crns.length === 0) continue;
 
     if (requireOpenSections && !allCrnsHaveOpenSeats(crns, seatsByCrn)) {
+      continue;
+    }
+
+    if (
+      candidateViolatesDeliveryFilters(crns, deliveryModeByCrn, deliveryFilters)
+    ) {
       continue;
     }
 

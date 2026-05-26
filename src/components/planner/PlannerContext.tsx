@@ -29,6 +29,8 @@ import {
 } from "@/lib/planner/time-prefs";
 import { computeInfeasibilityHints } from "@/lib/planner/infeasibility-hints";
 import { mergePackConstraintMaps } from "@/lib/planner/planner-swap-feasibility";
+import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
+import { DEFAULT_PLANNER_SCHEDULE_FILTERS } from "@/lib/planner/schedule-filters";
 import { track } from "@/lib/analytics/track";
 import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
 import {
@@ -156,7 +158,13 @@ type PlannerContextValue = {
   infeasibilityHints: string[];
   requireOpenSections: boolean;
   setRequireOpenSections: (v: boolean) => void;
-  recalculateSolutions: (requireOpenOverride?: boolean) => Promise<void>;
+  excludeTba: boolean;
+  setExcludeTba: (v: boolean) => void;
+  excludeOnlineAsync: boolean;
+  setExcludeOnlineAsync: (v: boolean) => void;
+  recalculateSolutions: (
+    filterOverrides?: Partial<PlannerScheduleFilters>,
+  ) => Promise<void>;
   /** True while a server or client solve is in progress (nested calls supported). */
   isRecalculatingSolutions: boolean;
   /** Prefetched per-course solve payloads (client-side DFS when complete). */
@@ -224,7 +232,15 @@ export function PlannerProvider({
   const [currentSolutionIndex, setCurrentSolutionIndexState] = useState<number>(
     () => initialTermUiState?.lastSolutionIndex ?? 0,
   );
-  const [requireOpenSections, setRequireOpenSections] = useState(true);
+  const [requireOpenSections, setRequireOpenSections] = useState(
+    DEFAULT_PLANNER_SCHEDULE_FILTERS.requireOpenSections,
+  );
+  const [excludeTba, setExcludeTba] = useState(
+    DEFAULT_PLANNER_SCHEDULE_FILTERS.excludeTba,
+  );
+  const [excludeOnlineAsync, setExcludeOnlineAsync] = useState(
+    DEFAULT_PLANNER_SCHEDULE_FILTERS.excludeOnlineAsync,
+  );
   const [blackouts, setBlackoutsState] = useState<PlannerBlackoutsDocV1>(
     () => initialTermUiState?.blackouts ?? EMPTY_BLACKOUTS,
   );
@@ -298,6 +314,8 @@ export function PlannerProvider({
   /** Bumped on every pack-prefetch start; awaiting calls bail when stale. */
   const prefetchGenRef = useRef(0);
   const requireOpenRef = useRef(requireOpenSections);
+  const excludeTbaRef = useRef(excludeTba);
+  const excludeOnlineAsyncRef = useRef(excludeOnlineAsync);
   const blackoutsRef = useRef(blackouts);
   const keptSolutionsRef = useRef(keptSolutions);
   const timePrefsRef = useRef(timePrefs);
@@ -312,6 +330,12 @@ export function PlannerProvider({
   useEffect(() => {
     requireOpenRef.current = requireOpenSections;
   }, [requireOpenSections]);
+  useEffect(() => {
+    excludeTbaRef.current = excludeTba;
+  }, [excludeTba]);
+  useEffect(() => {
+    excludeOnlineAsyncRef.current = excludeOnlineAsync;
+  }, [excludeOnlineAsync]);
   useEffect(() => {
     blackoutsRef.current = blackouts;
   }, [blackouts]);
@@ -370,6 +394,8 @@ export function PlannerProvider({
       packs: solvePacks,
       blackouts,
       requireOpenSections,
+      excludeTba,
+      excludeOnlineAsync,
       catalog,
       // We only reach this branch when the main solve already returned
       // zero schedules with the same items+packs+constraints, so skip the
@@ -382,6 +408,8 @@ export function PlannerProvider({
     solvePacks,
     blackouts,
     requireOpenSections,
+    excludeTba,
+    excludeOnlineAsync,
     catalog,
   ]);
 
@@ -693,15 +721,19 @@ export function PlannerProvider({
     [schedulePersist],
   );
 
-  const recalculateSolutions = useCallback(async (requireOpenOverride?: boolean) => {
+  const recalculateSolutions = useCallback(
+    async (filterOverrides?: Partial<PlannerScheduleFilters>) => {
     const myGen = ++recalcGenRef.current;
     recalcDepthRef.current += 1;
     if (recalcDepthRef.current === 1) setIsRecalculatingSolutions(true);
     try {
-      const requireOpen =
-        requireOpenOverride !== undefined
-          ? requireOpenOverride
-          : requireOpenRef.current;
+      const filters: PlannerScheduleFilters = {
+        requireOpenSections:
+          filterOverrides?.requireOpenSections ?? requireOpenRef.current,
+        excludeTba: filterOverrides?.excludeTba ?? excludeTbaRef.current,
+        excludeOnlineAsync:
+          filterOverrides?.excludeOnlineAsync ?? excludeOnlineAsyncRef.current,
+      };
       const rows = itemsRef.current;
       const packs = solvePacksRef.current;
 
@@ -758,7 +790,7 @@ export function PlannerProvider({
         if (myGen !== recalcGenRef.current) return;
 
         const result = solveSchedulesFromPacks(rows, packs, {
-          requireOpenSections: requireOpen,
+          ...filters,
           blackoutIntervals: blackoutIv,
           maxSolutions: PLANNER_MAX_SOLUTIONS,
           previousSelections: prevSelections,
@@ -769,7 +801,7 @@ export function PlannerProvider({
         return;
       }
 
-      const res = await solveSchedulesAction(termRef.current, requireOpen);
+      const res = await solveSchedulesAction(termRef.current, filters);
       if (myGen !== recalcGenRef.current) return;
       if (!res.ok) {
         setSyncError(res.error);
@@ -787,7 +819,7 @@ export function PlannerProvider({
         prevSol &&
         everyPlannerItemHasSolvePack(rows, packsAfter) &&
         scheduleSolutionStillValidForItems(rows, packsAfter, prevSol, {
-          requireOpenSections: requireOpen,
+          ...filters,
           blackoutIntervals: blackoutIv,
         })
       ) {
@@ -823,6 +855,8 @@ export function PlannerProvider({
       if (
         plannerItemsFeasibility(next, solvePacksRef.current, {
           requireOpenSections: requireOpenRef.current,
+          excludeTba: excludeTbaRef.current,
+          excludeOnlineAsync: excludeOnlineAsyncRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
           timeoutMs: PREVIEW_FEASIBILITY_TIMEOUT_MS,
         }) === "infeasible"
@@ -867,6 +901,8 @@ export function PlannerProvider({
         !isRemoval &&
         plannerItemsFeasibility(next, solvePacksRef.current, {
           requireOpenSections: requireOpenRef.current,
+          excludeTba: excludeTbaRef.current,
+          excludeOnlineAsync: excludeOnlineAsyncRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
           timeoutMs: PREVIEW_FEASIBILITY_TIMEOUT_MS,
         }) === "infeasible"
@@ -906,6 +942,8 @@ export function PlannerProvider({
       if (
         plannerItemsFeasibility(next, solvePacksRef.current, {
           requireOpenSections: requireOpenRef.current,
+          excludeTba: excludeTbaRef.current,
+          excludeOnlineAsync: excludeOnlineAsyncRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
           timeoutMs: PREVIEW_FEASIBILITY_TIMEOUT_MS,
         }) === "infeasible"
@@ -1134,6 +1172,10 @@ export function PlannerProvider({
       infeasibilityHints,
       requireOpenSections,
       setRequireOpenSections,
+      excludeTba,
+      setExcludeTba,
+      excludeOnlineAsync,
+      setExcludeOnlineAsync,
       recalculateSolutions,
       isRecalculatingSolutions,
       solvePacks,
@@ -1173,6 +1215,8 @@ export function PlannerProvider({
       keptSolutionIndices,
       infeasibilityHints,
       requireOpenSections,
+      excludeTba,
+      excludeOnlineAsync,
       recalculateSolutions,
       isRecalculatingSolutions,
       solvePacks,

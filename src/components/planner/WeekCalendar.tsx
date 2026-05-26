@@ -97,6 +97,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     solutions,
     requireOpenSections,
     setRequireOpenSections,
+    excludeTba,
+    excludeOnlineAsync,
     recalculateSolutions,
     isRecalculatingSolutions,
     syncError,
@@ -536,12 +538,22 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         candidateCrns,
         {
           requireOpenSections,
+          excludeTba,
+          excludeOnlineAsync,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackouts),
         },
       );
       return result;
     },
-    [plannerItems, plannerItemsById, solvePacks, requireOpenSections, blackouts],
+    [
+      plannerItems,
+      plannerItemsById,
+      solvePacks,
+      requireOpenSections,
+      excludeTba,
+      excludeOnlineAsync,
+      blackouts,
+    ],
   );
 
   const onCourseBlockPointerDown = useCallback(
@@ -624,9 +636,12 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           otherEffectiveItems: effectivePlannerItems,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackouts),
           requireOpenSections,
+          excludeTba,
+          excludeOnlineAsync,
           seatsByCrn: mergedPackConstraintMaps.seatsByCrn,
           facultyByCrn: mergedPackConstraintMaps.facultyByCrn,
           scheduleTypeByCrn: mergedPackConstraintMaps.scheduleTypeByCrn,
+          deliveryModeByCrn: mergedPackConstraintMaps.deliveryModeByCrn,
           rawGhosts: raw,
           pinDragFeasiblePinnedCrns: pinDragFeasiblePinnedCrnsForBlock(
             b,
@@ -684,12 +699,15 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       effectivePlannerItems,
       endCourseDrag,
       finalizeCourseDragSession,
+      mergedPackConstraintMaps.deliveryModeByCrn,
       mergedPackConstraintMaps.facultyByCrn,
       mergedPackConstraintMaps.scheduleTypeByCrn,
       mergedPackConstraintMaps.seatsByCrn,
       pickCourseSnap,
       pinDragFeasiblePinnedCrnsForBlock,
       requireOpenSections,
+      excludeTba,
+      excludeOnlineAsync,
     ],
   );
 
@@ -869,22 +887,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           </div>
           <div className="flex w-full min-w-0 flex-1 flex-wrap items-center justify-end gap-2 md:gap-x-3 md:gap-y-2">
             <ExportMenu />
-            <Button
-              type="button"
-              variant={requireOpenSections ? "default" : "outline"}
-              size="sm"
-              className="h-9 touch-manipulation"
-              id="exclude-full-toggle"
-              aria-pressed={requireOpenSections}
-              onClick={() => {
-                const next = !requireOpenSections;
-                setRequireOpenSections(next);
-                track("planner_exclude_full_toggled", { on: next });
-                void recalculateSolutions(next);
-              }}
-            >
-              Exclude full
-            </Button>
             <div className="flex min-w-0 items-center gap-1">
               <Button
                 type="button"
@@ -953,7 +955,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                   className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
                   onClick={() => {
                     setRequireOpenSections(false);
-                    void recalculateSolutions(false);
+                    void recalculateSolutions({ requireOpenSections: false });
                     document.getElementById("exclude-full-toggle")?.focus();
                   }}
                 >
@@ -1348,7 +1350,7 @@ function TimePrefsBadge() {
   const label = `${count} time ${count === 1 ? "preference" : "preferences"} active`;
   return (
     <a
-      href="#planner-time-prefs"
+      href="#planner-filters"
       className="inline-flex h-6 items-center rounded-full border border-border bg-muted/50 px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       title={label}
       aria-label={label}

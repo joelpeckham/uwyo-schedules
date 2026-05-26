@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useId } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { track } from "@/lib/analytics/track";
 import {
   DEFAULT_PROTECT_LUNCH,
@@ -36,8 +37,18 @@ const NO_AFTER_OPTIONS = [
 
 const NONE = "none";
 
-export function TimePrefsCard() {
-  const { timePrefs, setTimePrefs } = usePlanner();
+export function FiltersCard() {
+  const {
+    timePrefs,
+    setTimePrefs,
+    requireOpenSections,
+    setRequireOpenSections,
+    excludeTba,
+    setExcludeTba,
+    excludeOnlineAsync,
+    setExcludeOnlineAsync,
+    recalculateSolutions,
+  } = usePlanner();
 
   const setNoFridays = useCallback(
     (next: boolean) => {
@@ -113,21 +124,68 @@ export function TimePrefsCard() {
     [setTimePrefs],
   );
 
-  const noBeforeValue = timePrefs.noBefore != null ? String(timePrefs.noBefore) : NONE;
-  const noAfterValue = timePrefs.noAfter != null ? String(timePrefs.noAfter) : NONE;
+  const noBeforeValue =
+    timePrefs.noBefore != null ? String(timePrefs.noBefore) : NONE;
+  const noAfterValue =
+    timePrefs.noAfter != null ? String(timePrefs.noAfter) : NONE;
 
   return (
     <section
-      id="planner-time-prefs"
-      aria-labelledby="planner-time-prefs-heading"
+      id="planner-filters"
+      aria-labelledby="planner-filters-heading"
       className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm"
     >
       <h2
-        id="planner-time-prefs-heading"
+        id="planner-filters-heading"
         className="font-heading text-lg font-medium text-foreground"
       >
-        Time of day
+        Filters
       </h2>
+
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+        These limit which sections the planner can pick.
+      </p>
+
+      <div className="mt-3 flex flex-col gap-3">
+        <FilterSwitchRow
+          id="exclude-full-toggle"
+          label="Exclude full"
+          checked={requireOpenSections}
+          onCheckedChange={(next) => {
+            setRequireOpenSections(next);
+            track("planner_exclude_full_toggled", { on: next });
+            void recalculateSolutions({ requireOpenSections: next });
+          }}
+        />
+        <FilterSwitchRow
+          id="exclude-tba-toggle"
+          label="Exclude TBA times"
+          checked={excludeTba}
+          onCheckedChange={(next) => {
+            setExcludeTba(next);
+            track("planner_exclude_tba_toggled", { on: next });
+            void recalculateSolutions({ excludeTba: next });
+          }}
+        />
+        <FilterSwitchRow
+          id="exclude-online-async-toggle"
+          label="Exclude online · async"
+          checked={excludeOnlineAsync}
+          onCheckedChange={(next) => {
+            setExcludeOnlineAsync(next);
+            track("planner_exclude_online_async_toggled", { on: next });
+            void recalculateSolutions({ excludeOnlineAsync: next });
+          }}
+        />
+      </div>
+
+      <div
+        className="my-4 border-t border-border"
+        role="separator"
+        aria-hidden
+      />
+
+      <h3 className="text-sm font-medium text-foreground">Time of day</h3>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
         Soft preferences. The planner ranks weeks that match you higher; it
         won&rsquo;t hide a week that conflicts.
@@ -187,6 +245,40 @@ export function TimePrefsCard() {
         </div>
       </div>
     </section>
+  );
+}
+
+type FilterSwitchRowProps = {
+  id: string;
+  label: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+};
+
+function FilterSwitchRow({
+  id,
+  label,
+  checked,
+  onCheckedChange,
+}: FilterSwitchRowProps) {
+  const labelId = useId();
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <label
+        id={labelId}
+        htmlFor={id}
+        className="min-w-0 flex-1 cursor-pointer text-sm text-foreground"
+      >
+        {label}
+      </label>
+      <Switch
+        id={id}
+        aria-labelledby={labelId}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        className="touch-manipulation"
+      />
+    </div>
   );
 }
 

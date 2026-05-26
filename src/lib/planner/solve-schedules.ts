@@ -3,10 +3,12 @@ import * as schema from "@/db/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { blackoutsDocToTimeIntervals, parseBlackoutsJson } from "./blackouts";
 import { parseTimePrefs } from "./time-prefs";
-import type { PlannerItemRow } from "./data";
+import { buildDeliveryModeByCrn } from "@/lib/sections/delivery-mode";
+import type { PlannerScheduleFilters } from "./schedule-filters";
 import {
   listLinkedBundleOptionsForAnchors,
   listSectionsForCourse,
+  type PlannerItemRow,
 } from "./data";
 import type { PlannerItemSelection } from "./resolve-display-crns-shared";
 import { resolveDisplayCrnsSync } from "./resolve-display-crns-shared";
@@ -273,6 +275,8 @@ export async function loadCourseSolvePack(
             seatsAvailable: number | null;
             openSection: boolean | null;
             scheduleTypeDescription: string | null;
+            instructionalMethod: string | null;
+            instructionalMethodDescription: string | null;
           }[],
         )
       : db
@@ -281,6 +285,9 @@ export async function loadCourseSolvePack(
             seatsAvailable: schema.sections.seatsAvailable,
             openSection: schema.sections.openSection,
             scheduleTypeDescription: schema.sections.scheduleTypeDescription,
+            instructionalMethod: schema.sections.instructionalMethod,
+            instructionalMethodDescription:
+              schema.sections.instructionalMethodDescription,
           })
           .from(schema.sections)
           .where(
@@ -319,6 +326,8 @@ export async function loadCourseSolvePack(
     facultyByCrn[r.sectionCrn] = list;
   }
 
+  const deliveryModeByCrn = buildDeliveryModeByCrn(secRows, meetingRows);
+
   return {
     v: 1,
     courseKey,
@@ -331,6 +340,7 @@ export async function loadCourseSolvePack(
     facultyByCrn,
     scheduleTypeByCrn,
     seatsByCrn,
+    deliveryModeByCrn,
   };
 }
 
@@ -342,8 +352,7 @@ export async function solveSchedulesForTerm(
   db: Database,
   termCode: string,
   items: PlannerItemRow[],
-  opts: {
-    requireOpenSections: boolean;
+  opts: PlannerScheduleFilters & {
     maxSolutions?: number;
     timeoutMs?: number;
   },
@@ -436,6 +445,8 @@ export async function solveSchedulesForTerm(
             seatsAvailable: number | null;
             openSection: boolean | null;
             scheduleTypeDescription: string | null;
+            instructionalMethod: string | null;
+            instructionalMethodDescription: string | null;
           }[],
         )
       : db
@@ -444,6 +455,9 @@ export async function solveSchedulesForTerm(
             seatsAvailable: schema.sections.seatsAvailable,
             openSection: schema.sections.openSection,
             scheduleTypeDescription: schema.sections.scheduleTypeDescription,
+            instructionalMethod: schema.sections.instructionalMethod,
+            instructionalMethodDescription:
+              schema.sections.instructionalMethodDescription,
           })
           .from(schema.sections)
           .where(
@@ -509,6 +523,9 @@ export async function solveSchedulesForTerm(
     : [];
 
   const timePrefs = uiRow ? parseTimePrefs(uiRow.timePrefs) : null;
+  const deliveryModeByCrn = new Map(
+    Object.entries(buildDeliveryModeByCrn(secRows, meetingRows)),
+  );
 
   return runSolveSearch({
     items,
@@ -517,7 +534,10 @@ export async function solveSchedulesForTerm(
     facultyByCrn,
     scheduleTypeByCrn,
     seatsByCrn,
+    deliveryModeByCrn,
     requireOpenSections: opts.requireOpenSections,
+    excludeTba: opts.excludeTba,
+    excludeOnlineAsync: opts.excludeOnlineAsync,
     blackoutIntervals,
     timePrefs,
     maxSolutions,

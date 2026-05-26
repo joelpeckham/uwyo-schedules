@@ -22,8 +22,15 @@ function minimalPack(
     facultyByCrn: {},
     scheduleTypeByCrn: {},
     seatsByCrn: {},
+    deliveryModeByCrn: {},
   };
 }
+
+const relaxedFilters = {
+  requireOpenSections: false,
+  excludeTba: false,
+  excludeOnlineAsync: false,
+} as const;
 
 describe("computeInfeasibilityHints", () => {
   it("returns empty when a solution exists", () => {
@@ -43,7 +50,7 @@ describe("computeInfeasibilityHints", () => {
       items,
       packs,
       blackouts: { v: 1, items: [] },
-      requireOpenSections: false,
+      ...relaxedFilters,
     });
     expect(hints).toEqual([]);
   });
@@ -68,7 +75,7 @@ describe("computeInfeasibilityHints", () => {
         v: 1,
         items: [{ id: "b1", dayIndex: 0, start: 9 * 60, end: 10 * 60 }],
       },
-      requireOpenSections: false,
+      ...relaxedFilters,
     });
     expect(
       hints.some((h) =>
@@ -103,9 +110,67 @@ describe("computeInfeasibilityHints", () => {
       packs,
       blackouts: { v: 1, items: [] },
       requireOpenSections: true,
+      excludeTba: false,
+      excludeOnlineAsync: false,
     });
     expect(
       hints.some((h) => h.toLowerCase().includes("exclude")),
     ).toBe(true);
+  });
+
+  it("mentions TBA filter when excludeTba blocks solve", () => {
+    const items = [
+      {
+        id: 1,
+        selectionKind: "unresolved",
+        subject: "MATH",
+        courseNumber: "1000",
+      } as PlannerItemRow,
+    ];
+    const pack = minimalPack(
+      "MATH",
+      "1000",
+      [{ selectionKind: "single_crn", anchorCrn: "1", linkedBundleId: null, crns: ["1"] }],
+      { "1": [{ dayIndex: 0, start: 9 * 60, end: 10 * 60 }] },
+    );
+    pack.deliveryModeByCrn = { "1": "tba" };
+    const packs = { [courseSolvePackCourseKey("MATH", "1000")]: pack };
+    const hints = computeInfeasibilityHints({
+      items,
+      packs,
+      blackouts: { v: 1, items: [] },
+      requireOpenSections: false,
+      excludeTba: true,
+      excludeOnlineAsync: false,
+    });
+    expect(hints.some((h) => h.includes("TBA"))).toBe(true);
+  });
+
+  it("mentions online async filter when excludeOnlineAsync blocks solve", () => {
+    const items = [
+      {
+        id: 1,
+        selectionKind: "unresolved",
+        subject: "MATH",
+        courseNumber: "1000",
+      } as PlannerItemRow,
+    ];
+    const pack = minimalPack(
+      "MATH",
+      "1000",
+      [{ selectionKind: "single_crn", anchorCrn: "1", linkedBundleId: null, crns: ["1"] }],
+      { "1": [{ dayIndex: 0, start: 9 * 60, end: 10 * 60 }] },
+    );
+    pack.deliveryModeByCrn = { "1": "online_async" };
+    const packs = { [courseSolvePackCourseKey("MATH", "1000")]: pack };
+    const hints = computeInfeasibilityHints({
+      items,
+      packs,
+      blackouts: { v: 1, items: [] },
+      requireOpenSections: false,
+      excludeTba: false,
+      excludeOnlineAsync: true,
+    });
+    expect(hints.some((h) => h.toLowerCase().includes("async"))).toBe(true);
   });
 });

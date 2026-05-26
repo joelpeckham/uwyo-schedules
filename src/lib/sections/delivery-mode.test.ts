@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDeliveryModeByCrn,
+  candidateViolatesDeliveryFilters,
   classifyDeliveryMode,
   deliveryModeLabel,
   meetingHasTimeBlock,
@@ -83,6 +85,68 @@ describe("deliveryModeLabel", () => {
     expect(deliveryModeLabel("online_async")).toMatch(/online/i);
     expect(deliveryModeLabel("hybrid")).toBe("Hybrid");
     expect(deliveryModeLabel("tba")).toBe("Time TBA");
+  });
+});
+
+describe("buildDeliveryModeByCrn", () => {
+  it("marks sections without timed meetings as tba when traditional", () => {
+    const modes = buildDeliveryModeByCrn(
+      [
+        {
+          crn: "10001",
+          instructionalMethod: "TR",
+          instructionalMethodDescription: "Traditional",
+        },
+      ],
+      [],
+    );
+    expect(modes["10001"]).toBe("tba");
+  });
+
+  it("marks online-async sections from description", () => {
+    const modes = buildDeliveryModeByCrn(
+      [
+        {
+          crn: "20002",
+          instructionalMethod: "I",
+          instructionalMethodDescription: "Online-Asynchronous",
+        },
+      ],
+      [],
+    );
+    expect(modes["20002"]).toBe("online_async");
+  });
+});
+
+describe("candidateViolatesDeliveryFilters", () => {
+  const modeMap = new Map([
+    ["1", "tba" as const],
+    ["2", "online_async" as const],
+    ["3", "in_person" as const],
+  ]);
+
+  it("rejects tba when excludeTba is on", () => {
+    expect(
+      candidateViolatesDeliveryFilters(["3"], modeMap, {
+        excludeTba: true,
+        excludeOnlineAsync: false,
+      }),
+    ).toBe(false);
+    expect(
+      candidateViolatesDeliveryFilters(["1"], modeMap, {
+        excludeTba: true,
+        excludeOnlineAsync: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects online_async when excludeOnlineAsync is on", () => {
+    expect(
+      candidateViolatesDeliveryFilters(["2"], modeMap, {
+        excludeTba: false,
+        excludeOnlineAsync: true,
+      }),
+    ).toBe(true);
   });
 });
 
