@@ -14,6 +14,15 @@ const nextConfig: NextConfig = {
       ? [process.env.DEV_LAN_ORIGIN.trim()]
       : []),
   ],
+  // Next 16.2 builds chunked `/sitemap/[id].xml` but the index route 404s in prod.
+  async rewrites() {
+    return [
+      {
+        source: "/sitemap.xml",
+        destination: "/sitemap-index",
+      },
+    ];
+  },
   async headers() {
     const security = [
       {

@@ -17,6 +17,21 @@ test("landing and planner pages load", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("sitemap index and robots", async ({ request }) => {
+  const index = await request.get("/sitemap.xml");
+  expect(index.status()).toBe(200);
+  expect(index.headers()["content-type"]).toMatch(/application\/xml/i);
+  const indexBody = await index.text();
+  expect(indexBody).toContain("<sitemapindex");
+  expect(indexBody).toContain("/sitemap/0.xml");
+
+  const robots = await request.get("/robots.txt");
+  expect(robots.status()).toBe(200);
+  const robotsBody = await robots.text();
+  expect(robotsBody).toContain("Sitemap:");
+  expect(robotsBody).toContain("/sitemap.xml");
+});
+
 test("llms discovery files", async ({ request }) => {
   const short = await request.get("/llms.txt");
   expect(short.status()).toBe(200);

@@ -4,36 +4,24 @@ import { createDb } from "@/db/index";
 import { getLatestTermCode, listTerms } from "@/lib/planner/data";
 import { SEO_SITEMAP_TAG } from "@/lib/seo/cache-tags";
 import { SITE_URL } from "@/lib/seo/site";
+import { COURSE_CHUNK_SIZE, listSitemapChunkIds } from "@/lib/seo/sitemap-chunks";
 import {
-  countDistinctCourseKeys,
   listDistinctCourseKeysPage,
   listInstructorsForSeo,
   listSubjectsForTerm,
   subjectToPathSegment,
 } from "@/lib/seo/queries";
 
-/** Google caps a sitemap file at 50,000 URLs / 50 MB; pick a comfortable chunk. */
-const COURSE_CHUNK_SIZE = 10_000;
-
 /**
- * Next.js wires `generateSitemaps` into a sitemap index file at
- * `/sitemap.xml`, with chunk URLs at `/sitemap/[id].xml`. Splitting course
- * URLs across chunks keeps each request bounded — the previous monolithic
- * sitemap loaded every distinct course key into memory in one query.
+ * Chunked sitemaps at `/sitemap/[id].xml`. The index at `/sitemap.xml` is
+ * rewritten to `/sitemap-index` (Next 16.2 does not emit the index in prod).
  *
- * Chunk 0 holds the static + term + subject + instructor entries, and one
- * additional chunk per `COURSE_CHUNK_SIZE` slice of distinct course keys.
+ * Chunk 0 holds static + term + subject + instructor entries; further chunks
+ * hold course URLs in pages of `COURSE_CHUNK_SIZE`.
  */
 export async function generateSitemaps(): Promise<{ id: number }[]> {
-  "use cache";
-  cacheTag(SEO_SITEMAP_TAG);
-  cacheLife("hours");
-  const db = createDb();
-  const total = await countDistinctCourseKeys(db);
-  const courseChunks = Math.max(1, Math.ceil(total / COURSE_CHUNK_SIZE));
-  const ids: { id: number }[] = [{ id: 0 }];
-  for (let i = 1; i <= courseChunks; i++) ids.push({ id: i });
-  return ids;
+  const ids = await listSitemapChunkIds();
+  return ids.map((id) => ({ id }));
 }
 
 export default async function sitemap(props: {
