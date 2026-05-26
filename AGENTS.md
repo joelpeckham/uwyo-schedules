@@ -14,3 +14,22 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **The running app’s theme** is `src/app/globals.css` (imports `design-system/tokens.css` and maps shadcn/radix variables). Do not add a second parallel palette in oklch without updating the design tokens.
 
 For production, align Tailwind and `src/app/globals.css` with the token file rather than only linking the standalone `colors_and_type.css` sheet in isolation.
+
+## CI before done
+
+Do not consider implementation complete until local checks pass (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+**Always run:**
+
+```bash
+pnpm ci:quality   # lint, typecheck, test:run, knip
+```
+
+**Also run when app routes, SSR, planner UI, or shared exports change** (requires `DATABASE_URL` in `.env.local`):
+
+```bash
+pnpm build
+pnpm test:e2e
+```
+
+Cursor agents: follow `.cursor/rules/ci-before-done.mdc`. GitHub Actions e2e needs the `DATABASE_URL` repository secret (see `.env.example`).

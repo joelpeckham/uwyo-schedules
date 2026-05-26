@@ -1,0 +1,48 @@
+---
+description: Run local CI checks before marking implementation complete
+alwaysApply: true
+---
+
+# Verify locally before done
+
+Do **not** treat a feature, fix, or refactor as complete until local checks pass. GitHub CI mirrors [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+## Required (every code change)
+
+From the repo root, with dependencies installed (`pnpm install`):
+
+```bash
+pnpm ci:quality
+```
+
+This runs: `pnpm lint` → `pnpm typecheck` → `pnpm test:run` → `pnpm knip`.
+
+Fix failures before finishing. Do not push or ask the user to merge while these fail.
+
+## When routes, SSR, planner UI, or exports change
+
+Also run (needs `DATABASE_URL` in `.env.local`, same as production Neon):
+
+```bash
+pnpm build
+pnpm test:e2e
+```
+
+First-time Playwright on a machine: `pnpm exec playwright install --with-deps chromium`.
+
+CI uses the `DATABASE_URL` GitHub Actions secret for build and e2e; locally use `.env.local`.
+
+## Scope guidance
+
+| Change | Minimum checks |
+|--------|----------------|
+| Any TS/TSX | `pnpm ci:quality` |
+| `src/app/**`, SEO, sitemap, `generateStaticParams` | + `pnpm build` |
+| Planner UI / `e2e/**` | + `pnpm test:e2e` |
+| Docs-only | Not required unless you edited config |
+
+## Agent behavior
+
+- Run the relevant commands yourself; do not only suggest them.
+- If a check cannot run (e.g. missing `DATABASE_URL`), say so and run everything else that can run.
+- After fixing CI failures on a branch, re-run the same commands to confirm green.
