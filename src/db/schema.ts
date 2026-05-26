@@ -80,6 +80,11 @@ export const sections = pgTable(
     linkIdentifier: text("link_identifier"),
     isSectionLinked: boolean("is_section_linked"),
     bannerRowId: integer("banner_row_id"),
+    courseDescription: text("course_description"),
+    sectionInformationText: text("section_information_text"),
+    descriptionsFetchedAt: timestamp("descriptions_fetched_at", {
+      withTimezone: true,
+    }),
     rawJson: jsonb("raw_json").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

@@ -15,6 +15,12 @@ import {
   classifyDeliveryMode,
   deliveryModeLabel,
 } from "@/lib/sections/delivery-mode";
+import {
+  LIKELY_EXAM_DISCLOSURE,
+  LIKELY_EXAM_SECTION_INFO_NOTE,
+  parseExamReservations,
+} from "@/lib/sections/parse-exam-reservations";
+import { likelyExamNoteForMeeting } from "@/lib/sections/match-exam-meeting";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -123,6 +129,14 @@ export function SectionDetailPanels({ root }: Props) {
     root,
     "instructionalMethodDescription",
   );
+  const courseDescription = stringField(root, "courseDescription");
+  const sectionInformationText = stringField(root, "sectionInformationText");
+  const parsedExamHints = sectionInformationText
+    ? parseExamReservations(sectionInformationText)
+    : { reservations: [], vagueExamNote: false };
+  const examReservationLines = parsedExamHints.reservations.map(
+    (r) => r.sourceText,
+  );
   const partTerm = stringField(root, "partOfTerm");
   const term =
     stringField(root, "termDesc") ?? stringField(root, "term");
@@ -203,6 +217,23 @@ export function SectionDetailPanels({ root }: Props) {
       stringField(mt ?? {}, "meetingTypeDescription") ??
       stringField(mt ?? {}, "meetingType");
     const scheduleCode = stringField(mt ?? {}, "meetingScheduleType");
+    const examMatch =
+      mt && parsedExamHints.reservations.length > 0
+        ? likelyExamNoteForMeeting(
+            {
+              beginTime: stringField(mt, "beginTime") ?? null,
+              endTime: stringField(mt, "endTime") ?? null,
+              monday: booleanField(mt, "monday") ?? null,
+              tuesday: booleanField(mt, "tuesday") ?? null,
+              wednesday: booleanField(mt, "wednesday") ?? null,
+              thursday: booleanField(mt, "thursday") ?? null,
+              friday: booleanField(mt, "friday") ?? null,
+              saturday: booleanField(mt, "saturday") ?? null,
+              sunday: booleanField(mt, "sunday") ?? null,
+            },
+            parsedExamHints.reservations,
+          )
+        : null;
     return {
       key: `meeting-${i}`,
       days,
@@ -211,6 +242,7 @@ export function SectionDetailPanels({ root }: Props) {
       dates,
       type,
       scheduleCode,
+      examMatch,
     };
   });
   const meetingShown = meetingBlocks.filter(
@@ -311,6 +343,42 @@ export function SectionDetailPanels({ root }: Props) {
           </ExpandDetails>
         ) : null}
       </BentoCard>
+
+      {courseDescription ? (
+        <BentoCard
+          accentClass="border-l-4 border-l-muted-foreground/40"
+          kicker="Course description"
+          headline={
+            <p className="text-sm leading-relaxed text-foreground">
+              {courseDescription}
+            </p>
+          }
+        />
+      ) : null}
+
+      {sectionInformationText ? (
+        <BentoCard
+          accentClass="border-l-4 border-l-[#8b6914]"
+          kicker="Section information"
+          headline={
+            <p className="text-sm leading-relaxed text-foreground">
+              {sectionInformationText}
+            </p>
+          }
+          subline={
+            examReservationLines.length > 0 ? (
+              <p className="text-xs font-medium text-primary">
+                {LIKELY_EXAM_SECTION_INFO_NOTE}
+              </p>
+            ) : parsedExamHints.vagueExamNote ? (
+              <p className="text-xs text-muted-foreground">
+                {LIKELY_EXAM_DISCLOSURE} (section information mentions exams but
+                no specific time)
+              </p>
+            ) : null
+          }
+        />
+      ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 sm:gap-4">
         {/* Credits */}
@@ -459,6 +527,12 @@ export function SectionDetailPanels({ root }: Props) {
                     {firstMeeting.dates}
                   </p>
                 ) : null}
+                {firstMeeting.examMatch ? (
+                  <p className="text-xs font-medium text-primary">
+                    {firstMeeting.examMatch.likelyExamLabel} ·{" "}
+                    {LIKELY_EXAM_DISCLOSURE}
+                  </p>
+                ) : null}
                 {moreMeetings > 0 ? (
                   <p className="text-xs font-medium text-primary">
                     +{moreMeetings} more meeting
@@ -496,6 +570,11 @@ export function SectionDetailPanels({ root }: Props) {
                       {m.type || m.scheduleCode ? (
                         <p className="mt-1 text-xs text-muted-foreground">
                           {[m.type, m.scheduleCode].filter(Boolean).join(" · ")}
+                        </p>
+                      ) : null}
+                      {m.examMatch ? (
+                        <p className="mt-1 text-xs font-medium text-primary">
+                          {m.examMatch.likelyExamLabel} · {LIKELY_EXAM_DISCLOSURE}
                         </p>
                       ) : null}
                     </li>

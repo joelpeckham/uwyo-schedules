@@ -47,6 +47,10 @@ export type CalendarBlock = {
   sectionScheduleTypeKey: string;
   /** Raw Banner `meetingScheduleType` on this meeting row (nullable). */
   meetingScheduleType: string | null;
+  /** True when this meeting overlaps a parsed exam reservation from section info. */
+  likelyExam: boolean;
+  /** Short label for likely exam blocks, e.g. "Likely midterm". */
+  likelyExamLabel: string | null;
 };
 
 /** One clipped meeting rectangle for same-type swap ghosts (other sections). */
@@ -429,6 +433,8 @@ export async function getSectionDetail(
       courseTitle: schema.sections.courseTitle,
       subjectCourse: schema.sections.subjectCourse,
       scheduleTypeDescription: schema.sections.scheduleTypeDescription,
+      courseDescription: schema.sections.courseDescription,
+      sectionInformationText: schema.sections.sectionInformationText,
     })
     .from(schema.sections)
     .where(
@@ -445,5 +451,7 @@ export async function getSectionDetail(
     courseTitle: decodeHtmlEntities(row.courseTitle),
     subjectCourse: decodeHtmlEntities(row.subjectCourse),
     scheduleTypeDescription: decodeHtmlEntities(row.scheduleTypeDescription),
+    courseDescription: decodeHtmlEntities(row.courseDescription),
+    sectionInformationText: decodeHtmlEntities(row.sectionInformationText),
   };
 }

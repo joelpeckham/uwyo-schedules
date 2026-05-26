@@ -78,6 +78,13 @@
       "when": 1777900000000,
       "tag": "0010_planner_kept_and_time_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1778000000000,
+      "tag": "0011_section_descriptions",
+      "breakpoints": true
     }
   ]
 }

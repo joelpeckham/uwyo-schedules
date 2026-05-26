@@ -10,6 +10,7 @@ import {
   calendarBlockPaddingPx,
   calendarSecondaryTier,
   calendarTitleFontPx,
+  likelyExamFooterPaddingPx,
   formatHour,
 } from "./block-metrics";
 import {
@@ -18,6 +19,10 @@ import {
 } from "./axis-constants";
 import { groupBlocksByDay } from "./group-by-day";
 import type { CalendarBlock } from "@/lib/planner/data";
+import {
+  LIKELY_EXAM_DISCLOSURE,
+  likelyExamShortLabel,
+} from "@/lib/sections/parse-exam-reservations";
 import { cn } from "@/lib/utils";
 
 export type WeekCalendarLayout = {
@@ -226,21 +231,35 @@ export function WeekCalendarView({
                       instRaw && seatChip
                         ? `${instRaw} · ${seatChip}`
                         : instRaw || seatChip;
-                    const titleAttr = [b.label, inst, loc]
+                    const examNote = b.likelyExam ? LIKELY_EXAM_DISCLOSURE : "";
+                    const examShort =
+                      b.likelyExam && b.likelyExamLabel
+                        ? b.likelyExamLabel
+                        : b.likelyExam
+                          ? likelyExamShortLabel("exam")
+                          : "";
+                    const titleAttr = [b.label, inst, loc, examNote]
                       .filter(Boolean)
                       .join(" · ");
                     let showInstructor = false;
                     let showLocation = false;
-                    if (tier === "both") {
+                    if (!b.likelyExam) {
+                      if (tier === "both") {
+                        showInstructor = inst.length > 0;
+                        showLocation = loc.length > 0;
+                      } else if (tier === "one") {
+                        if (inst.length > 0) showInstructor = true;
+                        else if (loc.length > 0) showLocation = true;
+                      }
+                    } else if (tier !== "none") {
                       showInstructor = inst.length > 0;
-                      showLocation = loc.length > 0;
-                    } else if (tier === "one") {
-                      if (inst.length > 0) showInstructor = true;
-                      else if (loc.length > 0) showLocation = true;
                     }
+                    const examFooterPad = b.likelyExam
+                      ? likelyExamFooterPaddingPx(heightPx)
+                      : 0;
                     const titleClampClass =
-                      tier === "none"
-                        ? "truncate"
+                      tier === "none" || b.likelyExam
+                        ? "line-clamp-1 min-h-0 truncate"
                         : "line-clamp-2 min-h-0 break-words";
                     const blockHandlerProps = blockHandlers?.(b);
                     const isInteractive = blockHandlerProps != null;
@@ -255,6 +274,9 @@ export function WeekCalendarView({
                         className={cn(
                           "absolute left-0.5 right-0.5 z-[20] overflow-hidden rounded-md border border-border bg-card text-left shadow-sm outline-none",
                           "flex min-h-0 flex-col justify-start gap-0.5 border-l-[4px]",
+                          b.likelyExam && "relative",
+                          b.likelyExam &&
+                            "border-dashed border-muted-foreground/50 bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.04)_5px,rgba(0,0,0,0.04)_6px)] dark:bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(255,255,255,0.05)_5px,rgba(255,255,255,0.05)_6px)]",
                           isInteractive &&
                             "touch-none cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           extraClass,
@@ -264,7 +286,7 @@ export function WeekCalendarView({
                           height: heightPx,
                           borderLeftColor: b.color,
                           paddingTop: pad,
-                          paddingBottom: pad,
+                          paddingBottom: pad + examFooterPad,
                           paddingLeft: Math.min(10, pad + 4),
                           paddingRight: Math.min(8, pad + 2),
                         }}
@@ -294,6 +316,15 @@ export function WeekCalendarView({
                             style={{ fontSize: secondaryPx }}
                           >
                             {loc}
+                          </span>
+                        ) : null}
+                        {b.likelyExam ? (
+                          <span
+                            className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] truncate border-t border-primary/30 bg-card/95 px-1 py-px text-center font-mono font-medium leading-tight text-primary"
+                            style={{ fontSize: Math.max(7, secondaryPx) }}
+                            title={LIKELY_EXAM_DISCLOSURE}
+                          >
+                            {examShort}
                           </span>
                         ) : null}
                       </div>

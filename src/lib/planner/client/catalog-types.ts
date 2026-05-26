@@ -3,6 +3,8 @@
  * Built server-side in `catalog-bootstrap.ts`.
  */
 
+import type { ExamReservation } from "@/lib/sections/parse-exam-reservations";
+
 export type ClientCatalogSection = {
   crn: string;
   subject: string;
@@ -62,4 +64,8 @@ export type PlannerCatalogJson = {
   linkedBundleMembers: ClientLinkedBundleMemberRow[];
   /** Section CRN → instructor display names for calendar (comma-separated). */
   facultyByCrn: Record<string, string>;
+  /** Parsed exam time reservations from section information text, keyed by CRN. */
+  examReservationsByCrn: Record<string, ExamReservation[]>;
+  /** Section information text that mentions exams but could not be parsed to a slot. */
+  vagueExamNoteByCrn: Record<string, string | null>;
 };

@@ -8,6 +8,7 @@ import {
   normalizeMeetingScheduleType,
   normalizeScheduleTypeKey,
 } from "../swap-helpers";
+import { matchExamMeeting } from "@/lib/sections/match-exam-meeting";
 import type {
   ClientCatalogSection,
   ClientLinkedBundleMemberRow,
@@ -149,6 +150,11 @@ export function buildCalendarBlocksFromCatalog(
         if (!m[field]) continue;
         const dayIndex = dayIndexForField(field);
         if (dayIndex == null) continue;
+
+        const reservations =
+          catalog.examReservationsByCrn[m.sectionCrn] ?? [];
+        const examMatch = matchExamMeeting(m, dayIndex, reservations);
+
         blocks.push({
           key: `${item.id}-${m.id}-${field}`,
           plannerItemId: item.id,
@@ -169,6 +175,8 @@ export function buildCalendarBlocksFromCatalog(
             scheduleTypeByCrn.get(m.sectionCrn) ?? null,
           ),
           meetingScheduleType: m.meetingScheduleType ?? null,
+          likelyExam: examMatch != null,
+          likelyExamLabel: examMatch?.likelyExamLabel ?? null,
         });
       }
     }

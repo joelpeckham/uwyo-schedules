@@ -45,6 +45,8 @@ async function PrintBody({
             linkedBundles: [],
             linkedBundleMembers: [],
             facultyByCrn: {},
+            examReservationsByCrn: {},
+            vagueExamNoteByCrn: {},
           },
         };
 

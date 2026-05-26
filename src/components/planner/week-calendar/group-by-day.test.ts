@@ -27,6 +27,8 @@ function block(dayIndex: number, key: string): CalendarBlock {
     subject: "X",
     courseNumber: "0000",
     meetingScheduleType: null,
+    likelyExam: false,
+    likelyExamLabel: null,
   };
 }
 

@@ -35,6 +35,8 @@ const emptyCatalog: PlannerCatalogJson = {
   linkedBundles: [],
   linkedBundleMembers: [],
   facultyByCrn: {},
+  examReservationsByCrn: {},
+  vagueExamNoteByCrn: {},
 };
 
 async function PlannerBody({

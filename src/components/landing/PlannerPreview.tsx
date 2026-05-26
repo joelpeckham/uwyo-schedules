@@ -28,6 +28,8 @@ function block(
     courseNumber: partial.courseNumber ?? "",
     sectionScheduleTypeKey: partial.sectionScheduleTypeKey ?? "lecture",
     meetingScheduleType: partial.meetingScheduleType ?? null,
+    likelyExam: partial.likelyExam ?? false,
+    likelyExamLabel: partial.likelyExamLabel ?? null,
     ...partial,
   };
 }

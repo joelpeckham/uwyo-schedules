@@ -583,7 +583,14 @@ async function getSectionDetailForSeoInner(
     sequenceNumber: row.sequenceNumber ?? null,
     courseTitle: row.courseTitle ?? null,
     scheduleTypeDescription: row.scheduleTypeDescription ?? null,
-    detailRoot: sanitizeSectionRawJson(row.rawJson),
+    detailRoot: (() => {
+      const root = sanitizeSectionRawJson(row.rawJson) ?? {};
+      if (row.courseDescription) root.courseDescription = row.courseDescription;
+      if (row.sectionInformationText) {
+        root.sectionInformationText = row.sectionInformationText;
+      }
+      return root;
+    })(),
     facultyNames,
   };
 }

@@ -287,4 +287,26 @@ export class BannerSsbClient {
       );
     }
   }
+
+  /** HTML fragment with course description and optional section information text. */
+  async getCourseDescriptionHtml(
+    termCode: string,
+    crn: string,
+  ): Promise<string> {
+    const qs = new URLSearchParams({
+      term: termCode,
+      courseReferenceNumber: crn,
+    });
+    const url = this.pathUrl(`/searchResults/getCourseDescription?${qs}`);
+    const res = await this.rawFetch(url, {
+      method: "GET",
+      headers: this.xhrHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(
+        `Banner getCourseDescription ${crn}: HTTP ${res.status}`,
+      );
+    }
+    return res.text();
+  }
 }

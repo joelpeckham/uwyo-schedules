@@ -34,6 +34,8 @@ export const SECTION_DETAIL_TOP_KEYS = new Set([
   "isSectionLinked",
   "linkIdentifier",
   "openSection",
+  "courseDescription",
+  "sectionInformationText",
   "faculty",
   "meetingsFaculty",
   "sectionAttributes",

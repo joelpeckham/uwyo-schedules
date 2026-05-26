@@ -22,3 +22,9 @@ export function calendarSecondaryTier(
   if (heightPx < 44) return "one";
   return "both";
 }
+
+/** Extra bottom padding inside a block when the likely-exam footer strip is shown. */
+export function likelyExamFooterPaddingPx(heightPx: number): number {
+  if (heightPx < 20) return Math.max(2, Math.round(heightPx * 0.35));
+  return Math.min(14, Math.max(10, Math.round(heightPx * 0.22)));
+}

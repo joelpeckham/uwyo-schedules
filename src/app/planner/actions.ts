@@ -59,6 +59,7 @@ import {
   type PlannerTimePrefsV1,
 } from "@/lib/planner/time-prefs";
 import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
+import { ensureSectionDescriptions } from "@/lib/planner/ensure-section-descriptions";
 import { sanitizeSectionRawJson } from "@/lib/planner/section-detail-sanitize";
 import { parseSectionPinsJson } from "@/lib/planner/section-pins";
 import { normalizeScheduleTypeKey } from "@/lib/planner/swap-helpers";
@@ -353,6 +354,7 @@ export async function getSectionDetailAction(
     return null;
   }
   const db = createDb();
+  await ensureSectionDescriptions(db, termCode, [crn]);
   const r = await getSectionDetail(db, termCode, crn);
   if (!r) return null;
   const title =
@@ -363,7 +365,14 @@ export async function getSectionDetailAction(
     ]
       .filter(Boolean)
       .join(" · ") || `CRN ${crn}`;
-  return { rawJson: sanitizeSectionRawJson(r.rawJson), title };
+  const sanitized = sanitizeSectionRawJson(r.rawJson) ?? {};
+  if (r.courseDescription) {
+    sanitized.courseDescription = r.courseDescription;
+  }
+  if (r.sectionInformationText) {
+    sanitized.sectionInformationText = r.sectionInformationText;
+  }
+  return { rawJson: sanitized, title };
 }
 
 /** Full planner rows + catalog for client-side derivation (calendar, swap). */

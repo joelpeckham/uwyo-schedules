@@ -6,10 +6,15 @@ import type { PlannerCatalogJson } from "./client/catalog-types";
 import type { PlannerItemRow } from "./data";
 import { listPlannerItems } from "./data";
 import {
+  ensureSectionDescriptions,
+  loadSectionInformationByCrn,
+} from "./ensure-section-descriptions";
+import {
   loadOrderedMembersForBundleIds,
   type PlannerItemSelection,
   resolveDisplayCrnsWithMemberMap,
 } from "./resolve-display-crns";
+import { parseExamReservations } from "@/lib/sections/parse-exam-reservations";
 
 export type PlannerTermUiStateRow = typeof schema.plannerTermUiState.$inferSelect;
 
@@ -60,6 +65,8 @@ export async function loadPlannerCatalogBootstrap(
         linkedBundles: [],
         linkedBundleMembers: [],
         facultyByCrn: {},
+        examReservationsByCrn: {},
+        vagueExamNoteByCrn: {},
       },
       termUiState,
     };
@@ -345,6 +352,32 @@ export async function loadPlannerCatalogBootstrap(
     facultyByCrn[crn] = names.join(", ");
   }
 
+  const meetingCrnListForDesc = [...allCrns];
+  try {
+    await ensureSectionDescriptions(db, termCode, meetingCrnListForDesc);
+  } catch (err) {
+    console.error("loadPlannerCatalogBootstrap: section descriptions fetch failed", err);
+  }
+  const sectionInfoByCrn = await loadSectionInformationByCrn(
+    db,
+    termCode,
+    meetingCrnListForDesc,
+  );
+
+  const examReservationsByCrn: PlannerCatalogJson["examReservationsByCrn"] =
+    {};
+  const vagueExamNoteByCrn: PlannerCatalogJson["vagueExamNoteByCrn"] = {};
+  for (const crn of meetingCrnListForDesc) {
+    const text = sectionInfoByCrn.get(crn) ?? null;
+    const { reservations, vagueExamNote } = parseExamReservations(text);
+    if (reservations.length > 0) {
+      examReservationsByCrn[crn] = reservations;
+    }
+    if (vagueExamNote && text) {
+      vagueExamNoteByCrn[crn] = text;
+    }
+  }
+
   return {
     plannerItems,
     catalog: {
@@ -353,6 +386,8 @@ export async function loadPlannerCatalogBootstrap(
       linkedBundles,
       linkedBundleMembers,
       facultyByCrn,
+      examReservationsByCrn,
+      vagueExamNoteByCrn,
     },
     termUiState,
   };
