@@ -47,21 +47,15 @@ import {
   SNAP_MAX_DIST_PX,
 } from "./week-calendar/interaction";
 import { ScheduleHelpDialog } from "./week-calendar/schedule-help-dialog";
-import { FirstRunTourSlot } from "./week-calendar/FirstRunTourSlot";
+import { WeekCalendarToolbar } from "./week-calendar/WeekCalendarToolbar";
 import {
   groupBlackoutsByDay,
   groupSwapGhostsByDay,
 } from "./week-calendar/group-by-day";
 import { useViewportHourSizing } from "./week-calendar/use-viewport-hour-sizing";
 import { useWeekViewportGestures } from "./week-calendar/use-week-viewport-gestures";
-import {
-  PLANNER_GRID_MIN_WIDTH_REM,
-  PLANNER_WEEK_VIEWPORT_HEIGHT,
-} from "./week-calendar/constants";
-import {
-  isPlannerWeekendDayMuted,
-  plannerGridDayIndices,
-} from "./week-calendar/visible-days";
+import { PLANNER_WEEK_VIEWPORT_HEIGHT } from "./week-calendar/constants";
+import { visibleDayIndicesMerged } from "./week-calendar/visible-days";
 import {
   applyCourseDragFloatStyle,
   courseDragSnapKey,
@@ -164,10 +158,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     courseDragSessionRef.current = courseDragSession;
   }, [courseDragSession]);
 
-  const visibleDayIndices = plannerGridDayIndices();
-  const isDayMuted = useCallback(
-    (dayIndex: number) =>
-      isPlannerWeekendDayMuted(dayIndex, blocks, blackouts.items),
+  const visibleDayIndices = useMemo(
+    () => visibleDayIndicesMerged(blocks, blackouts.items),
     [blocks, blackouts.items],
   );
   const blackoutsByDay = useMemo(
@@ -181,8 +173,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       ),
     [courseDragSession],
   );
-  const gridMinWidthRem = PLANNER_GRID_MIN_WIDTH_REM;
-
   const hScrollRef = useRef<HTMLDivElement | null>(null);
   const weekHeaderRef = useRef<HTMLDivElement | null>(null);
 
@@ -999,29 +989,26 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       onClearSwapError={() => setSwapError(null)}
       isRecalculatingSolutions={isRecalculatingSolutions}
       toolbar={
-      <div className="border-b border-border p-3 sm:p-4" id="planner-week-calendar-toolbar">
-        <FirstRunTourSlot plannerItemCount={plannerItems.length} />
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h2
-              id="planner-week-calendar-heading"
-              className="font-heading min-w-0 text-lg font-medium text-foreground"
-            >
-              Weekly schedule
-            </h2>
-            <CreditHoursPill />
-            <TimePrefsBadge />
-          </div>
-          <div className="flex w-full min-w-0 flex-1 flex-wrap items-center justify-end gap-2 md:gap-x-3 md:gap-y-2">
-            <ExportMenu />
-            <div className="flex min-w-0 items-center gap-1">
+        <WeekCalendarToolbar
+          plannerItemCount={plannerItems.length}
+          meta={
+            <>
+              <CreditHoursPill />
+              <TimePrefsBadge />
+            </>
+          }
+          exportSlot={<ExportMenu />}
+          actions={
+            <>
               <Button
                 type="button"
                 variant={markBusyMode ? "default" : "outline"}
                 size="sm"
                 className="h-9 touch-manipulation"
                 aria-pressed={markBusyMode}
-                aria-label={markBusyMode ? "Stop marking busy time" : "Mark busy time"}
+                aria-label={
+                  markBusyMode ? "Stop marking busy time" : "Mark busy time"
+                }
                 onClick={() => {
                   setMarkBusyMode((v) => !v);
                   blackoutDragRef.current = null;
@@ -1052,14 +1039,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
                 <ZoomIn className="size-4" aria-hidden />
               </Button>
               <ScheduleHelpDialog />
-            </div>
-          </div>
-        </div>
-        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          Copy / export gives you the week as CRNs, an .ics file, or a print
-          view. Use the CRNs to register in WyoWeb.
-        </p>
-      </div>
+            </>
+          }
+        />
       }
       noSchedulesHelp={showNoSchedulesHelp ? (
         <div className="border-b border-border bg-muted/20 p-3 sm:p-4">
@@ -1188,9 +1170,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         dragFloatRef={dragFloatElRef}
         blocks={blocks}
         visibleDayIndices={visibleDayIndices}
-        isDayMuted={isDayMuted}
         rowPx={rowPx}
-        gridMinWidthRem={gridMinWidthRem}
         weekHeaderRef={weekHeaderRef}
         viewportRef={viewportRef}
         dayStripRef={dayStripRef}

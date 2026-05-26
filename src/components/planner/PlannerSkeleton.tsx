@@ -24,7 +24,7 @@ export function PlannerSkeleton() {
             <div className="h-4 w-full max-w-prose rounded bg-muted/70" />
           </div>
           <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
-            <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:z-1 lg:max-h-[min(100vh-2rem,56rem)] lg:self-start lg:overflow-y-auto">
+            <div className="min-w-0 space-y-4">
               <div className="h-10 rounded-lg border border-dashed border-border bg-muted/30" />
               <div className="h-32 rounded-lg border border-dashed border-border bg-muted/20" />
               <div className="h-32 rounded-lg border border-dashed border-border bg-muted/20" />

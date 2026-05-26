@@ -112,7 +112,7 @@ export function HomePlanner({
               }
             >
               <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
-                <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:z-1 lg:max-h-[min(100vh-2rem,56rem)] lg:self-start lg:overflow-y-auto">
+                <div className="min-w-0 space-y-4">
                   <CourseManager key={termCode} termCode={termCode} />
                   <FiltersCard />
                 </div>
@@ -150,13 +150,16 @@ function PlannerCalendarColumn({
   const { plannerItems } = usePlannerData();
   const offGridRows = useNotOnGridRailRows();
 
+  const showEmptyHero = plannerItems.length === 0;
+  const showOffGridRail = offGridRows.length > 0;
+
   return (
-    <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
-      <PlannerCollapsibleSlot show={plannerItems.length === 0}>
+    <div className="mt-6 flex min-w-0 flex-col lg:mt-0">
+      <PlannerCollapsibleSlot show={showEmptyHero} className={showEmptyHero ? "mb-4" : undefined}>
         <PlannerEmptyHero termCode={termCode} />
       </PlannerCollapsibleSlot>
       <WeekCalendar onBlockActivate={onBlockActivate} />
-      <PlannerCollapsibleSlot show={offGridRows.length > 0}>
+      <PlannerCollapsibleSlot show={showOffGridRail} className={showOffGridRail ? "mt-4" : undefined}>
         <NotOnGridRail onCrnActivate={onCrnActivate} />
       </PlannerCollapsibleSlot>
     </div>

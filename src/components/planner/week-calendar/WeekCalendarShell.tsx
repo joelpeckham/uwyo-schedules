@@ -43,8 +43,8 @@ export function WeekCalendarShell({
       aria-labelledby="planner-week-calendar-heading"
     >
       <p className="sr-only">
-        Week view shows Monday through Sunday. Empty weekend columns are shown
-        faded until a course or busy time uses that day.
+        Week view shows Monday through Friday by default. Saturday and Sunday
+        appear when a course or busy time uses those days.
       </p>
       <WeekCalendarAlertSlot
         syncError={syncError}

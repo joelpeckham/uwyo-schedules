@@ -11,11 +11,11 @@ const PLANNER_WEEK_VIEWPORT_MAX_PX = 640;
 export const MIN_HOUR_ROW_PX = 44;
 export const MAX_HOUR_ROW_PX = 140;
 
-/** Interactive planner always renders Mon–Sun (no column-count reflow). */
-export const PLANNER_GRID_DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
+/** Default week grid columns (Mon–Fri); weekends added when content needs them. */
+export const PLANNER_WEEKDAY_DAY_INDICES = [0, 1, 2, 3, 4] as const;
 
-/** Min width of the 7-column week grid in rem (hour axis + 7 × 4.5rem). */
-export const PLANNER_GRID_MIN_WIDTH_REM = 40.5;
+/** Min width of the weekday grid in rem (hour axis 3.5 + 5 × 4.5rem). */
+export const PLANNER_WEEKDAY_GRID_MIN_WIDTH_REM = 26;
 
 /**
  * Estimates the scroll viewport height in px (same as CSS `min(72vh, 40rem)`).

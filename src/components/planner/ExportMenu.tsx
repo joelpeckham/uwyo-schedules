@@ -123,7 +123,7 @@ export function ExportMenu() {
   }, [plannerItems, termCode, blackouts, timePrefs, flash]);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -183,7 +183,7 @@ export function ExportMenu() {
       {status !== "idle" ? (
         <span
           className={cn(
-            "inline-flex min-w-0 items-center gap-1.5 text-xs",
+            "flex w-full min-w-0 items-center gap-1.5 text-xs",
             status === "ok" ? "text-muted-foreground" : "text-destructive",
           )}
           aria-live="polite"
