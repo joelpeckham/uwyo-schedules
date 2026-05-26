@@ -153,4 +153,69 @@ describe("buildCalendarBlocksFromCatalog", () => {
     expect(thursday?.likelyExam).toBe(true);
     expect(thursday?.likelyExamLabel).toBe("Likely Exam");
   });
+
+  it("marks pattern-inferred exam blocks when section info has no reservation", () => {
+    const catalog: PlannerCatalogJson = {
+      ...minimalCatalog,
+      meetings: [
+        {
+          id: 20,
+          sectionCrn: "10001",
+          beginTime: "0900",
+          endTime: "0950",
+          meetingScheduleType: "LEC",
+          monday: true,
+          tuesday: false,
+          wednesday: true,
+          thursday: false,
+          friday: true,
+          saturday: false,
+          sunday: false,
+          building: null,
+          buildingDescription: null,
+          room: null,
+          startDate: null,
+          endDate: null,
+        },
+        {
+          id: 21,
+          sectionCrn: "10001",
+          beginTime: "1710",
+          endTime: "1900",
+          meetingScheduleType: "LEC",
+          monday: false,
+          tuesday: true,
+          wednesday: false,
+          thursday: false,
+          friday: false,
+          saturday: false,
+          sunday: false,
+          building: null,
+          buildingDescription: null,
+          room: null,
+          startDate: null,
+          endDate: null,
+        },
+      ],
+      examReservationsByCrn: {},
+      vagueExamNoteByCrn: {},
+    };
+    const items = [
+      {
+        id: 1,
+        selectionKind: "single_crn",
+        anchorCrn: "10001",
+        linkedBundleId: null,
+        subject: "MICR",
+        courseNumber: "2021",
+        displayColor: "#000",
+      },
+    ] as unknown as PlannerItemRow[];
+    const blocks = buildCalendarBlocksFromCatalog(items, catalog);
+    const tuesday = blocks.find((b) => b.dayIndex === 1);
+    expect(tuesday?.likelyExam).toBe(true);
+    expect(tuesday?.likelyExamInferenceSource).toBe("pattern");
+    const monday = blocks.find((b) => b.dayIndex === 0);
+    expect(monday?.likelyExam).toBe(false);
+  });
 });

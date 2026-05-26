@@ -35,6 +35,18 @@ describe("parseExamReservations", () => {
     expect(reservations[0]?.endMinutes).toBe(19 * 60);
   });
 
+  it("parses CHEM 1020 Wednesday reservation in full section information", () => {
+    const { reservations, vagueExamNote } = parseExamReservations(
+      "Students must enroll in a laboratory (Sections 13A - 13H) and discussion (23A - 23H). Wednesdays 5-7 pm are reserved for exams. Labs begin September 4. Students who have not attended lab on September 4 may be administratively dropped from the course. Prerequisites required: ACT Math score of 23 or successful completion of or concurrent enrollment in MATH 1400, 1405, or 1450. Students not meeting prerequisites will be dropped.",
+    );
+    expect(vagueExamNote).toBe(false);
+    expect(reservations).toHaveLength(1);
+    expect(reservations[0]?.days).toEqual([2]);
+    expect(reservations[0]?.startMinutes).toBe(17 * 60);
+    expect(reservations[0]?.endMinutes).toBe(19 * 60);
+    expect(reservations[0]?.kind).toBe("exam");
+  });
+
   it("flags vague exam notes without a parseable slot", () => {
     const { reservations, vagueExamNote } = parseExamReservations(
       "Evening exams will be scheduled.",

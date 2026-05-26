@@ -8,7 +8,7 @@ import {
   normalizeMeetingScheduleType,
   normalizeScheduleTypeKey,
 } from "../swap-helpers";
-import { matchExamMeeting } from "@/lib/sections/match-exam-meeting";
+import { resolveLikelyExamMatch } from "@/lib/sections/match-exam-meeting";
 import type {
   ClientCatalogSection,
   ClientLinkedBundleMemberRow,
@@ -120,6 +120,13 @@ export function buildCalendarBlocksFromCatalog(
   const windowStart = CALENDAR_START_HOUR * 60;
   const windowEnd = windowStart + CALENDAR_HOUR_COUNT * 60;
 
+  const meetingsByCrn = new Map<string, typeof catalog.meetings>();
+  for (const m of catalog.meetings) {
+    const list = meetingsByCrn.get(m.sectionCrn) ?? [];
+    list.push(m);
+    meetingsByCrn.set(m.sectionCrn, list);
+  }
+
   const blocks: CalendarBlock[] = [];
   for (const item of items) {
     const itemCrns = new Set(crnsByItemId.get(item.id) ?? []);
@@ -153,7 +160,13 @@ export function buildCalendarBlocksFromCatalog(
 
         const reservations =
           catalog.examReservationsByCrn[m.sectionCrn] ?? [];
-        const examMatch = matchExamMeeting(m, dayIndex, reservations);
+        const sectionMeetings = meetingsByCrn.get(m.sectionCrn) ?? [];
+        const examMatch = resolveLikelyExamMatch(
+          m,
+          dayIndex,
+          reservations,
+          sectionMeetings,
+        );
 
         blocks.push({
           key: `${item.id}-${m.id}-${field}`,
@@ -177,6 +190,7 @@ export function buildCalendarBlocksFromCatalog(
           meetingScheduleType: m.meetingScheduleType ?? null,
           likelyExam: examMatch != null,
           likelyExamLabel: examMatch?.likelyExamLabel ?? null,
+          likelyExamInferenceSource: examMatch?.inferenceSource ?? null,
         });
       }
     }

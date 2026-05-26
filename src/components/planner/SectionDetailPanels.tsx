@@ -17,6 +17,7 @@ import {
 } from "@/lib/sections/delivery-mode";
 import {
   LIKELY_EXAM_DISCLOSURE,
+  LIKELY_EXAM_PATTERN_DISCLOSURE,
   LIKELY_EXAM_SECTION_INFO_NOTE,
   parseExamReservations,
 } from "@/lib/sections/parse-exam-reservations";
@@ -191,6 +192,21 @@ export function SectionDetailPanels({ root }: Props) {
   const primaryFac =
     facultyFiltered.find((f) => f.primary) ?? facultyFiltered[0];
 
+  const sectionMeetings = asRecordArray(root.meetingsFaculty)
+    .map((m) => asRecord(m.meetingTime))
+    .filter((mt): mt is Record<string, unknown> => mt != null)
+    .map((mt) => ({
+      beginTime: stringField(mt, "beginTime") ?? null,
+      endTime: stringField(mt, "endTime") ?? null,
+      monday: booleanField(mt, "monday") ?? null,
+      tuesday: booleanField(mt, "tuesday") ?? null,
+      wednesday: booleanField(mt, "wednesday") ?? null,
+      thursday: booleanField(mt, "thursday") ?? null,
+      friday: booleanField(mt, "friday") ?? null,
+      saturday: booleanField(mt, "saturday") ?? null,
+      sunday: booleanField(mt, "sunday") ?? null,
+    }));
+
   const meetingBlocks = asRecordArray(root.meetingsFaculty).map((m, i) => {
     const mt = asRecord(m.meetingTime);
     const days = formatMeetingDays(mt ?? undefined);
@@ -218,7 +234,7 @@ export function SectionDetailPanels({ root }: Props) {
       stringField(mt ?? {}, "meetingType");
     const scheduleCode = stringField(mt ?? {}, "meetingScheduleType");
     const examMatch =
-      mt && parsedExamHints.reservations.length > 0
+      mt
         ? likelyExamNoteForMeeting(
             {
               beginTime: stringField(mt, "beginTime") ?? null,
@@ -232,6 +248,7 @@ export function SectionDetailPanels({ root }: Props) {
               sunday: booleanField(mt, "sunday") ?? null,
             },
             parsedExamHints.reservations,
+            sectionMeetings,
           )
         : null;
     return {
@@ -530,7 +547,9 @@ export function SectionDetailPanels({ root }: Props) {
                 {firstMeeting.examMatch ? (
                   <p className="text-xs font-medium text-primary">
                     {firstMeeting.examMatch.likelyExamLabel} ·{" "}
-                    {LIKELY_EXAM_DISCLOSURE}
+                    {firstMeeting.examMatch.inferenceSource === "pattern"
+                      ? LIKELY_EXAM_PATTERN_DISCLOSURE
+                      : LIKELY_EXAM_DISCLOSURE}
                   </p>
                 ) : null}
                 {moreMeetings > 0 ? (
@@ -574,7 +593,10 @@ export function SectionDetailPanels({ root }: Props) {
                       ) : null}
                       {m.examMatch ? (
                         <p className="mt-1 text-xs font-medium text-primary">
-                          {m.examMatch.likelyExamLabel} · {LIKELY_EXAM_DISCLOSURE}
+                          {m.examMatch.likelyExamLabel} ·{" "}
+                          {m.examMatch.inferenceSource === "pattern"
+                            ? LIKELY_EXAM_PATTERN_DISCLOSURE
+                            : LIKELY_EXAM_DISCLOSURE}
                         </p>
                       ) : null}
                     </li>

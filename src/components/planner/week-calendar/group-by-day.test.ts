@@ -29,6 +29,7 @@ function block(dayIndex: number, key: string): CalendarBlock {
     meetingScheduleType: null,
     likelyExam: false,
     likelyExamLabel: null,
+    likelyExamInferenceSource: null,
   };
 }
 

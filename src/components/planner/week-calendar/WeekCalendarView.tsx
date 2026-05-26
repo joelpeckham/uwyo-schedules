@@ -21,6 +21,7 @@ import { groupBlocksByDay } from "./group-by-day";
 import type { CalendarBlock } from "@/lib/planner/data";
 import {
   LIKELY_EXAM_DISCLOSURE,
+  LIKELY_EXAM_PATTERN_DISCLOSURE,
   likelyExamShortLabel,
 } from "@/lib/sections/parse-exam-reservations";
 import { cn } from "@/lib/utils";
@@ -231,7 +232,11 @@ export function WeekCalendarView({
                       instRaw && seatChip
                         ? `${instRaw} · ${seatChip}`
                         : instRaw || seatChip;
-                    const examNote = b.likelyExam ? LIKELY_EXAM_DISCLOSURE : "";
+                    const examNote = b.likelyExam
+                      ? b.likelyExamInferenceSource === "pattern"
+                        ? LIKELY_EXAM_PATTERN_DISCLOSURE
+                        : LIKELY_EXAM_DISCLOSURE
+                      : "";
                     const examShort =
                       b.likelyExam && b.likelyExamLabel
                         ? b.likelyExamLabel
@@ -322,7 +327,7 @@ export function WeekCalendarView({
                           <span
                             className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] truncate border-t border-primary/30 bg-card/95 px-1 py-px text-center font-mono font-medium leading-tight text-primary"
                             style={{ fontSize: Math.max(7, secondaryPx) }}
-                            title={LIKELY_EXAM_DISCLOSURE}
+                            title={examNote}
                           >
                             {examShort}
                           </span>

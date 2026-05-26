@@ -51,6 +51,8 @@ export type CalendarBlock = {
   likelyExam: boolean;
   /** Short label for likely exam blocks, e.g. "Likely midterm". */
   likelyExamLabel: string | null;
+  /** How the likely exam was inferred, when flagged. */
+  likelyExamInferenceSource: "text" | "pattern" | null;
 };
 
 /** One clipped meeting rectangle for same-type swap ghosts (other sections). */

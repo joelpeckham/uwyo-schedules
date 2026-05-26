@@ -30,6 +30,7 @@ function block(
     meetingScheduleType: partial.meetingScheduleType ?? null,
     likelyExam: partial.likelyExam ?? false,
     likelyExamLabel: partial.likelyExamLabel ?? null,
+    likelyExamInferenceSource: partial.likelyExamInferenceSource ?? null,
     ...partial,
   };
 }

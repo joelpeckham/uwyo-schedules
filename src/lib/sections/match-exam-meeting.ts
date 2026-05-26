@@ -1,4 +1,5 @@
 import { bannerClockToMinutes } from "@/lib/planner/banner-time";
+import { guessExamFromSchedulePattern } from "./guess-exam-from-schedule-pattern";
 import type { ExamReservation } from "./parse-exam-reservations";
 import { likelyExamShortLabel } from "./parse-exam-reservations";
 
@@ -26,6 +27,8 @@ export type ExamMeetingMatch = {
   likelyExam: true;
   likelyExamLabel: string;
   reservation: ExamReservation;
+  /** How the likely exam was inferred; omitted for legacy text-only matches. */
+  inferenceSource?: "text" | "pattern";
 };
 
 const TIME_TOLERANCE_MIN = 5;
@@ -79,6 +82,7 @@ export function matchExamMeeting(
         return {
           likelyExam: true,
           likelyExamLabel: likelyExamShortLabel(reservation.kind),
+          inferenceSource: "text",
           reservation,
         };
       }
@@ -90,6 +94,7 @@ export function matchExamMeeting(
         return {
           likelyExam: true,
           likelyExamLabel: likelyExamShortLabel(reservation.kind),
+          inferenceSource: "text",
           reservation,
         };
       }
@@ -100,6 +105,7 @@ export function matchExamMeeting(
       return {
         likelyExam: true,
         likelyExamLabel: likelyExamShortLabel(reservation.kind),
+        inferenceSource: "text",
         reservation,
       };
     }
@@ -108,16 +114,48 @@ export function matchExamMeeting(
   return null;
 }
 
-/** True if any active day on this meeting overlaps a reservation. */
+/** Text reservation match first, then schedule-pattern fallback. */
+export function resolveLikelyExamMatch(
+  meeting: MeetingDayFlags & {
+    beginTime: string | null;
+    endTime: string | null;
+  },
+  dayIndex: number,
+  reservations: ExamReservation[],
+  sectionMeetings: Array<
+    MeetingDayFlags & {
+      beginTime: string | null;
+      endTime: string | null;
+    }
+  >,
+): ExamMeetingMatch | null {
+  const textMatch = matchExamMeeting(meeting, dayIndex, reservations);
+  if (textMatch) return textMatch;
+  return guessExamFromSchedulePattern(sectionMeetings, meeting, dayIndex);
+}
+
+/** True if any active day on this meeting is a likely exam. */
 export function likelyExamNoteForMeeting(
   meeting: MeetingDayFlags & {
     beginTime: string | null;
     endTime: string | null;
   },
   reservations: ExamReservation[],
+  sectionMeetings?: Array<
+    MeetingDayFlags & {
+      beginTime: string | null;
+      endTime: string | null;
+    }
+  >,
 ): ExamMeetingMatch | null {
+  const meetings = sectionMeetings ?? [meeting];
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-    const match = matchExamMeeting(meeting, dayIndex, reservations);
+    const match = resolveLikelyExamMatch(
+      meeting,
+      dayIndex,
+      reservations,
+      meetings,
+    );
     if (match) return match;
   }
   return null;

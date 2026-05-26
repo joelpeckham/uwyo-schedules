@@ -49,8 +49,9 @@ export function parseExamReservations(
   const reservations: ExamReservation[] = [];
 
   // Tuesday 5:10-6:50 pm reserved for midterm exams
+  // CHEM1020: Wednesdays 5-7 pm are reserved for exams.
   const reservedForRe =
-    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)\b[^.]{0,80}?(\d{1,2}(?::\d{2})?)\s*(?:-|–|to)\s*(\d{1,2}(?::\d{2})?)\s*(am|pm)?[^.]{0,40}?\b(?:midterm|final|exam)/gi;
+    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)s?\b[^.]{0,80}?(\d{1,2}(?::\d{2})?)\s*(?:-|–|to)\s*(\d{1,2}(?::\d{2})?)\s*(am|pm)?[^.]{0,40}?\b(?:midterms?|finals?|exams?)/gi;
   for (const m of raw.matchAll(reservedForRe)) {
     pushReservation(
       reservations,
@@ -168,6 +169,10 @@ export function likelyExamShortLabel(kind: ExamReservationKind): string {
 /** Tooltip and detail copy — explains the guess is from catalog prose. */
 export const LIKELY_EXAM_DISCLOSURE =
   "Likely exam time based on course description";
+
+/** Tooltip when inferred from MWF/TR + extra-long odd meeting pattern. */
+export const LIKELY_EXAM_PATTERN_DISCLOSURE =
+  "Likely exam time based on an extra-long meeting outside the regular MWF/TR schedule";
 
 /** Section detail card when we parsed a reserved slot from section information text. */
 export const LIKELY_EXAM_SECTION_INFO_NOTE =
