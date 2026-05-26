@@ -6,7 +6,7 @@ const MWF_DAYS = [0, 2, 4] as const;
 const TR_DAYS = [1, 3] as const;
 const LONG_MEETING_MIN = 90;
 
-export const PATTERN_EXAM_SOURCE_TEXT =
+const PATTERN_EXAM_SOURCE_TEXT =
   "Inferred from schedule pattern (extra-long meeting outside MWF/TR)";
 
 type TimedMeeting = MeetingDayFlags & {

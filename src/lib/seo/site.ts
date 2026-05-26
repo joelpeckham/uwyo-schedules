@@ -20,6 +20,3 @@ export const SITE_DESCRIPTION =
 /** Short form for Twitter cards, the web manifest, and other tight slots. */
 export const SITE_DESCRIPTION_SHORT =
   "Plan your University of Wyoming class schedule. The planner keeps a conflict-free week in sync as you add courses, set preferences, and mark busy times.";
-
-/** One-line tagline used on hero, OG image, and the design system doc. */
-export const SITE_TAGLINE = "From course list to class schedule.";

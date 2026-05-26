@@ -28,7 +28,7 @@ export type SharePinV1 = {
   lbid: number | null;
 };
 
-export type ShareStateV1 = {
+type ShareStateV1 = {
   v: 1;
   t: string;
   pins: SharePinV1[];
@@ -57,7 +57,7 @@ function fromBase64Url(s: string): string {
   return Buffer.from(padded + pad, "base64").toString("utf8");
 }
 
-export type ShareInput = {
+type ShareInput = {
   termCode: string;
   pins: SharePinV1[];
   blackouts: PlannerBlackoutsDocV1;

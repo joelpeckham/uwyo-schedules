@@ -111,7 +111,7 @@ function normalizeDate(raw: string | null | undefined): string | null {
   return null;
 }
 
-export type IcsBuildInput = {
+type IcsBuildInput = {
   termCode: string;
   items: PlannerItemRow[];
   catalog: PlannerCatalogJson;

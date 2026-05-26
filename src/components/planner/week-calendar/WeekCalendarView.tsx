@@ -26,7 +26,7 @@ import {
 } from "@/lib/sections/parse-exam-reservations";
 import { cn } from "@/lib/utils";
 
-export type WeekCalendarLayout = {
+type WeekCalendarLayout = {
   /** First minute of the visible day (e.g. 4 a.m. = 240). */
   startMin: number;
   /** Total minutes rendered (= hourCount * 60). */
@@ -35,7 +35,7 @@ export type WeekCalendarLayout = {
   gridHeightPx: number;
 };
 
-export type CalendarBlockLayout = {
+type CalendarBlockLayout = {
   block: CalendarBlock;
   topPx: number;
   heightPx: number;
@@ -50,7 +50,7 @@ type DivPointerHandlers = Pick<
   | "onKeyDown"
 >;
 
-export type WeekCalendarViewProps = {
+type WeekCalendarViewProps = {
   blocks: readonly CalendarBlock[];
   visibleDayIndices: readonly number[];
   rowPx: number;

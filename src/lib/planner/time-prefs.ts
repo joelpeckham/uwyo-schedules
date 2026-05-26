@@ -74,10 +74,6 @@ export function stableTimePrefsJsonForDb(doc: PlannerTimePrefsV1): unknown {
   return out;
 }
 
-export function timePrefsHasAny(p: PlannerTimePrefsV1): boolean {
-  return Boolean(p.noFridays || p.noBefore != null || p.noAfter != null || p.protectLunch);
-}
-
 export function activeTimePrefsCount(p: PlannerTimePrefsV1): number {
   let n = 0;
   if (p.noFridays) n++;

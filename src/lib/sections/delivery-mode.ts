@@ -21,7 +21,7 @@ export type DeliveryMode =
   | "hybrid"
   | "tba";
 
-export type DeliveryClassifyInput = {
+type DeliveryClassifyInput = {
   instructionalMethod: string | null | undefined;
   instructionalMethodDescription: string | null | undefined;
   hasTimedMeetings: boolean;
@@ -96,13 +96,13 @@ export function deliveryModeLabel(mode: DeliveryMode): string | null {
   }
 }
 
-export type DeliverySectionRow = {
+type DeliverySectionRow = {
   crn: string;
   instructionalMethod: string | null | undefined;
   instructionalMethodDescription: string | null | undefined;
 };
 
-export type DeliveryMeetingRow = Parameters<typeof meetingHasTimeBlock>[0] & {
+type DeliveryMeetingRow = Parameters<typeof meetingHasTimeBlock>[0] & {
   sectionCrn: string;
 };
 
@@ -128,7 +128,7 @@ export function buildDeliveryModeByCrn(
   return out;
 }
 
-export type ScheduleDeliveryFilters = {
+type ScheduleDeliveryFilters = {
   excludeTba: boolean;
   excludeOnlineAsync: boolean;
 };

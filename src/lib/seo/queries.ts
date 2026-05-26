@@ -524,7 +524,7 @@ export async function listSectionTableRowsForCourseTermForSeo(
   return listSectionTableRowsForCourseTerm(db, termCode, subject, courseNumber);
 }
 
-export type SectionSeoDetail = {
+type SectionSeoDetail = {
   termCode: string;
   termDescription: string | null;
   crn: string;

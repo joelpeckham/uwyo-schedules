@@ -19,9 +19,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { track } from "@/lib/analytics/track";
-import { CALENDAR_HOUR_AXIS, DAY_LABELS } from "./axis-constants";
-
-export { CALENDAR_HOUR_AXIS, DAY_LABELS };
 
 export const GESTURE_TIP_STORAGE_KEY = "uwyo.planner.weekCalTipDismissed";
 

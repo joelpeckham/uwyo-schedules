@@ -47,9 +47,19 @@ test.describe("Planner interactions", () => {
       "Calendar toolbar requires term data and loaded WeekCalendar chunk",
     );
 
-    await markBusy.click();
-    await expect(markBusy).toHaveAttribute("aria-pressed", "true");
-    await markBusy.click();
+    // WeekCalendar is dynamically imported; the toolbar can paint before handlers attach.
+    await expect(async () => {
+      await markBusy.click();
+      await expect(
+        page.getByRole("button", { name: /^Stop marking busy time$/ }),
+      ).toBeVisible({ timeout: 500 });
+    }).toPass({ timeout: 15_000 });
+
+    const stopMarking = page.getByRole("button", {
+      name: /^Stop marking busy time$/,
+    });
+    await expect(stopMarking).toHaveAttribute("aria-pressed", "true");
+    await stopMarking.click();
     await expect(markBusy).toHaveAttribute("aria-pressed", "false");
   });
 });

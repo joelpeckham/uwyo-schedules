@@ -1,6 +1,6 @@
 import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 
-export type ParsedCourseDescription = {
+type ParsedCourseDescription = {
   courseDescription: string | null;
   sectionInformationText: string | null;
 };

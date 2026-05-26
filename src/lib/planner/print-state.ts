@@ -10,7 +10,7 @@
 import type { PlannerItemRow } from "./data";
 import type { ResolvedPlannerSelection } from "./resolve-display-crns-shared";
 
-export type PrintSelectionRowV1 = {
+type PrintSelectionRowV1 = {
   id: number;
   /** `s` = single_crn, `l` = linked_bundle */
   k: "s" | "l";
@@ -18,7 +18,7 @@ export type PrintSelectionRowV1 = {
   b?: number;
 };
 
-export type PrintSelectionsDocV1 = {
+type PrintSelectionsDocV1 = {
   v: 1;
   s: PrintSelectionRowV1[];
 };
@@ -42,21 +42,6 @@ function fromBase64Url(s: string): string {
     return decodeURIComponent(escape(atob(padded + pad)));
   }
   return Buffer.from(padded + pad, "base64").toString("utf8");
-}
-
-export function selectionsFromPlannerItems(
-  items: PlannerItemRow[],
-): Record<number, ResolvedPlannerSelection> {
-  const out: Record<number, ResolvedPlannerSelection> = {};
-  for (const item of items) {
-    if (item.selectionKind === "unresolved" || item.anchorCrn == null) continue;
-    out[item.id] = {
-      selectionKind: item.selectionKind,
-      anchorCrn: item.anchorCrn,
-      linkedBundleId: item.linkedBundleId,
-    };
-  }
-  return out;
 }
 
 export function encodePrintSelections(items: PlannerItemRow[]): string {

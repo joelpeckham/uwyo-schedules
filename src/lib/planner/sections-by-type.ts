@@ -51,7 +51,7 @@ const DAY_FIELDS = [
   "sunday",
 ] as const;
 
-export type CatalogShape = {
+type CatalogShape = {
   sections: {
     crn: string;
     scheduleTypeDescription: string | null;

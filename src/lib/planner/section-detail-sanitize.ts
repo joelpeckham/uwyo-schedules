@@ -7,7 +7,7 @@
  * Banner fields if their API surface changes.
  */
 
-export const SECTION_DETAIL_TOP_KEYS = new Set([
+const SECTION_DETAIL_TOP_KEYS = new Set([
   "subject",
   "courseNumber",
   "sequenceNumber",

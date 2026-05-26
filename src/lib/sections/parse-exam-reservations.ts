@@ -9,7 +9,7 @@ export type ExamReservation = {
   sourceText: string;
 };
 
-export type ParsedExamHints = {
+type ParsedExamHints = {
   reservations: ExamReservation[];
   /** True when text mentions exams but no slot could be parsed. */
   vagueExamNote: boolean;
@@ -178,7 +178,3 @@ export const LIKELY_EXAM_PATTERN_DISCLOSURE =
 export const LIKELY_EXAM_SECTION_INFO_NOTE =
   "Likely exam time based on course description (from section information text)";
 
-/** @deprecated Use likelyExamShortLabel — kept for call sites storing on CalendarBlock. */
-export function likelyExamLabel(kind: ExamReservationKind): string {
-  return likelyExamShortLabel(kind);
-}

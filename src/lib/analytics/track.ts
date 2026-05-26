@@ -14,7 +14,7 @@ import { track as vercelTrack } from "@vercel/analytics";
  *   - we can swap providers later without crawling the codebase
  *   - the event taxonomy lives in one type union (not stringly-typed at call sites)
  */
-export type PlannerAnalyticsEvent =
+type PlannerAnalyticsEvent =
   | { name: "planner_course_added"; props: { subject: string; courseNumber: string; courseCount: number } }
   | { name: "planner_course_removed"; props: { subject: string; courseNumber: string; courseCount: number } }
   | { name: "planner_instructor_pref_set"; props: { kind: "primary" | "linked"; choseAny: boolean } }
