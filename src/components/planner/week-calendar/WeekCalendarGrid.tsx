@@ -6,14 +6,14 @@ import type { CourseDragSession } from "./course-drag";
 import { WeekCalendarView, type WeekCalendarViewProps } from "./WeekCalendarView";
 
 type WeekCalendarGridProps = WeekCalendarViewProps & {
-  hScrollRef: RefObject<HTMLDivElement | null>;
-  courseDragSession: CourseDragSession | null;
-  dragFloatRef: RefObject<HTMLDivElement | null>;
+  hScrollRef?: RefObject<HTMLDivElement | null>;
+  courseDragSession?: CourseDragSession | null;
+  dragFloatRef?: RefObject<HTMLDivElement | null>;
 };
 
 function WeekCalendarGridInner({
   hScrollRef,
-  courseDragSession,
+  courseDragSession = null,
   dragFloatRef,
   ...viewProps
 }: WeekCalendarGridProps) {
@@ -22,11 +22,13 @@ function WeekCalendarGridInner({
       <WeekCalendarView
         {...viewProps}
         viewportFloatingOverlay={
-          <DragLayer
-            active={courseDragSession != null}
-            session={courseDragSession}
-            floatRef={dragFloatRef}
-          />
+          dragFloatRef != null ? (
+            <DragLayer
+              active={courseDragSession != null}
+              session={courseDragSession}
+              floatRef={dragFloatRef}
+            />
+          ) : undefined
         }
       />
     </div>

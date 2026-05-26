@@ -6,6 +6,8 @@ import { FirstRunTourSlot } from "./FirstRunTourSlot";
 
 type WeekCalendarToolbarProps = {
   plannerItemCount: number;
+  /** When `null`, skip the first-run tour slot (e.g. landing preview). */
+  tourSlot?: ReactNode | null;
   meta?: ReactNode;
   exportSlot: ReactNode;
   actions: ReactNode;
@@ -17,6 +19,7 @@ type WeekCalendarToolbarProps = {
  */
 export function WeekCalendarToolbar({
   plannerItemCount,
+  tourSlot,
   meta,
   exportSlot,
   actions,
@@ -26,7 +29,11 @@ export function WeekCalendarToolbar({
       className="border-b border-border p-3 sm:p-4"
       id="planner-week-calendar-toolbar"
     >
-      <FirstRunTourSlot plannerItemCount={plannerItemCount} />
+      {tourSlot !== undefined ? (
+        tourSlot
+      ) : (
+        <FirstRunTourSlot plannerItemCount={plannerItemCount} />
+      )}
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between xl:gap-4">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <h2

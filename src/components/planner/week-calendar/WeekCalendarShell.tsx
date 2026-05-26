@@ -6,6 +6,7 @@ import { WeekCalendarAlertSlot } from "./WeekCalendarAlertSlot";
 import { SolutionsPager } from "../SolutionsPager";
 
 type WeekCalendarShellProps = {
+  sectionId?: string;
   isDragging: boolean;
   syncError: string | null;
   onClearSyncError: () => void;
@@ -16,11 +17,13 @@ type WeekCalendarShellProps = {
   isRecalculatingSolutions: boolean;
   toolbar: ReactNode;
   noSchedulesHelp: ReactNode | null;
+  solutionsPager?: ReactNode;
   children: ReactNode;
 };
 
 /** Alerts, toolbar, pager, and help — isolated from the memoized grid subtree. */
 export function WeekCalendarShell({
+  sectionId = "planner-week-calendar",
   isDragging,
   syncError,
   onClearSyncError,
@@ -31,11 +34,12 @@ export function WeekCalendarShell({
   isRecalculatingSolutions,
   toolbar,
   noSchedulesHelp,
+  solutionsPager,
   children,
 }: WeekCalendarShellProps) {
   return (
     <section
-      id="planner-week-calendar"
+      id={sectionId}
       className={cn(
         "scroll-mt-20 min-w-0 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm",
         isDragging && "select-none",
@@ -57,7 +61,7 @@ export function WeekCalendarShell({
       />
       {toolbar}
       {noSchedulesHelp}
-      <SolutionsPager />
+      {solutionsPager ?? <SolutionsPager />}
       {children}
     </section>
   );

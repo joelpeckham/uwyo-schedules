@@ -1,124 +1,4 @@
-import type { CalendarBlock } from "@/lib/planner/data";
-import { LANDING_PREVIEW_HOUR_AXIS } from "@/components/planner/week-calendar/axis-constants";
-import { WeekCalendarView } from "@/components/planner/week-calendar/WeekCalendarView";
-
-const PREVIEW_ROW_PX = 40;
-const VISIBLE_DAY_INDICES = [0, 1, 2, 3, 4] as const;
-
-const COLOR_MATH = "#C4733F";
-const COLOR_ENGL = "#6A7C56";
-const COLOR_COSC = "#B8893A";
-
-function block(
-  partial: Pick<
-    CalendarBlock,
-    "key" | "dayIndex" | "startMinutes" | "endMinutes" | "label" | "color"
-  > &
-    Partial<CalendarBlock>,
-): CalendarBlock {
-  return {
-    plannerItemId: 0,
-    sectionCrn: partial.sectionCrn ?? "0000",
-    meetingId: partial.meetingId ?? 0,
-    sublabel: partial.sublabel ?? "",
-    instructorSublabel: partial.instructorSublabel ?? null,
-    seatsAvailable: partial.seatsAvailable ?? null,
-    buildingShort: partial.buildingShort ?? null,
-    subject: partial.subject ?? "",
-    courseNumber: partial.courseNumber ?? "",
-    sectionScheduleTypeKey: partial.sectionScheduleTypeKey ?? "lecture",
-    meetingScheduleType: partial.meetingScheduleType ?? null,
-    likelyExam: partial.likelyExam ?? false,
-    likelyExamLabel: partial.likelyExamLabel ?? null,
-    likelyExamInferenceSource: partial.likelyExamInferenceSource ?? null,
-    ...partial,
-  };
-}
-
-const SAMPLE_BLOCKS: CalendarBlock[] = [
-  block({
-    key: "math-mon",
-    dayIndex: 0,
-    startMinutes: 9 * 60,
-    endMinutes: 10 * 60,
-    label: "MATH 2200",
-    color: COLOR_MATH,
-    subject: "MATH",
-    courseNumber: "2200",
-  }),
-  block({
-    key: "math-wed",
-    dayIndex: 2,
-    startMinutes: 9 * 60,
-    endMinutes: 10 * 60,
-    label: "MATH 2200",
-    color: COLOR_MATH,
-    subject: "MATH",
-    courseNumber: "2200",
-  }),
-  block({
-    key: "math-fri",
-    dayIndex: 4,
-    startMinutes: 9 * 60,
-    endMinutes: 10 * 60,
-    label: "MATH 2200",
-    color: COLOR_MATH,
-    subject: "MATH",
-    courseNumber: "2200",
-  }),
-  block({
-    key: "engl-tue",
-    dayIndex: 1,
-    startMinutes: 11 * 60,
-    endMinutes: 12 * 60 + 15,
-    label: "ENGL 1010",
-    color: COLOR_ENGL,
-    subject: "ENGL",
-    courseNumber: "1010",
-  }),
-  block({
-    key: "engl-thu",
-    dayIndex: 3,
-    startMinutes: 11 * 60,
-    endMinutes: 12 * 60 + 15,
-    label: "ENGL 1010",
-    color: COLOR_ENGL,
-    subject: "ENGL",
-    courseNumber: "1010",
-  }),
-  block({
-    key: "cosc-mon",
-    dayIndex: 0,
-    startMinutes: 14 * 60,
-    endMinutes: 15 * 60 + 15,
-    label: "COSC 2030",
-    color: COLOR_COSC,
-    subject: "COSC",
-    courseNumber: "2030",
-  }),
-  block({
-    key: "cosc-wed",
-    dayIndex: 2,
-    startMinutes: 14 * 60,
-    endMinutes: 15 * 60 + 15,
-    label: "COSC 2030",
-    color: COLOR_COSC,
-    subject: "COSC",
-    courseNumber: "2030",
-  }),
-  block({
-    key: "cosc-lab-thu",
-    dayIndex: 3,
-    startMinutes: 15 * 60,
-    endMinutes: 16 * 60,
-    label: "COSC 2030 lab",
-    color: COLOR_COSC,
-    subject: "COSC",
-    courseNumber: "2030",
-    sectionScheduleTypeKey: "lab",
-    meetingScheduleType: "Lab",
-  }),
-];
+import { LandingWeekCalendarPreview } from "@/components/landing/LandingWeekCalendarPreview";
 
 export function PlannerPreview() {
   return (
@@ -139,19 +19,13 @@ export function PlannerPreview() {
         </p>
         <p className="sr-only">
           Sample week preview: MATH 2200 meets Monday, Wednesday, and Friday
-          9 to 10 a.m. ENGL 1010 meets Tuesday and Thursday 11 a.m. to 12:15
-          p.m. COSC 2030 meets Monday and Wednesday 2 to 3:15 p.m. with a
-          linked lab Thursday 3 to 4 p.m. Three courses, no overlaps.
+          9 to 10 a.m. in the Engineering Building. ENGL 1010 meets Tuesday
+          and Thursday 11 a.m. to 12:15 p.m. in the Classroom Building. COSC
+          2030 meets Monday and Wednesday 2 to 3:15 p.m., with a Tuesday
+          discussion and Thursday lab. Three courses, no overlaps.
         </p>
         <figure className="mt-8" aria-hidden>
-          <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
-            <WeekCalendarView
-              blocks={SAMPLE_BLOCKS}
-              visibleDayIndices={VISIBLE_DAY_INDICES}
-              rowPx={PREVIEW_ROW_PX}
-              hourAxis={LANDING_PREVIEW_HOUR_AXIS}
-            />
-          </div>
+          <LandingWeekCalendarPreview />
           <figcaption className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">
             Sample week only. Three courses, no overlaps, lab linked
             automatically—open the planner to build yours.
