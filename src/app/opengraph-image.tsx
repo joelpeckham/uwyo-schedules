@@ -9,7 +9,12 @@ import {
   LANDING_PREVIEW_CREDIT_HOURS,
   LANDING_PREVIEW_SOLUTION_TOTAL,
 } from "@/lib/planner/landing-preview-blocks";
-import { layoutPreviewBlocksForHourAxis } from "@/lib/planner/landing-preview-og-layout";
+import {
+  groupOgDragGhostsByDay,
+  LANDING_PREVIEW_OG_DRAG_SCENARIO,
+  layoutMeetingRectForHourAxis,
+  layoutPreviewBlocksForHourAxis,
+} from "@/lib/planner/landing-preview-og-layout";
 import { loadSourceSerif500ForOg, OG_SERIF_FAMILY } from "@/lib/seo/og-fonts";
 import { SITE_TAGLINE } from "@/lib/seo/site";
 
@@ -95,22 +100,15 @@ function blockSecondaryLine(block: (typeof LANDING_PREVIEW_BLOCKS)[number]): str
   return inst || seatChip || block.sublabel.trim();
 }
 
-function OgCalendarBlock({
+function OgGhostBlock({
   top,
   height,
-  label,
-  secondary,
-  accentColor,
-  isLab,
+  snapped,
 }: {
   top: number;
   height: number;
-  label: string;
-  secondary: string;
-  accentColor: string;
-  isLab?: boolean;
+  snapped?: boolean;
 }) {
-  const showSecondary = height >= 28 && secondary.length > 0;
   return (
     <div
       style={{
@@ -120,6 +118,79 @@ function OgCalendarBlock({
         right: 2,
         height,
         borderRadius: 6,
+        border: snapped
+          ? `1px dashed ${COLORS.primary}`
+          : `1px dashed ${COLORS.fgSoft}`,
+        backgroundColor: snapped
+          ? "rgba(196, 115, 63, 0.12)"
+          : "rgba(245, 239, 227, 0.55)",
+        ...(snapped
+          ? { boxShadow: "0 0 0 1px rgba(196, 115, 63, 0.4)" }
+          : {}),
+      }}
+    />
+  );
+}
+
+function OgDragCursor({ left, top }: { left: number; top: number }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left,
+        top,
+        width: 22,
+        height: 27,
+        display: "flex",
+      }}
+    >
+      <svg width="22" height="27" viewBox="0 0 18 22">
+        <path
+          d="M1 1 L1 16.5 L4.8 12.8 L7.5 20 L10.2 18.8 L7.6 11.6 L14.2 11.6 L1 1 Z"
+          fill={COLORS.cream50}
+        />
+        <path
+          d="M1 1 L1 15.2 L4.2 12 L6.8 18.2 L9 17.2 L6.8 10.8 L12.8 10.8 L1 1 Z"
+          fill={COLORS.fg}
+        />
+      </svg>
+    </div>
+  );
+}
+
+function OgCalendarBlock({
+  top,
+  height,
+  label,
+  secondary,
+  accentColor,
+  isLab,
+  dimmed,
+  elevated,
+  left,
+  width,
+}: {
+  top: number;
+  height: number;
+  label: string;
+  secondary: string;
+  accentColor: string;
+  isLab?: boolean;
+  dimmed?: boolean;
+  elevated?: boolean;
+  left?: number;
+  width?: number;
+}) {
+  const showSecondary = height >= 28 && secondary.length > 0;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top,
+        left: left ?? 2,
+        ...(width != null ? { width } : { right: 2 }),
+        height,
+        borderRadius: 6,
         paddingTop: 3,
         paddingBottom: 3,
         paddingLeft: 7,
@@ -127,12 +198,15 @@ function OgCalendarBlock({
         display: "flex",
         flexDirection: "column",
         justifyContent: "flex-start",
-        backgroundColor: COLORS.card,
+        backgroundColor: elevated ? "rgba(255, 255, 255, 0.97)" : COLORS.card,
         color: COLORS.fg,
         border: `1px solid ${COLORS.border}`,
         borderLeft: `4px solid ${accentColor}`,
-        boxShadow: "0 1px 2px rgba(27, 22, 16, 0.06)",
+        boxShadow: elevated
+          ? "0 6px 16px rgba(27, 22, 16, 0.18)"
+          : "0 1px 2px rgba(27, 22, 16, 0.06)",
         overflow: "hidden",
+        opacity: dimmed ? 0.35 : 1,
         ...(isLab
           ? {
               borderStyle: "dashed",
@@ -171,7 +245,7 @@ function OgCalendarBlock({
 }
 
 export const alt =
-  "uwyoschedule UW class schedule planner with sample conflict-free week (MATH 2200, ENGL 1010, COSC 2030 with discussion and lab)";
+  "uwyoschedule UW class schedule planner with sample conflict-free week and drag-to-swap preview on ENGL 1010 (MATH 2200, COSC 2030 with discussion and lab)";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -185,6 +259,24 @@ export default async function OpengraphImage() {
     HOUR_AXIS,
     ROW,
   );
+  const dragScenario = LANDING_PREVIEW_OG_DRAG_SCENARIO;
+  const ghostsByDay = groupOgDragGhostsByDay(dragScenario.ghosts);
+  const dragSourceBlock = LANDING_PREVIEW_BLOCKS.find(
+    (b) => b.key === dragScenario.sourceBlockKey,
+  );
+  const dragSourceLayout = (blocksByDay.get(dragSourceBlock?.dayIndex ?? -1) ?? []).find(
+    (l) => l.block.key === dragScenario.sourceBlockKey,
+  );
+  const floatLeft =
+    (dragSourceBlock?.dayIndex ?? 0) * dayColW +
+    dragScenario.floatOffsetPx.dx +
+    2;
+  const floatTop =
+    (dragSourceLayout?.topPx ?? 0) + dragScenario.floatOffsetPx.dy;
+  const floatHeight = dragSourceLayout?.heightPx ?? ROW;
+  const floatWidth = dayColW - 4;
+  const cursorLeft = floatLeft + dragScenario.cursorOffsetPx.dx;
+  const cursorTop = floatTop + dragScenario.cursorOffsetPx.dy;
 
   return new ImageResponse(
     (
@@ -387,7 +479,7 @@ export default async function OpengraphImage() {
             </div>
 
             {/* Grid */}
-            <div style={{ display: "flex", flexDirection: "row" }}>
+            <div style={{ display: "flex", flexDirection: "row", position: "relative" }}>
               <div
                 style={{
                   width: timeColW,
@@ -456,10 +548,52 @@ export default async function OpengraphImage() {
                       secondary={blockSecondaryLine(block)}
                       accentColor={block.color}
                       isLab={block.sectionScheduleTypeKey === "lab"}
+                      dimmed={block.key === dragScenario.sourceBlockKey}
                     />
                   ))}
+                  {(ghostsByDay.get(dayIndex) ?? []).map((ghost, ghostIndex) => {
+                    const rect = layoutMeetingRectForHourAxis(
+                      ghost.startMinutes,
+                      ghost.endMinutes,
+                      HOUR_AXIS,
+                      ROW,
+                    );
+                    return (
+                      <OgGhostBlock
+                        key={`ghost-${dayIndex}-${ghostIndex}`}
+                        top={rect.topPx}
+                        height={rect.heightPx}
+                        snapped={ghost.snapped}
+                      />
+                    );
+                  })}
                 </div>
               ))}
+
+              {dragSourceBlock && dragSourceLayout ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: timeColW,
+                    top: 0,
+                    width: 5 * dayColW,
+                    height: GRID_H,
+                    display: "flex",
+                  }}
+                >
+                  <OgCalendarBlock
+                    top={floatTop}
+                    left={floatLeft}
+                    width={floatWidth}
+                    height={floatHeight}
+                    label={dragSourceBlock.label}
+                    secondary={blockSecondaryLine(dragSourceBlock)}
+                    accentColor={dragSourceBlock.color}
+                    elevated
+                  />
+                  <OgDragCursor left={cursorLeft} top={cursorTop} />
+                </div>
+              ) : null}
             </div>
           </div>
 

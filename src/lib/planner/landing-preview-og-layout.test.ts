@@ -1,7 +1,61 @@
 import { describe, expect, it } from "vitest";
 import { LANDING_PREVIEW_HOUR_AXIS } from "@/components/planner/week-calendar/axis-constants";
 import { LANDING_PREVIEW_BLOCKS } from "@/lib/planner/landing-preview-blocks";
-import { layoutPreviewBlocksForHourAxis } from "@/lib/planner/landing-preview-og-layout";
+import {
+  LANDING_PREVIEW_OG_DRAG_SCENARIO,
+  layoutMeetingRectForHourAxis,
+  layoutPreviewBlocksForHourAxis,
+} from "@/lib/planner/landing-preview-og-layout";
+
+describe("layoutMeetingRectForHourAxis", () => {
+  it("places 11 a.m. ENGL at the third hour row when axis starts at 8", () => {
+    const rowPx = 26;
+    const rect = layoutMeetingRectForHourAxis(
+      11 * 60,
+      12 * 60 + 15,
+      LANDING_PREVIEW_HOUR_AXIS,
+      rowPx,
+    );
+    expect(rect.topPx).toBe(3 * rowPx);
+    expect(rect.heightPx).toBeGreaterThan(rowPx);
+  });
+});
+
+describe("LANDING_PREVIEW_OG_DRAG_SCENARIO", () => {
+  it("uses Mon, Wed, Fri ghost slots that do not overlap existing blocks", () => {
+    const ghostDays = LANDING_PREVIEW_OG_DRAG_SCENARIO.ghosts.map((g) => g.dayIndex);
+    expect(ghostDays).toEqual([0, 2, 4]);
+
+    const byDay = layoutPreviewBlocksForHourAxis(
+      LANDING_PREVIEW_BLOCKS,
+      LANDING_PREVIEW_HOUR_AXIS,
+      26,
+    );
+
+    for (const ghost of LANDING_PREVIEW_OG_DRAG_SCENARIO.ghosts) {
+      const rect = layoutMeetingRectForHourAxis(
+        ghost.startMinutes,
+        ghost.endMinutes,
+        LANDING_PREVIEW_HOUR_AXIS,
+        26,
+      );
+      const dayBlocks = byDay.get(ghost.dayIndex) ?? [];
+      for (const { topPx, heightPx } of dayBlocks) {
+        const ghostEnd = rect.topPx + rect.heightPx;
+        const blockEnd = topPx + heightPx;
+        const overlaps =
+          rect.topPx < blockEnd && ghostEnd > topPx;
+        expect(overlaps).toBe(false);
+      }
+    }
+  });
+
+  it("highlights Wednesday as the snapped ghost target", () => {
+    const snapped = LANDING_PREVIEW_OG_DRAG_SCENARIO.ghosts.filter((g) => g.snapped);
+    expect(snapped).toHaveLength(1);
+    expect(snapped[0]?.dayIndex).toBe(2);
+  });
+});
 
 describe("layoutPreviewBlocksForHourAxis", () => {
   it("places 9 a.m. MATH on Monday at the first hour row", () => {
