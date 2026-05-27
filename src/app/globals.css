@@ -126,3 +126,25 @@
     @apply font-sans;
   }
 }
+
+/* Pre-paint empty-hero visibility (planner-bootstrap.ts sets data-planner-items). */
+html:not([data-planner-items]) [data-planner-empty-hero],
+html[data-planner-items="0"] [data-planner-empty-hero] {
+  grid-template-rows: 1fr;
+}
+html[data-planner-items]:not([data-planner-items="0"]) [data-planner-empty-hero] {
+  grid-template-rows: 0fr;
+}
+html:not([data-planner-items]) [data-planner-empty-hero] > div,
+html[data-planner-items="0"] [data-planner-empty-hero] > div {
+  opacity: 1;
+  pointer-events: auto;
+}
+html[data-planner-items]:not([data-planner-items="0"]) [data-planner-empty-hero] > div {
+  opacity: 0;
+  pointer-events: none;
+}
+html[data-planner-no-transition] [data-planner-empty-hero],
+html[data-planner-no-transition] [data-planner-empty-hero] > div {
+  transition: none !important;
+}

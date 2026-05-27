@@ -35,6 +35,7 @@ import {
   type ScheduleSolution,
 } from "@/lib/planner/solve-schedules-core";
 import { yieldToMain } from "@/lib/planner/yield-to-main";
+import { syncPlannerItemsDataset } from "@/lib/planner/planner-bootstrap";
 import {
   readTerm,
   subscribeLocalDoc,
@@ -45,6 +46,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -513,24 +515,35 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     return ok;
   }, [loadCatalog, scheduleRecalculateSolutions]);
 
+  useLayoutEffect(() => {
+    const term = readTerm(termCode);
+    itemsRef.current = term.items;
+    blackoutsRef.current = term.blackouts;
+    syncPlannerItemsDataset(term.items.length);
+    // Sync React from localStorage before paint (bootstrap script already set html dataset).
+    /* eslint-disable react-hooks/set-state-in-effect -- intentional one-shot local restore */
+    setPlannerItems(term.items);
+    setBlackoutsState(term.blackouts);
+    setIsHydrating(false);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [termCode]);
+
   useEffect(() => {
     let cancelled = false;
+    const term = readTerm(termCode);
     void (async () => {
-      setIsHydrating(true);
-      const term = readTerm(termCode);
-      itemsRef.current = term.items;
-      setPlannerItems(term.items);
-      blackoutsRef.current = term.blackouts;
-      setBlackoutsState(term.blackouts);
       if (!cancelled) {
         await loadCatalog(term.items);
-        setIsHydrating(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [termCode, loadCatalog, scheduleRecalculateSolutions]);
+  }, [termCode, loadCatalog]);
+
+  useEffect(() => {
+    syncPlannerItemsDataset(plannerItems.length);
+  }, [plannerItems.length]);
 
   useEffect(() => {
     return subscribeLocalDoc(() => {
@@ -894,17 +907,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       <PlannerSolveContext.Provider value={solveValue}>
         <PlannerUiContext.Provider value={uiValue}>
           <PlannerHistoryContext.Provider value={historyValue}>
-            {isHydrating ? (
-              <p
-                className="rounded-xl border border-border bg-card px-4 py-6 text-sm text-muted-foreground"
-                role="status"
-                aria-live="polite"
-              >
-                Restoring your courses&hellip;
-              </p>
-            ) : (
-              children
-            )}
+            {children}
           </PlannerHistoryContext.Provider>
         </PlannerUiContext.Provider>
       </PlannerSolveContext.Provider>

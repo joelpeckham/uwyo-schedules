@@ -110,7 +110,11 @@ function PlannerCalendarColumn({
 
   return (
     <div className="mt-6 flex min-w-0 flex-col lg:mt-0">
-      <PlannerCollapsibleSlot show={showEmptyHero} className={showEmptyHero ? "mb-4" : undefined}>
+      <PlannerCollapsibleSlot
+        show={showEmptyHero}
+        prePaintBootstrap
+        className={showEmptyHero ? "mb-4" : undefined}
+      >
         <PlannerEmptyHero termCode={termCode} />
       </PlannerCollapsibleSlot>
       <WeekCalendar onBlockActivate={onBlockActivate} />

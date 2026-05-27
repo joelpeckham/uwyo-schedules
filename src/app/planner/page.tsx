@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { PlannerBootstrapScript } from "@/components/planner/PlannerBootstrapScript";
 import { HomePlanner } from "@/components/planner/HomePlanner";
 import { PlannerSkeleton } from "@/components/planner/PlannerSkeleton";
 import { PlannerTermSelect } from "@/components/planner/PlannerTermSelect";
@@ -49,6 +50,7 @@ async function PlannerBody({
       }
     >
       <PlannerJsonLd />
+      {hasData ? <PlannerBootstrapScript termCode={termCode} /> : null}
       <HomePlanner termCode={termCode} hasData={hasData} />
     </SiteChrome>
   );
