@@ -5,14 +5,10 @@ import { PlannerSkeleton } from "@/components/planner/PlannerSkeleton";
 import { PlannerTermSelect } from "@/components/planner/PlannerTermSelect";
 import { PlannerJsonLd } from "@/components/seo/PlannerJsonLd";
 import { SiteChrome } from "@/components/seo/SiteChrome";
-import { createDb } from "@/db/index";
-import { loadPlannerCatalogBootstrap } from "@/lib/planner/catalog-bootstrap";
-import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import {
   getLatestTermCodeForSeo,
   listTermsForSeo,
 } from "@/lib/seo/queries";
-import { readPlannerSessionIdFromCookies } from "@/lib/planner/session";
 import { absoluteUrl } from "@/lib/seo/site";
 
 const PLANNER_DESCRIPTION =
@@ -27,16 +23,6 @@ export const metadata: Metadata = {
     title: "UW class schedule planner · uwyoschedule",
     description: PLANNER_DESCRIPTION,
   },
-};
-
-const emptyCatalog: PlannerCatalogJson = {
-  sections: [],
-  meetings: [],
-  linkedBundles: [],
-  linkedBundleMembers: [],
-  facultyByCrn: {},
-  examReservationsByCrn: {},
-  vagueExamNoteByCrn: {},
 };
 
 async function PlannerBody({
@@ -54,13 +40,6 @@ async function PlannerBody({
   const termCode =
     termFromQuery ?? latest ?? (terms.length > 0 ? terms[0]!.code : "");
 
-  const sessionId = await readPlannerSessionIdFromCookies();
-  const db = createDb();
-  const { plannerItems, catalog, termUiState } =
-    sessionId && termCode
-      ? await loadPlannerCatalogBootstrap(db, sessionId, termCode)
-      : { plannerItems: [], catalog: emptyCatalog, termUiState: null };
-
   const hasData = terms.length > 0 && termCode.length > 0;
 
   return (
@@ -70,14 +49,7 @@ async function PlannerBody({
       }
     >
       <PlannerJsonLd />
-      <HomePlanner
-        termCode={termCode}
-        plannerItems={plannerItems}
-        catalog={catalog}
-        termUiState={termUiState}
-        hasSessionCookie={!!sessionId}
-        hasData={hasData}
-      />
+      <HomePlanner termCode={termCode} hasData={hasData} />
     </SiteChrome>
   );
 }

@@ -423,7 +423,7 @@ export default async function OpengraphImage() {
                     color: COLORS.fgMuted,
                   }}
                 >
-                  Keep
+                  Undo
                 </span>
                 <span
                   style={{
@@ -434,7 +434,7 @@ export default async function OpengraphImage() {
                     color: COLORS.fgMuted,
                   }}
                 >
-                  Compare (0)
+                  Redo
                 </span>
               </div>
             </div>

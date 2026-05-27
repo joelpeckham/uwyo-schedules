@@ -64,8 +64,8 @@ export function LandingWeekCalendarPreview() {
           <SolutionsPagerBar
             current={0}
             total={LANDING_PREVIEW_SOLUTION_TOTAL}
-            isKept={false}
-            keptCount={0}
+            canUndo={false}
+            canRedo={false}
             disabled
           />
         }

@@ -3,9 +3,10 @@
 import { ArrowRight, Loader2, Search, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useCallback, useState } from "react";
 
-import { addPlannerCourseWishAction } from "@/app/planner/actions";
 import { Button } from "@/components/ui/button";
+import { addCourseLocal } from "@/lib/planner/add-course-local";
 import { track } from "@/lib/analytics/track";
+import { plannerHasCourse } from "@/lib/planner/local-state";
 import { cn } from "@/lib/utils";
 
 import { usePlannerData, usePlannerSolve } from "./PlannerContext";
@@ -20,13 +21,8 @@ type Props = {
   termCode: string;
 };
 
-/**
- * Empty-state hero shown when the user has no courses on a term yet. Renders
- * a calm walkthrough of the planner loop and a one-click button that bulk-adds
- * a sensible undergrad starter pack so the user can see the planner in motion.
- */
 export function PlannerEmptyHero({ termCode }: Props) {
-  const { refreshCatalogFromServer, plannerItems } = usePlannerData();
+  const { plannerItems, setPlannerItems } = usePlannerData();
   const { recalculateSolutions } = usePlannerSolve();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,21 +31,26 @@ export function PlannerEmptyHero({ termCode }: Props) {
     setPending(true);
     setError(null);
     try {
+      let items = plannerItems;
       let added = 0;
       for (const course of EXAMPLE_COURSES) {
-        const res = await addPlannerCourseWishAction({
+        if (plannerHasCourse(items, course.subject, course.courseNumber)) {
+          continue;
+        }
+        const res = addCourseLocal({
           termCode,
           subject: course.subject,
           courseNumber: course.courseNumber,
         });
-        if (res.ok) added += 1;
+        if (res.ok) {
+          items = res.items;
+          added += 1;
+        }
       }
-      const ok = await refreshCatalogFromServer();
-      if (!ok) {
-        setError("Added the sample courses but couldn't reload data.");
-      } else {
+      if (added > 0) {
+        setPlannerItems(items);
         track("planner_example_courses_added", {
-          courseCount: plannerItems.length + added,
+          courseCount: items.length,
         });
         await recalculateSolutions();
       }
@@ -58,7 +59,7 @@ export function PlannerEmptyHero({ termCode }: Props) {
     } finally {
       setPending(false);
     }
-  }, [termCode, refreshCatalogFromServer, recalculateSolutions, plannerItems.length]);
+  }, [termCode, plannerItems, setPlannerItems, recalculateSolutions]);
 
   return (
     <section
@@ -104,8 +105,8 @@ export function PlannerEmptyHero({ termCode }: Props) {
             <Step
               number={4}
               icon={<ArrowRight className="size-4" />}
-              title="Pin or compare"
-              body="Pin a section to lock it, drag a block to swap times, or keep alternates side-by-side."
+              title="Undo changes"
+              body="Pin a section to lock it, drag a block to try other times, or undo a change from the pager above."
             />
           </ol>
 

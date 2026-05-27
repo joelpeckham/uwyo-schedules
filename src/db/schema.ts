@@ -238,6 +238,8 @@ export const plannerSessions = pgTable("planner_sessions", {
  * One row per course on the user's list for a term.
  * `selection_kind` + `anchor_crn` + optional `linked_bundle_id` resolve which CRNs appear on the calendar.
  * `unresolved`: wish-list row before automation picks a section; `anchor_crn` / `linked_bundle_id` are null.
+ *
+ * @deprecated Planner cart is stored in browser localStorage; table kept for one-shot migration cleanup.
  */
 export const plannerItems = pgTable(
   "planner_items",
@@ -303,7 +305,11 @@ export const catalogActionRateLimit = pgTable("catalog_action_rate_limit", {
   count: integer("count").notNull().default(0),
 });
 
-/** Last-viewed / favorite schedule indices for paging valid combinations (per session + term). */
+/**
+ * Last-viewed schedule index, blackouts, time prefs (legacy per session + term).
+ *
+ * @deprecated Planner UI state is stored in browser localStorage; table kept for migration cleanup.
+ */
 export const plannerTermUiState = pgTable(
   "planner_term_ui_state",
   {

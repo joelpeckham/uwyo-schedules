@@ -112,21 +112,8 @@ export function snapIntervalEndpoints(start: number, end: number): { start: numb
   return { start: s, end: e };
 }
 
-export function stableBlackoutsJsonForDb(doc: PlannerBlackoutsDocV1): unknown {
-  return {
-    v: 1 as const,
-    items: doc.items.map((i) => ({
-      id: i.id,
-      dayIndex: i.dayIndex,
-      start: i.start,
-      end: i.end,
-      ...(i.label ? { label: i.label } : {}),
-    })),
-  };
-}
-
 /** Max blackout rows per term (DoS / payload guard). */
-export const MAX_PLANNER_BLACKOUTS = 50;
+const MAX_PLANNER_BLACKOUTS = 50;
 
 /** Normalize client-submitted items array for persistence. */
 export function parseBlackoutsItemsArray(items: unknown): PlannerBlackoutsDocV1 {

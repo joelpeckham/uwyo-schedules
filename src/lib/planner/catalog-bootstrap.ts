@@ -4,7 +4,6 @@ import { decodeHtmlEntities } from "@/lib/text/decodeHtmlEntities";
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { PlannerCatalogJson } from "./client/catalog-types";
 import type { PlannerItemRow } from "./data";
-import { listPlannerItems } from "./data";
 import {
   ensureSectionDescriptions,
   loadSectionInformationByCrn,
@@ -16,49 +15,17 @@ import {
 } from "./resolve-display-crns";
 import { parseExamReservations } from "@/lib/sections/parse-exam-reservations";
 
-export type PlannerTermUiStateRow = typeof schema.plannerTermUiState.$inferSelect;
-
-async function loadPlannerTermUiState(
-  db: Database,
-  sessionId: string,
-  termCode: string,
-): Promise<PlannerTermUiStateRow | null> {
-  const [row] = await db
-    .select()
-    .from(schema.plannerTermUiState)
-    .where(
-      and(
-        eq(schema.plannerTermUiState.sessionId, sessionId),
-        eq(schema.plannerTermUiState.termCode, termCode),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
-}
-
 /**
- * Loads planner items plus all catalog data needed to derive calendar blocks and
- * same-type swap ghosts client-side for the current term and session.
+ * Loads all catalog data needed to derive calendar blocks and same-type swap
+ * ghosts client-side for the given planner items in a term.
  */
-export async function loadPlannerCatalogBootstrap(
+export async function loadPlannerCatalogForItems(
   db: Database,
-  sessionId: string,
   termCode: string,
-): Promise<{
-  plannerItems: PlannerItemRow[];
-  catalog: PlannerCatalogJson;
-  termUiState: PlannerTermUiStateRow | null;
-}> {
-  // The planner items query and the term UI state lookup are independent —
-  // run them concurrently so we wait on the slower of the two instead of
-  // their sum.
-  const [plannerItems, termUiState] = await Promise.all([
-    listPlannerItems(db, sessionId, termCode),
-    loadPlannerTermUiState(db, sessionId, termCode),
-  ]);
+  plannerItems: PlannerItemRow[],
+): Promise<{ catalog: PlannerCatalogJson }> {
   if (plannerItems.length === 0) {
     return {
-      plannerItems,
       catalog: {
         sections: [],
         meetings: [],
@@ -68,7 +35,6 @@ export async function loadPlannerCatalogBootstrap(
         examReservationsByCrn: {},
         vagueExamNoteByCrn: {},
       },
-      termUiState,
     };
   }
 
@@ -356,7 +322,7 @@ export async function loadPlannerCatalogBootstrap(
   try {
     await ensureSectionDescriptions(db, termCode, meetingCrnListForDesc);
   } catch (err) {
-    console.error("loadPlannerCatalogBootstrap: section descriptions fetch failed", err);
+    console.error("loadPlannerCatalogForItems: section descriptions fetch failed", err);
   }
   const sectionInfoByCrn = await loadSectionInformationByCrn(
     db,
@@ -379,7 +345,6 @@ export async function loadPlannerCatalogBootstrap(
   }
 
   return {
-    plannerItems,
     catalog: {
       sections: [...sectionByCrn.values()],
       meetings,
@@ -389,6 +354,5 @@ export async function loadPlannerCatalogBootstrap(
       examReservationsByCrn,
       vagueExamNoteByCrn,
     },
-    termUiState,
   };
 }

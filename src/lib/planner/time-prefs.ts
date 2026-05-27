@@ -64,16 +64,6 @@ export function parseTimePrefs(raw: unknown): PlannerTimePrefsV1 {
   return out;
 }
 
-export function stableTimePrefsJsonForDb(doc: PlannerTimePrefsV1): unknown {
-  const out: Record<string, unknown> = { v: 1 };
-  if (doc.noFridays) out.noFridays = true;
-  if (doc.noBefore != null) out.noBefore = doc.noBefore;
-  if (doc.noAfter != null) out.noAfter = doc.noAfter;
-  if (doc.protectLunch)
-    out.protectLunch = { start: doc.protectLunch.start, end: doc.protectLunch.end };
-  return out;
-}
-
 export function activeTimePrefsCount(p: PlannerTimePrefsV1): number {
   let n = 0;
   if (p.noFridays) n++;

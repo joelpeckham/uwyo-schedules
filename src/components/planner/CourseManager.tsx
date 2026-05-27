@@ -1,11 +1,11 @@
 "use client";
 
 import {
-  addPlannerCourseWishAction,
   prefetchCourseSolvePackAction,
   searchCoursesAction,
-  updatePlannerItemColorAction,
 } from "@/app/planner/actions";
+import { addCourseLocal } from "@/lib/planner/add-course-local";
+import { DUPLICATE_COURSE_ERROR, plannerHasCourse } from "@/lib/planner/local-state";
 import { track } from "@/lib/analytics/track";
 import type { CourseSearchRow, PlannerItemRow } from "@/lib/planner/data";
 import {
@@ -54,7 +54,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { CourseSectionPicker } from "./CourseSectionPicker";
-import { usePlannerData, usePlannerSolve } from "./PlannerContext";
+import { usePlannerData, usePlannerHistory, usePlannerSolve } from "./PlannerContext";
 
 type ColorCellProps = {
   itemId: number;
@@ -150,14 +150,15 @@ export function CourseManager({ termCode }: Props) {
   const {
     plannerItems,
     catalog,
-    refreshCatalogFromServer,
     removePlannerItem,
     updatePlannerItem,
+    setPlannerItems,
     solvePacks,
     mergeSolvePack,
     toggleSectionPin,
   } = usePlannerData();
   const { recalculateSolutions } = usePlannerSolve();
+  const { recordHistorySnapshot } = usePlannerHistory();
 
   const [pending, startTransition] = useTransition();
   const [searchQ, setSearchQ] = useState("");
@@ -247,7 +248,12 @@ export function CourseManager({ termCode }: Props) {
   const runAddCourse = useCallback(
     async (row: CourseSearchRow) => {
       setError(null);
-      const res = await addPlannerCourseWishAction({
+      if (plannerHasCourse(plannerItems, row.subject, row.courseNumber)) {
+        setError(DUPLICATE_COURSE_ERROR);
+        return;
+      }
+      recordHistorySnapshot();
+      const res = addCourseLocal({
         termCode,
         subject: row.subject,
         courseNumber: row.courseNumber,
@@ -256,15 +262,11 @@ export function CourseManager({ termCode }: Props) {
         setError(res.error);
         return;
       }
-      const ok = await refreshCatalogFromServer();
-      if (!ok) {
-        setError("Added course but couldn't reload data. Reload the page.");
-        return;
-      }
+      setPlannerItems(res.items);
       track("planner_course_added", {
         subject: row.subject,
         courseNumber: row.courseNumber,
-        courseCount: plannerItems.length + 1,
+        courseCount: res.items.length,
       });
       await recalculateSolutions();
       setPicked(null);
@@ -272,7 +274,13 @@ export function CourseManager({ termCode }: Props) {
       setSearchQ("");
       setSearchActiveIndex(-1);
     },
-    [termCode, refreshCatalogFromServer, recalculateSolutions, plannerItems.length],
+    [
+      termCode,
+      plannerItems,
+      setPlannerItems,
+      recalculateSolutions,
+      recordHistorySnapshot,
+    ],
   );
 
   const submitAdd = useCallback(() => {
@@ -283,6 +291,10 @@ export function CourseManager({ termCode }: Props) {
   const onPickCourseFromSearch = useCallback(
     (h: CourseSearchRow) => {
       setError(null);
+      if (plannerHasCourse(plannerItems, h.subject, h.courseNumber)) {
+        setError(DUPLICATE_COURSE_ERROR);
+        return;
+      }
       setSearchActiveIndex(-1);
       searchSeqRef.current += 1;
       setHits([]);
@@ -295,7 +307,7 @@ export function CourseManager({ termCode }: Props) {
       setSearchQ("");
       autoAddAfterPrefetchRef.current = true;
     },
-    [solvePacks, runAddCourse],
+    [plannerItems, solvePacks, runAddCourse],
   );
 
   useEffect(() => {
@@ -327,14 +339,8 @@ export function CourseManager({ termCode }: Props) {
   const handleColorPickById = useCallback(
     (id: number, hex: string) => {
       updatePlannerItem(id, { displayColor: hex });
-      startTransition(async () => {
-        const res = await updatePlannerItemColorAction(id, hex);
-        if (!res.ok) {
-          await refreshCatalogFromServer();
-        }
-      });
     },
-    [updatePlannerItem, refreshCatalogFromServer],
+    [updatePlannerItem],
   );
 
   const handleRemoveById = useCallback(

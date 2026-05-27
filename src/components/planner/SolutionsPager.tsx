@@ -1,33 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Star } from "lucide-react";
-import dynamic from "next/dynamic";
+import { ChevronLeft, ChevronRight, Redo2, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { track } from "@/lib/analytics/track";
 import { cn } from "@/lib/utils";
-import { usePlannerSolve } from "./PlannerContext";
-
-// Loaded only when the user opens the compare modal — its inner calendar
-// previews mean the bundle isn't trivial.
-const SchedulesCompare = dynamic(
-  () => import("./SchedulesCompare").then((m) => m.SchedulesCompare),
-  { ssr: false },
-);
+import { usePlannerHistory, usePlannerSolve } from "./PlannerContext";
+import { usePlannerUndoRedoShortcuts } from "./usePlannerUndoRedoShortcuts";
 
 type SolutionsPagerBarProps = {
   current: number;
   total: number;
-  isKept: boolean;
-  keptCount: number;
+  canUndo?: boolean;
+  canRedo?: boolean;
   disabled?: boolean;
   solutionsCapped?: boolean;
   solutionsTimedOut?: boolean;
   onPrevious?: () => void;
   onNext?: () => void;
-  onToggleKeep?: () => void;
-  onCompare?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
   emptyStatus?: string;
 };
 
@@ -37,20 +28,19 @@ type SolutionsPagerBarProps = {
 export function SolutionsPagerBar({
   current,
   total,
-  isKept,
-  keptCount,
+  canUndo = false,
+  canRedo = false,
   disabled = false,
   solutionsCapped = false,
   solutionsTimedOut = false,
   onPrevious,
   onNext,
-  onToggleKeep,
-  onCompare,
+  onUndo,
+  onRedo,
   emptyStatus,
 }: SolutionsPagerBarProps) {
   const onlyOne = total <= 1;
   const human = total > 0 ? current + 1 : 0;
-  const canCompare = keptCount >= 2;
 
   return (
     <div
@@ -102,36 +92,29 @@ export function SolutionsPagerBar({
           <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
             <Button
               type="button"
-              variant={isKept ? "default" : "outline"}
+              variant="outline"
               size="sm"
               className="h-8 touch-manipulation"
-              aria-pressed={isKept}
-              disabled={disabled}
-              onClick={onToggleKeep}
+              aria-label="Undo"
+              title="Undo (⌘Z)"
+              disabled={disabled || !canUndo}
+              onClick={onUndo}
             >
-              <Star
-                className={cn(
-                  "mr-1 size-3.5",
-                  isKept ? "fill-current" : "",
-                )}
-                aria-hidden
-              />
-              {isKept ? "Kept" : "Keep"}
+              <Undo2 className={cn("mr-1 size-3.5")} aria-hidden />
+              Undo
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="h-8 touch-manipulation"
-              disabled={disabled || !canCompare}
-              onClick={onCompare}
-              title={
-                !canCompare
-                  ? "Keep at least two schedules to compare"
-                  : undefined
-              }
+              aria-label="Redo"
+              title="Redo (⇧⌘Z)"
+              disabled={disabled || !canRedo}
+              onClick={onRedo}
             >
-              Compare ({keptCount})
+              <Redo2 className={cn("mr-1 size-3.5")} aria-hidden />
+              Redo
             </Button>
           </div>
         </>
@@ -142,7 +125,7 @@ export function SolutionsPagerBar({
 
 /**
  * Strip above the calendar that lets the user page through alternate
- * conflict-free schedules and keep favorites for later comparison.
+ * conflict-free schedules and undo or redo recent edits.
  */
 export function SolutionsPager() {
   const {
@@ -151,61 +134,36 @@ export function SolutionsPager() {
     solutionsTimedOut,
     currentSolutionIndex,
     setCurrentSolutionIndex,
-    isCurrentSolutionKept,
-    toggleCurrentSolutionKept,
-    keptSolutions,
-    keptSolutionIndices,
     isRecalculatingSolutions,
     hasAttemptedSolve,
   } = usePlannerSolve();
+  const { canUndo, canRedo, undo, redo } = usePlannerHistory();
+
+  usePlannerUndoRedoShortcuts({ undo, redo, canUndo, canRedo });
 
   const total = solutions.length;
-  const [compareOpen, setCompareOpen] = useState(false);
-
-  const sortedKeptIndices = useMemo(
-    () => [...keptSolutionIndices].sort((a, b) => a - b),
-    [keptSolutionIndices],
-  );
-
-  const canCompare = sortedKeptIndices.length >= 2;
-  const compareDialogOpen = compareOpen && canCompare;
 
   return (
-    <>
-      <SolutionsPagerBar
-        current={currentSolutionIndex}
-        total={total}
-        isKept={isCurrentSolutionKept}
-        keptCount={sortedKeptIndices.length}
-        solutionsCapped={solutionsCapped}
-        solutionsTimedOut={solutionsTimedOut}
-        emptyStatus={
-          isRecalculatingSolutions || !hasAttemptedSolve
-            ? "Building first schedule…"
-            : "Schedule pager"
-        }
-        onPrevious={() => {
-          setCurrentSolutionIndex(currentSolutionIndex - 1, "prev");
-        }}
-        onNext={() => {
-          setCurrentSolutionIndex(currentSolutionIndex + 1, "next");
-        }}
-        onToggleKeep={() => toggleCurrentSolutionKept()}
-        onCompare={() => {
-          track("planner_compare_opened", {
-            kept: sortedKeptIndices.length,
-          });
-          setCompareOpen(true);
-        }}
-      />
-      {compareOpen ? (
-        <SchedulesCompare
-          open={compareDialogOpen}
-          onOpenChange={setCompareOpen}
-          keptIndices={sortedKeptIndices}
-          keptKeys={keptSolutions.keys}
-        />
-      ) : null}
-    </>
+    <SolutionsPagerBar
+      current={currentSolutionIndex}
+      total={total}
+      canUndo={canUndo}
+      canRedo={canRedo}
+      solutionsCapped={solutionsCapped}
+      solutionsTimedOut={solutionsTimedOut}
+      emptyStatus={
+        isRecalculatingSolutions || !hasAttemptedSolve
+          ? "Building first schedule…"
+          : "Schedule pager"
+      }
+      onPrevious={() => {
+        setCurrentSolutionIndex(currentSolutionIndex - 1, "prev");
+      }}
+      onNext={() => {
+        setCurrentSolutionIndex(currentSolutionIndex + 1, "next");
+      }}
+      onUndo={undo}
+      onRedo={redo}
+    />
   );
 }

@@ -3,38 +3,31 @@
 import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import {
-  addPlannerCourseWishAction,
-  savePlannerBlackoutsAction,
-  savePlannerTimePrefsAction,
-} from "@/app/planner/actions";
+import { addCourseLocal } from "@/lib/planner/add-course-local";
 import { decodeShareState } from "@/lib/planner/share-state";
-import type { PlannerItemRow } from "@/lib/planner/data";
+import { parseBlackoutsItemsArray } from "@/lib/planner/blackouts";
+import { parseTimePrefs } from "@/lib/planner/time-prefs";
+
+import { usePlannerData, usePlannerUi } from "./PlannerContext";
 
 type Props = {
   termCode: string;
-  /** Items currently in the term — used to skip duplicates. */
-  plannerItems: PlannerItemRow[];
 };
 
 /**
  * Reads `?s=...` from the URL, applies the encoded courses, blackouts, and
- * time preferences, then strips the param so refreshes don't re-import.
- *
- * v1 only restores courses (as wish-list rows) plus blackouts and time
- * preferences. Anchor pinning is intentionally left for the user to confirm
- * after the shared link populates the rail — it's safer to surface the
- * intended sections in the planner than to silently lock them in.
+ * time preferences to local storage, then strips the param.
  */
-export function ShareLinkApplier({ termCode, plannerItems }: Props) {
+export function ShareLinkApplier({ termCode }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = searchParams.get("s");
   const appliedRef = useRef(false);
+  const { plannerItems, isHydrating, setPlannerItems } = usePlannerData();
+  const { setBlackouts, setTimePrefs } = usePlannerUi();
 
   useEffect(() => {
-    if (!code) return;
-    if (appliedRef.current) return;
+    if (!code || appliedRef.current || isHydrating) return;
     appliedRef.current = true;
 
     const doc = decodeShareState(code);
@@ -50,31 +43,31 @@ export function ShareLinkApplier({ termCode, plannerItems }: Props) {
     }
 
     void (async () => {
-      const have = new Set(
-        plannerItems.map((it) => `${it.subject}\u0000${it.courseNumber}`),
-      );
+      let items = plannerItems;
       for (const pin of doc.pins) {
-        const key = `${pin.sub}\u0000${pin.num}`;
-        if (have.has(key)) continue;
-        await addPlannerCourseWishAction({
+        const res = addCourseLocal({
           termCode,
           subject: pin.sub,
           courseNumber: pin.num,
         });
-        have.add(key);
+        if (res.ok) items = res.items;
+      }
+      if (items !== plannerItems) {
+        setPlannerItems(items);
       }
 
       if (doc.bo.length > 0) {
-        await savePlannerBlackoutsAction({
-          termCode,
-          items: doc.bo.map((b, i) => ({
-            id: `share-${i}-${b.d}-${b.s}`,
-            dayIndex: b.d,
-            start: b.s,
-            end: b.e,
-            ...(b.l ? { label: b.l } : {}),
-          })),
-        });
+        setBlackouts(
+          parseBlackoutsItemsArray(
+            doc.bo.map((b, i) => ({
+              id: `share-${i}-${b.d}-${b.s}`,
+              dayIndex: b.d,
+              start: b.s,
+              end: b.e,
+              ...(b.l ? { label: b.l } : {}),
+            })),
+          ),
+        );
       }
 
       const prefs: Record<string, unknown> = { v: 1 };
@@ -84,12 +77,20 @@ export function ShareLinkApplier({ termCode, plannerItems }: Props) {
       if (Array.isArray(doc.tp.pl) && doc.tp.pl.length === 2) {
         prefs.protectLunch = { start: doc.tp.pl[0], end: doc.tp.pl[1] };
       }
-      await savePlannerTimePrefsAction({ termCode, prefs });
+      setTimePrefs(parseTimePrefs(prefs));
 
       stripParam();
-      router.refresh();
     })();
-  }, [code, termCode, plannerItems, router]);
+  }, [
+    code,
+    termCode,
+    plannerItems,
+    isHydrating,
+    router,
+    setPlannerItems,
+    setBlackouts,
+    setTimePrefs,
+  ]);
 
   return null;
 }

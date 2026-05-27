@@ -1,14 +1,10 @@
 "use client";
 
 import {
-  loadPlannerCatalogBootstrapAction,
+  loadPlannerCatalogForItemsAction,
+  migratePlannerStateFromServerAction,
   prefetchCourseSolvePackAction,
-  savePlannerBlackoutsAction,
-  savePlannerKeptSolutionsAction,
-  savePlannerLastSolutionIndexAction,
-  savePlannerTimePrefsAction,
   solveSchedulesAction,
-  syncPlannerStateAction,
 } from "@/app/planner/actions";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import { buildCalendarBlocksFromCatalog } from "@/lib/planner/client/derive";
@@ -17,12 +13,15 @@ import {
   type PlannerBlackoutsDocV1,
 } from "@/lib/planner/blackouts";
 import {
-  EMPTY_KEPT_SOLUTIONS,
   findSolutionIndexByFingerprint,
-  MAX_KEPT_SOLUTIONS,
   solutionFingerprint,
-  type PlannerKeptSolutionsDocV1,
 } from "@/lib/planner/kept-solutions";
+import {
+  capturePlannerHistorySnapshot,
+  createPlannerHistoryStacks,
+  type PlannerHistorySnapshot,
+  type PlannerHistoryStacks,
+} from "@/lib/planner/planner-action-history";
 import {
   EMPTY_TIME_PREFS,
   type PlannerTimePrefsV1,
@@ -49,6 +48,13 @@ import {
 } from "@/lib/planner/solve-schedules-core";
 import { yieldToMain } from "@/lib/planner/yield-to-main";
 import {
+  isMigrated,
+  mergeMigrationTerms,
+  readTerm,
+  subscribeLocalDoc,
+  writeTerm,
+} from "@/lib/planner/local-state";
+import {
   createContext,
   useCallback,
   useContext,
@@ -58,27 +64,21 @@ import {
   useState,
 } from "react";
 
-const PERSIST_DEBOUNCE_MS = 2500;
-const BLACKOUT_PERSIST_DEBOUNCE_MS = 800;
-const KEPT_PERSIST_DEBOUNCE_MS = 800;
-const TIME_PREFS_PERSIST_DEBOUNCE_MS = 800;
-const LAST_INDEX_PERSIST_DEBOUNCE_MS = 1500;
 const PACK_PREFETCH_DEBOUNCE_MS = 400;
-/**
- * Cap on how many alternate schedules the UI will paginate through. Set to a
- * value comfortably larger than 1 so users can flip between options, but
- * small enough that DFS time stays bounded.
- */
 const PLANNER_MAX_SOLUTIONS = 25 as const;
-/**
- * Tight budget for synchronous "would this still fit?" probes that gate
- * pin/toggle/drag previews. If DFS can't decide in this window we report
- * "unknown" and let the action through; the next full recalculate will
- * surface true infeasibility without making the user wait on the click.
- */
 const PREVIEW_FEASIBILITY_TIMEOUT_MS = 250;
 
 const EMPTY_BLACKOUTS: PlannerBlackoutsDocV1 = { v: 1, items: [] };
+
+const EMPTY_CATALOG: PlannerCatalogJson = {
+  sections: [],
+  meetings: [],
+  linkedBundles: [],
+  linkedBundleMembers: [],
+  facultyByCrn: {},
+  examReservationsByCrn: {},
+  vagueExamNoteByCrn: {},
+};
 
 function applySolutionToPlannerItems(
   items: PlannerItemRow[],
@@ -110,11 +110,11 @@ type PlannerDataContextValue = {
   termCode: string;
   plannerItems: PlannerItemRow[];
   catalog: PlannerCatalogJson;
+  isHydrating: boolean;
   refreshCatalogFromServer: () => Promise<boolean>;
   setPlannerItems: (items: PlannerItemRow[]) => void;
   removePlannerItem: (id: number) => void;
   updatePlannerItem: (id: number, patch: Partial<PlannerItemRow>) => void;
-  schedulePersist: () => void;
   toggleSectionPin: (itemId: number, scheduleTypeKey: string, sectionCrn: string) => void;
   setSectionPinFromDrag: (
     itemId: number,
@@ -131,7 +131,6 @@ type PlannerDataContextValue = {
 };
 
 type PlannerSolveContextValue = {
-  /** Planner items with the active solution's section selections applied. */
   effectivePlannerItems: PlannerItemRow[];
   calendarBlocks: CalendarBlock[];
   syncError: string | null;
@@ -146,20 +145,14 @@ type PlannerSolveContextValue = {
     next: number,
     method?: "next" | "prev" | "first" | "last" | "keep" | "drop",
   ) => void;
-  keptSolutions: PlannerKeptSolutionsDocV1;
-  isCurrentSolutionKept: boolean;
-  toggleCurrentSolutionKept: () => void;
-  keptSolutionIndices: number[];
   infeasibilityHints: string[];
   recalculateSolutions: (
     filterOverrides?: Partial<PlannerScheduleFilters>,
   ) => Promise<void>;
-  /** Trailing 50 ms debounce; merges filter overrides from rapid toggles. */
   scheduleRecalculateSolutions: (
     filterOverrides?: Partial<PlannerScheduleFilters>,
   ) => void;
   isRecalculatingSolutions: boolean;
-  /** False until the first `recalculateSolutions` completes for this term mount. */
   hasAttemptedSolve: boolean;
 };
 
@@ -184,42 +177,30 @@ type PlannerUiContextValue = {
   ) => void;
 };
 
+type PlannerHistoryContextValue = {
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
+  recordHistorySnapshot: () => void;
+};
+
 const PlannerDataContext = createContext<PlannerDataContextValue | null>(null);
 const PlannerSolveContext = createContext<PlannerSolveContextValue | null>(null);
 const PlannerUiContext = createContext<PlannerUiContextValue | null>(null);
+const PlannerHistoryContext = createContext<PlannerHistoryContextValue | null>(
+  null,
+);
 
 type ProviderProps = {
   termCode: string;
-  initialPlannerItems: PlannerItemRow[];
-  initialCatalog: PlannerCatalogJson;
-  initialTermUiState: {
-    blackouts: PlannerBlackoutsDocV1;
-    keptSolutions: PlannerKeptSolutionsDocV1;
-    timePrefs: PlannerTimePrefsV1;
-    lastSolutionIndex: number;
-  } | null;
   children: React.ReactNode;
 };
 
-/**
- * Provides planner cart, catalog, solves, and UI wiring in one context value.
- *
- * When investigating performance: use React DevTools Profiler while toggling pins,
- * dragging swaps, or editing CourseManager-only fields. If subtree renders look
- * wasteful (e.g. CourseManager updating on blackout-only edits), measure before
- * splitting — a single memoized context value stays simpler than multiple stores
- * until profiling shows concrete churn.
- */
-export function PlannerProvider({
-  termCode,
-  initialPlannerItems,
-  initialCatalog,
-  initialTermUiState,
-  children,
-}: ProviderProps) {
-  const [plannerItems, setPlannerItems] =
-    useState<PlannerItemRow[]>(initialPlannerItems);
-  const [catalog, setCatalog] = useState<PlannerCatalogJson>(initialCatalog);
+export function PlannerProvider({ termCode, children }: ProviderProps) {
+  const [isHydrating, setIsHydrating] = useState(true);
+  const [plannerItems, setPlannerItems] = useState<PlannerItemRow[]>([]);
+  const [catalog, setCatalog] = useState<PlannerCatalogJson>(EMPTY_CATALOG);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [scheduleFeasibilityError, setScheduleFeasibilityError] = useState<
     string | null
@@ -228,9 +209,7 @@ export function PlannerProvider({
   const [solutions, setSolutions] = useState<ScheduleSolution[]>([]);
   const [solutionsCapped, setSolutionsCapped] = useState(false);
   const [solutionsTimedOut, setSolutionsTimedOut] = useState(false);
-  const [currentSolutionIndex, setCurrentSolutionIndexState] = useState<number>(
-    () => initialTermUiState?.lastSolutionIndex ?? 0,
-  );
+  const [currentSolutionIndex, setCurrentSolutionIndexState] = useState(0);
   const [requireOpenSections, setRequireOpenSections] = useState(
     DEFAULT_PLANNER_SCHEDULE_FILTERS.requireOpenSections,
   );
@@ -241,22 +220,19 @@ export function PlannerProvider({
     DEFAULT_PLANNER_SCHEDULE_FILTERS.excludeOnlineAsync,
   );
   const [blackouts, setBlackoutsState] = useState<PlannerBlackoutsDocV1>(
-    () => initialTermUiState?.blackouts ?? EMPTY_BLACKOUTS,
+    EMPTY_BLACKOUTS,
   );
-  const [keptSolutions, setKeptSolutionsState] =
-    useState<PlannerKeptSolutionsDocV1>(
-      () => initialTermUiState?.keptSolutions ?? EMPTY_KEPT_SOLUTIONS,
-    );
   const [timePrefs, setTimePrefsState] = useState<PlannerTimePrefsV1>(
-    () => initialTermUiState?.timePrefs ?? EMPTY_TIME_PREFS,
+    EMPTY_TIME_PREFS,
   );
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const [solvePacks, setSolvePacks] = useState<Record<string, CourseSolvePack>>(
     {},
   );
-  const [isRecalculatingSolutions, setIsRecalculatingSolutions] = useState(
-    () => initialPlannerItems.length > 0,
-  );
+  const [isRecalculatingSolutions, setIsRecalculatingSolutions] = useState(false);
   const [hasAttemptedSolve, setHasAttemptedSolve] = useState(false);
+
   const recalcDepthRef = useRef(0);
   const recalcDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -264,71 +240,32 @@ export function PlannerProvider({
   const recalcFilterOverridesRef = useRef<
     Partial<PlannerScheduleFilters> | undefined
   >(undefined);
-  /** Bumps on each recalc start so stale async/server results cannot overwrite newer solves. */
   const recalcGenRef = useRef(0);
   const solvePacksRef = useRef(solvePacks);
-  useEffect(() => {
-    solvePacksRef.current = solvePacks;
-  }, [solvePacks]);
-
-  const mergeSolvePack = useCallback((pack: CourseSolvePack) => {
-    solvePacksRef.current = { ...solvePacksRef.current, [pack.courseKey]: pack };
-    setSolvePacks(solvePacksRef.current);
-  }, []);
-
   const solutionsRef = useRef(solutions);
-  useEffect(() => {
-    solutionsRef.current = solutions;
-  }, [solutions]);
-
-  // No prop-sync effects: the parent (HomePlanner) keys this provider on
-  // `termCode`, so a term switch remounts everything with fresh initial state.
-  // Re-hydrating from `initialPlannerItems` / `initialCatalog` on referential
-  // changes was a bug — an RSC refresh or cache invalidation could clobber
-  // unsaved client edits made between the last persist flush and the next
-  // server snapshot. The `refreshCatalogFromServer` callback is the only
-  // intentional re-hydration path.
-
   const itemsRef = useRef(plannerItems);
   const termRef = useRef(termCode);
-  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistInFlightRef = useRef(false);
-  /**
-   * Bumped by every persist scheduler so an in-flight save can detect that newer
-   * data arrived while it was syncing and re-flush instead of silently dropping
-   * the latest items (cf. P0 persistence race).
-   */
-  const persistDirtyGenRef = useRef(0);
-  const persistFlushedGenRef = useRef(0);
-  const blackoutPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const blackoutPersistInFlightRef = useRef(false);
-  const blackoutPersistDirtyGenRef = useRef(0);
-  const blackoutPersistFlushedGenRef = useRef(0);
-  const keptPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const keptPersistInFlightRef = useRef(false);
-  const keptPersistDirtyGenRef = useRef(0);
-  const keptPersistFlushedGenRef = useRef(0);
-  const timePrefsPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const timePrefsPersistInFlightRef = useRef(false);
-  const timePrefsPersistDirtyGenRef = useRef(0);
-  const timePrefsPersistFlushedGenRef = useRef(0);
-  const lastIndexPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  /** Bumped on every pack-prefetch start; awaiting calls bail when stale. */
   const prefetchGenRef = useRef(0);
   const requireOpenRef = useRef(requireOpenSections);
   const excludeTbaRef = useRef(excludeTba);
   const excludeOnlineAsyncRef = useRef(excludeOnlineAsync);
   const blackoutsRef = useRef(blackouts);
-  const keptSolutionsRef = useRef(keptSolutions);
   const timePrefsRef = useRef(timePrefs);
   const currentSolutionIndexRef = useRef(currentSolutionIndex);
+  const historyApiRef = useRef(createPlannerHistoryStacks());
+  const historyStacksRef = useRef<PlannerHistoryStacks>({ undo: [], redo: [] });
+  const isApplyingHistoryRef = useRef(false);
+  const blackoutsUserGenRef = useRef(0);
+  const blackoutsHandledGenRef = useRef(0);
+  const timePrefsUserGenRef = useRef(0);
+  const timePrefsHandledGenRef = useRef(0);
 
+  useEffect(() => {
+    solvePacksRef.current = solvePacks;
+  }, [solvePacks]);
+  useEffect(() => {
+    solutionsRef.current = solutions;
+  }, [solutions]);
   useEffect(() => {
     itemsRef.current = plannerItems;
   }, [plannerItems]);
@@ -348,467 +285,142 @@ export function PlannerProvider({
     blackoutsRef.current = blackouts;
   }, [blackouts]);
   useEffect(() => {
-    keptSolutionsRef.current = keptSolutions;
-  }, [keptSolutions]);
-  useEffect(() => {
     timePrefsRef.current = timePrefs;
   }, [timePrefs]);
   useEffect(() => {
     currentSolutionIndexRef.current = currentSolutionIndex;
   }, [currentSolutionIndex]);
 
-  const safeCurrentSolutionIndex = useMemo(
-    () => clampSolutionIndex(currentSolutionIndex, solutions.length),
-    [currentSolutionIndex, solutions.length],
-  );
-
-  const effectivePlannerItems = useMemo(() => {
-    const sol = solutions[safeCurrentSolutionIndex] ?? null;
-    return applySolutionToPlannerItems(plannerItems, sol);
-  }, [plannerItems, solutions, safeCurrentSolutionIndex]);
-
-  const isCurrentSolutionKept = useMemo(() => {
-    const sol = solutions[safeCurrentSolutionIndex];
-    if (!sol) return false;
-    const fp = solutionFingerprint(sol);
-    return keptSolutions.keys.includes(fp);
-  }, [solutions, safeCurrentSolutionIndex, keptSolutions]);
-
-  const keptSolutionIndices = useMemo(() => {
-    if (solutions.length === 0 || keptSolutions.keys.length === 0) return [];
-    const out: number[] = [];
-    for (const k of keptSolutions.keys) {
-      const i = findSolutionIndexByFingerprint(solutions, k);
-      if (i >= 0) out.push(i);
-    }
-    return out;
-  }, [solutions, keptSolutions]);
-
-  const calendarBlocks = useMemo(
-    () => buildCalendarBlocksFromCatalog(effectivePlannerItems, catalog),
-    [effectivePlannerItems, catalog],
-  );
-
-  const mergedPackConstraintMaps = useMemo(
-    () => mergePackConstraintMaps(solvePacks),
-    [solvePacks],
-  );
-
-  const infeasibilityHints = useMemo(() => {
-    if (solutions.length > 0 || plannerItems.length === 0) return [];
-    if (!everyPlannerItemHasSolvePack(plannerItems, solvePacks)) return [];
-    return computeInfeasibilityHints({
-      items: plannerItems,
-      packs: solvePacks,
-      blackouts,
-      requireOpenSections,
-      excludeTba,
-      excludeOnlineAsync,
-      catalog,
-      // We only reach this branch when the main solve already returned
-      // zero schedules with the same items+packs+constraints, so skip the
-      // redundant base DFS that infeasibility-hints used to run.
-      baseAlreadyInfeasible: true,
+  const persistTerm = useCallback(() => {
+    writeTerm(termRef.current, {
+      items: itemsRef.current,
+      blackouts: blackoutsRef.current,
+      timePrefs: timePrefsRef.current,
+      lastSolutionIndex: currentSolutionIndexRef.current,
     });
-  }, [
-    solutions,
-    plannerItems,
-    solvePacks,
-    blackouts,
-    requireOpenSections,
-    excludeTba,
-    excludeOnlineAsync,
-    catalog,
-  ]);
-
-  const refreshCatalogFromServerRef = useRef<
-    (() => Promise<boolean>) | null
-  >(null);
-
-  const flushPersist = useCallback(async () => {
-    if (persistInFlightRef.current) return;
-    while (persistFlushedGenRef.current < persistDirtyGenRef.current) {
-      const flushingGen = persistDirtyGenRef.current;
-      const t = termRef.current;
-      const rows = itemsRef.current;
-      persistInFlightRef.current = true;
-      try {
-        const res = await syncPlannerStateAction(t, rows);
-        if (!res.ok) {
-          setSyncError(res.error);
-          // Roll back: refresh local state from the server so the client and DB
-          // do not silently diverge after a rejected write (P0 #6).
-          if (refreshCatalogFromServerRef.current) {
-            await refreshCatalogFromServerRef.current();
-          }
-          // Stop draining the queue on failure; the refresh resets ref state.
-          persistFlushedGenRef.current = persistDirtyGenRef.current;
-          return;
-        }
-        setSyncError(null);
-        persistFlushedGenRef.current = flushingGen;
-      } finally {
-        persistInFlightRef.current = false;
-      }
-    }
   }, []);
 
-  const flushBlackoutPersist = useCallback(async () => {
-    if (blackoutPersistInFlightRef.current) return;
-    while (
-      blackoutPersistFlushedGenRef.current <
-      blackoutPersistDirtyGenRef.current
-    ) {
-      const flushingGen = blackoutPersistDirtyGenRef.current;
-      const t = termRef.current;
-      blackoutPersistInFlightRef.current = true;
-      try {
-        const res = await savePlannerBlackoutsAction({
-          termCode: t,
-          items: blackoutsRef.current.items,
-        });
-        if (!res.ok) {
-          setSyncError(res.error);
-          if (refreshCatalogFromServerRef.current) {
-            await refreshCatalogFromServerRef.current();
-          }
-          blackoutPersistFlushedGenRef.current =
-            blackoutPersistDirtyGenRef.current;
-          return;
-        }
-        setSyncError(null);
-        blackoutPersistFlushedGenRef.current = flushingGen;
-      } finally {
-        blackoutPersistInFlightRef.current = false;
-      }
-    }
+  const mergeSolvePack = useCallback((pack: CourseSolvePack) => {
+    solvePacksRef.current = { ...solvePacksRef.current, [pack.courseKey]: pack };
+    setSolvePacks(solvePacksRef.current);
   }, []);
 
-  const flushKeptPersist = useCallback(async () => {
-    if (keptPersistInFlightRef.current) return;
-    while (
-      keptPersistFlushedGenRef.current < keptPersistDirtyGenRef.current
-    ) {
-      const flushingGen = keptPersistDirtyGenRef.current;
-      const t = termRef.current;
-      keptPersistInFlightRef.current = true;
-      try {
-        const res = await savePlannerKeptSolutionsAction({
-          termCode: t,
-          keys: keptSolutionsRef.current.keys,
-        });
-        if (!res.ok) {
-          setSyncError(res.error);
-          keptPersistFlushedGenRef.current = keptPersistDirtyGenRef.current;
-          return;
-        }
-        setSyncError(null);
-        keptPersistFlushedGenRef.current = flushingGen;
-      } finally {
-        keptPersistInFlightRef.current = false;
-      }
+  const loadCatalog = useCallback(async (items: PlannerItemRow[]) => {
+    const t = termRef.current;
+    const res = await loadPlannerCatalogForItemsAction(t, items);
+    if (!res.ok) {
+      setSyncError(res.error);
+      return false;
     }
+    setCatalog(res.catalog);
+    setSyncError(null);
+    return true;
   }, []);
-
-  const flushTimePrefsPersist = useCallback(async () => {
-    if (timePrefsPersistInFlightRef.current) return;
-    while (
-      timePrefsPersistFlushedGenRef.current <
-      timePrefsPersistDirtyGenRef.current
-    ) {
-      const flushingGen = timePrefsPersistDirtyGenRef.current;
-      const t = termRef.current;
-      timePrefsPersistInFlightRef.current = true;
-      try {
-        const res = await savePlannerTimePrefsAction({
-          termCode: t,
-          prefs: timePrefsRef.current,
-        });
-        if (!res.ok) {
-          setSyncError(res.error);
-          timePrefsPersistFlushedGenRef.current =
-            timePrefsPersistDirtyGenRef.current;
-          return;
-        }
-        setSyncError(null);
-        timePrefsPersistFlushedGenRef.current = flushingGen;
-      } finally {
-        timePrefsPersistInFlightRef.current = false;
-      }
-    }
-  }, []);
-
-  const schedulePersist = useCallback(() => {
-    persistDirtyGenRef.current += 1;
-    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-    persistTimerRef.current = setTimeout(() => {
-      persistTimerRef.current = null;
-      void flushPersist();
-    }, PERSIST_DEBOUNCE_MS);
-  }, [flushPersist]);
-
-  const scheduleBlackoutPersist = useCallback(() => {
-    blackoutPersistDirtyGenRef.current += 1;
-    if (blackoutPersistTimerRef.current) {
-      clearTimeout(blackoutPersistTimerRef.current);
-    }
-    blackoutPersistTimerRef.current = setTimeout(() => {
-      blackoutPersistTimerRef.current = null;
-      void flushBlackoutPersist();
-    }, BLACKOUT_PERSIST_DEBOUNCE_MS);
-  }, [flushBlackoutPersist]);
-
-  const scheduleKeptPersist = useCallback(() => {
-    keptPersistDirtyGenRef.current += 1;
-    if (keptPersistTimerRef.current) clearTimeout(keptPersistTimerRef.current);
-    keptPersistTimerRef.current = setTimeout(() => {
-      keptPersistTimerRef.current = null;
-      void flushKeptPersist();
-    }, KEPT_PERSIST_DEBOUNCE_MS);
-  }, [flushKeptPersist]);
-
-  const scheduleTimePrefsPersist = useCallback(() => {
-    timePrefsPersistDirtyGenRef.current += 1;
-    if (timePrefsPersistTimerRef.current) {
-      clearTimeout(timePrefsPersistTimerRef.current);
-    }
-    timePrefsPersistTimerRef.current = setTimeout(() => {
-      timePrefsPersistTimerRef.current = null;
-      void flushTimePrefsPersist();
-    }, TIME_PREFS_PERSIST_DEBOUNCE_MS);
-  }, [flushTimePrefsPersist]);
-
-  const scheduleLastIndexPersist = useCallback(() => {
-    if (lastIndexPersistTimerRef.current) {
-      clearTimeout(lastIndexPersistTimerRef.current);
-    }
-    lastIndexPersistTimerRef.current = setTimeout(() => {
-      lastIndexPersistTimerRef.current = null;
-      const t = termRef.current;
-      void savePlannerLastSolutionIndexAction({
-        termCode: t,
-        index: currentSolutionIndexRef.current,
-      });
-    }, LAST_INDEX_PERSIST_DEBOUNCE_MS);
-  }, []);
-
-  const clearSyncError = useCallback(() => setSyncError(null), []);
-
-  const clearScheduleFeasibilityError = useCallback(
-    () => setScheduleFeasibilityError(null),
-    [],
-  );
-
-  const setPlannerItemsFromContext = useCallback(
-    (items: PlannerItemRow[]) => {
-      itemsRef.current = items;
-      setPlannerItems(items);
-      schedulePersist();
-    },
-    [schedulePersist],
-  );
-
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "hidden") {
-        if (persistTimerRef.current) {
-          clearTimeout(persistTimerRef.current);
-          persistTimerRef.current = null;
-        }
-        if (blackoutPersistTimerRef.current) {
-          clearTimeout(blackoutPersistTimerRef.current);
-          blackoutPersistTimerRef.current = null;
-        }
-        if (keptPersistTimerRef.current) {
-          clearTimeout(keptPersistTimerRef.current);
-          keptPersistTimerRef.current = null;
-        }
-        if (timePrefsPersistTimerRef.current) {
-          clearTimeout(timePrefsPersistTimerRef.current);
-          timePrefsPersistTimerRef.current = null;
-        }
-        void flushPersist();
-        void flushBlackoutPersist();
-        void flushKeptPersist();
-        void flushTimePrefsPersist();
-      }
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [flushPersist, flushBlackoutPersist, flushKeptPersist, flushTimePrefsPersist]);
-
-  useEffect(() => {
-    const onLeave = () => {
-      if (persistTimerRef.current) {
-        clearTimeout(persistTimerRef.current);
-        persistTimerRef.current = null;
-      }
-      if (blackoutPersistTimerRef.current) {
-        clearTimeout(blackoutPersistTimerRef.current);
-        blackoutPersistTimerRef.current = null;
-      }
-      if (keptPersistTimerRef.current) {
-        clearTimeout(keptPersistTimerRef.current);
-        keptPersistTimerRef.current = null;
-      }
-      if (timePrefsPersistTimerRef.current) {
-        clearTimeout(timePrefsPersistTimerRef.current);
-        timePrefsPersistTimerRef.current = null;
-      }
-      void flushPersist();
-      void flushBlackoutPersist();
-      void flushKeptPersist();
-      void flushTimePrefsPersist();
-    };
-    window.addEventListener("pagehide", onLeave);
-    return () => window.removeEventListener("pagehide", onLeave);
-  }, [flushPersist, flushBlackoutPersist, flushKeptPersist, flushTimePrefsPersist]);
-
-  const removePlannerItem = useCallback(
-    (id: number) => {
-      setPlannerItems((prev) => {
-        const next = prev.filter((r) => r.id !== id);
-        itemsRef.current = next;
-        return next;
-      });
-      // Route through the same debounced queue as every other mutation. The
-      // queue serializes writes so a remove cannot race a debounced batched
-      // update (P0 #1).
-      schedulePersist();
-    },
-    [schedulePersist],
-  );
-
-  const updatePlannerItem = useCallback(
-    (id: number, patch: Partial<PlannerItemRow>) => {
-      setPlannerItems((prev) => {
-        const next = prev.map((r) =>
-          r.id === id ? { ...r, ...patch } : r,
-        );
-        itemsRef.current = next;
-        return next;
-      });
-      schedulePersist();
-    },
-    [schedulePersist],
-  );
 
   const recalculateSolutions = useCallback(
     async (filterOverrides?: Partial<PlannerScheduleFilters>) => {
-    const myGen = ++recalcGenRef.current;
-    recalcDepthRef.current += 1;
-    if (recalcDepthRef.current === 1) setIsRecalculatingSolutions(true);
-    try {
-      const filters: PlannerScheduleFilters = {
-        requireOpenSections:
-          filterOverrides?.requireOpenSections ?? requireOpenRef.current,
-        excludeTba: filterOverrides?.excludeTba ?? excludeTbaRef.current,
-        excludeOnlineAsync:
-          filterOverrides?.excludeOnlineAsync ?? excludeOnlineAsyncRef.current,
-      };
-      const rows = itemsRef.current;
-      const packs = solvePacksRef.current;
+      const myGen = ++recalcGenRef.current;
+      recalcDepthRef.current += 1;
+      if (recalcDepthRef.current === 1) setIsRecalculatingSolutions(true);
+      try {
+        const filters: PlannerScheduleFilters = {
+          requireOpenSections:
+            filterOverrides?.requireOpenSections ?? requireOpenRef.current,
+          excludeTba: filterOverrides?.excludeTba ?? excludeTbaRef.current,
+          excludeOnlineAsync:
+            filterOverrides?.excludeOnlineAsync ?? excludeOnlineAsyncRef.current,
+        };
+        const rows = itemsRef.current;
+        const packs = solvePacksRef.current;
 
-      if (rows.length === 0) {
-        if (myGen === recalcGenRef.current) {
-          setSyncError(null);
-          setScheduleFeasibilityError(null);
-          setSolutions([]);
-          setSolutionsCapped(false);
-          setSolutionsTimedOut(false);
+        if (rows.length === 0) {
+          if (myGen === recalcGenRef.current) {
+            setSyncError(null);
+            setScheduleFeasibilityError(null);
+            setSolutions([]);
+            setSolutionsCapped(false);
+            setSolutionsTimedOut(false);
+          }
+          return;
         }
-        return;
-      }
 
-      const blackoutIv = blackoutsDocToTimeIntervals(blackoutsRef.current);
-      const prevIdx = clampSolutionIndex(
-        currentSolutionIndexRef.current,
-        solutionsRef.current.length,
-      );
-      const prevSol = solutionsRef.current[prevIdx] ?? null;
-      const prevFp = prevSol ? solutionFingerprint(prevSol) : null;
-      const prevSelections = prevSol?.selections ?? null;
+        const blackoutIv = blackoutsDocToTimeIntervals(blackoutsRef.current);
+        const prevIdx = clampSolutionIndex(
+          currentSolutionIndexRef.current,
+          solutionsRef.current.length,
+        );
+        const prevSol = solutionsRef.current[prevIdx] ?? null;
+        const prevFp = prevSol ? solutionFingerprint(prevSol) : null;
+        const prevSelections = prevSol?.selections ?? null;
 
-      const adoptSolutions = (
-        next: ScheduleSolution[],
-        capped: boolean,
-        timedOut: boolean,
-      ) => {
-        setSolutions(next);
-        setSolutionsCapped(capped);
-        setSolutionsTimedOut(timedOut);
-        let nextIdx = 0;
-        if (next.length > 0) {
-          if (prevFp) {
+        const adoptSolutions = (
+          next: ScheduleSolution[],
+          capped: boolean,
+          timedOut: boolean,
+        ) => {
+          setSolutions(next);
+          setSolutionsCapped(capped);
+          setSolutionsTimedOut(timedOut);
+          let nextIdx = 0;
+          if (next.length > 0 && prevFp) {
             const i = findSolutionIndexByFingerprint(next, prevFp);
             if (i >= 0) nextIdx = i;
           }
-          if (nextIdx === 0 && keptSolutionsRef.current.keys.length > 0) {
-            for (const k of keptSolutionsRef.current.keys) {
-              const i = findSolutionIndexByFingerprint(next, k);
-              if (i >= 0) {
-                nextIdx = i;
-                break;
-              }
-            }
-          }
+          currentSolutionIndexRef.current = nextIdx;
+          setCurrentSolutionIndexState(nextIdx);
+          persistTerm();
+        };
+
+        if (everyPlannerItemHasSolvePack(rows, packs)) {
+          await yieldToMain();
+          if (myGen !== recalcGenRef.current) return;
+
+          const result = solveSchedulesFromPacks(rows, packs, {
+            ...filters,
+            blackoutIntervals: blackoutIv,
+            maxSolutions: PLANNER_MAX_SOLUTIONS,
+            previousSelections: prevSelections,
+          });
+          if (myGen !== recalcGenRef.current) return;
+          setSyncError(null);
+          adoptSolutions(result.solutions, result.capped, result.timedOut);
+          return;
         }
-        currentSolutionIndexRef.current = nextIdx;
-        setCurrentSolutionIndexState(nextIdx);
-      };
 
-      if (everyPlannerItemHasSolvePack(rows, packs)) {
-        await yieldToMain();
+        const res = await solveSchedulesAction(termRef.current, rows, filters);
         if (myGen !== recalcGenRef.current) return;
-
-        const result = solveSchedulesFromPacks(rows, packs, {
-          ...filters,
-          blackoutIntervals: blackoutIv,
-          maxSolutions: PLANNER_MAX_SOLUTIONS,
-          previousSelections: prevSelections,
-        });
+        if (!res.ok) {
+          setSyncError(res.error);
+          return;
+        }
         if (myGen !== recalcGenRef.current) return;
         setSyncError(null);
-        adoptSolutions(result.solutions, result.capped, result.timedOut);
-        return;
-      }
-
-      const res = await solveSchedulesAction(termRef.current, filters);
-      if (myGen !== recalcGenRef.current) return;
-      if (!res.ok) {
-        setSyncError(res.error);
-        return;
-      }
-      if (myGen !== recalcGenRef.current) return;
-      setSyncError(null);
-      const sols = res.result.solutions;
-      // Re-read packs after the await: a concurrent prefetch may have
-      // completed during the server round-trip, in which case keeping the
-      // user's previous solution is preferable to clobbering it with the
-      // server result.
-      const packsAfter = solvePacksRef.current;
-      if (
-        prevSol &&
-        everyPlannerItemHasSolvePack(rows, packsAfter) &&
-        scheduleSolutionStillValidForItems(rows, packsAfter, prevSol, {
-          ...filters,
-          blackoutIntervals: blackoutIv,
-        })
-      ) {
-        adoptSolutions([prevSol], false, false);
-      } else {
-        adoptSolutions(sols, res.result.capped, res.result.timedOut);
-      }
-    } finally {
-      recalcDepthRef.current -= 1;
-      if (recalcDepthRef.current === 0) {
-        setIsRecalculatingSolutions(false);
-        if (itemsRef.current.length > 0) {
-          setHasAttemptedSolve(true);
+        const sols = res.result.solutions;
+        const packsAfter = solvePacksRef.current;
+        if (
+          prevSol &&
+          everyPlannerItemHasSolvePack(rows, packsAfter) &&
+          scheduleSolutionStillValidForItems(rows, packsAfter, prevSol, {
+            ...filters,
+            blackoutIntervals: blackoutIv,
+          })
+        ) {
+          adoptSolutions([prevSol], false, false);
+        } else {
+          adoptSolutions(sols, res.result.capped, res.result.timedOut);
+        }
+      } finally {
+        recalcDepthRef.current -= 1;
+        if (recalcDepthRef.current === 0) {
+          setIsRecalculatingSolutions(false);
+          if (itemsRef.current.length > 0) {
+            setHasAttemptedSolve(true);
+          }
         }
       }
-    }
-  }, []);
+    },
+    [persistTerm],
+  );
 
   const scheduleRecalculateSolutions = useCallback(
     (filterOverrides?: Partial<PlannerScheduleFilters>) => {
@@ -831,6 +443,235 @@ export function PlannerProvider({
     [recalculateSolutions],
   );
 
+  const safeCurrentSolutionIndex = useMemo(
+    () => clampSolutionIndex(currentSolutionIndex, solutions.length),
+    [currentSolutionIndex, solutions.length],
+  );
+
+  const effectivePlannerItems = useMemo(() => {
+    const sol = solutions[safeCurrentSolutionIndex] ?? null;
+    return applySolutionToPlannerItems(plannerItems, sol);
+  }, [plannerItems, solutions, safeCurrentSolutionIndex]);
+
+  const calendarBlocks = useMemo(
+    () => buildCalendarBlocksFromCatalog(effectivePlannerItems, catalog),
+    [effectivePlannerItems, catalog],
+  );
+
+  const mergedPackConstraintMaps = useMemo(
+    () => mergePackConstraintMaps(solvePacks),
+    [solvePacks],
+  );
+
+  const infeasibilityHints = useMemo(() => {
+    if (solutions.length > 0 || plannerItems.length === 0) return [];
+    if (!everyPlannerItemHasSolvePack(plannerItems, solvePacks)) return [];
+    return computeInfeasibilityHints({
+      items: plannerItems,
+      packs: solvePacks,
+      blackouts,
+      requireOpenSections,
+      excludeTba,
+      excludeOnlineAsync,
+      catalog,
+      baseAlreadyInfeasible: true,
+    });
+  }, [
+    solutions,
+    plannerItems,
+    solvePacks,
+    blackouts,
+    requireOpenSections,
+    excludeTba,
+    excludeOnlineAsync,
+    catalog,
+  ]);
+
+  const clearSyncError = useCallback(() => setSyncError(null), []);
+  const clearScheduleFeasibilityError = useCallback(
+    () => setScheduleFeasibilityError(null),
+    [],
+  );
+
+  const syncHistoryStacks = useCallback((stacks: PlannerHistoryStacks) => {
+    historyStacksRef.current = stacks;
+    setCanUndo(stacks.undo.length > 0);
+    setCanRedo(stacks.redo.length > 0);
+  }, []);
+
+  const captureCurrentHistorySnapshot =
+    useCallback((): PlannerHistorySnapshot => {
+      return capturePlannerHistorySnapshot({
+        plannerItems: itemsRef.current,
+        blackouts: blackoutsRef.current,
+        timePrefs: timePrefsRef.current,
+        filters: {
+          requireOpenSections: requireOpenRef.current,
+          excludeTba: excludeTbaRef.current,
+          excludeOnlineAsync: excludeOnlineAsyncRef.current,
+        },
+      });
+    }, []);
+
+  const recordHistorySnapshot = useCallback(() => {
+    if (isApplyingHistoryRef.current) return;
+    const state = historyApiRef.current.record(
+      historyStacksRef.current,
+      captureCurrentHistorySnapshot(),
+    );
+    syncHistoryStacks(state.stacks);
+  }, [captureCurrentHistorySnapshot, syncHistoryStacks]);
+
+  const setPlannerItemsFromContext = useCallback(
+    (items: PlannerItemRow[]) => {
+      itemsRef.current = items;
+      setPlannerItems(items);
+      persistTerm();
+      void loadCatalog(items);
+      scheduleRecalculateSolutions();
+    },
+    [persistTerm, loadCatalog, scheduleRecalculateSolutions],
+  );
+
+  const removePlannerItem = useCallback(
+    (id: number) => {
+      recordHistorySnapshot();
+      setPlannerItems((prev) => {
+        const next = prev.filter((r) => r.id !== id);
+        itemsRef.current = next;
+        return next;
+      });
+      persistTerm();
+      scheduleRecalculateSolutions();
+    },
+    [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot],
+  );
+
+  const updatePlannerItem = useCallback(
+    (id: number, patch: Partial<PlannerItemRow>) => {
+      recordHistorySnapshot();
+      setPlannerItems((prev) => {
+        const next = prev.map((r) =>
+          r.id === id ? { ...r, ...patch } : r,
+        );
+        itemsRef.current = next;
+        return next;
+      });
+      persistTerm();
+    },
+    [persistTerm, recordHistorySnapshot],
+  );
+
+  const applyHistorySnapshot = useCallback(
+    (snap: PlannerHistorySnapshot) => {
+      isApplyingHistoryRef.current = true;
+      itemsRef.current = snap.plannerItems;
+      setPlannerItems(snap.plannerItems);
+      blackoutsRef.current = snap.blackouts;
+      setBlackoutsState(snap.blackouts);
+      timePrefsRef.current = snap.timePrefs;
+      setTimePrefsState(snap.timePrefs);
+      requireOpenRef.current = snap.filters.requireOpenSections;
+      setRequireOpenSections(snap.filters.requireOpenSections);
+      excludeTbaRef.current = snap.filters.excludeTba;
+      setExcludeTba(snap.filters.excludeTba);
+      excludeOnlineAsyncRef.current = snap.filters.excludeOnlineAsync;
+      setExcludeOnlineAsync(snap.filters.excludeOnlineAsync);
+      persistTerm();
+      void loadCatalog(snap.plannerItems);
+      scheduleRecalculateSolutions({ ...snap.filters });
+      queueMicrotask(() => {
+        isApplyingHistoryRef.current = false;
+      });
+    },
+    [persistTerm, loadCatalog, scheduleRecalculateSolutions],
+  );
+
+  const undo = useCallback(() => {
+    const result = historyApiRef.current.undo(
+      historyStacksRef.current,
+      captureCurrentHistorySnapshot(),
+    );
+    if (!result.snapshot) return;
+    syncHistoryStacks(result.stacks);
+    applyHistorySnapshot(result.snapshot);
+  }, [
+    captureCurrentHistorySnapshot,
+    syncHistoryStacks,
+    applyHistorySnapshot,
+  ]);
+
+  const redo = useCallback(() => {
+    const result = historyApiRef.current.redo(
+      historyStacksRef.current,
+      captureCurrentHistorySnapshot(),
+    );
+    if (!result.snapshot) return;
+    syncHistoryStacks(result.stacks);
+    applyHistorySnapshot(result.snapshot);
+  }, [
+    captureCurrentHistorySnapshot,
+    syncHistoryStacks,
+    applyHistorySnapshot,
+  ]);
+
+  const refreshCatalogFromServer = useCallback(async (): Promise<boolean> => {
+    const ok = await loadCatalog(itemsRef.current);
+    if (ok) scheduleRecalculateSolutions();
+    return ok;
+  }, [loadCatalog, scheduleRecalculateSolutions]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setIsHydrating(true);
+      if (!isMigrated()) {
+        const res = await migratePlannerStateFromServerAction();
+        if (cancelled) return;
+        if (res.ok) {
+          mergeMigrationTerms(res.terms);
+        } else {
+          setSyncError(res.error);
+        }
+      }
+      const term = readTerm(termCode);
+      itemsRef.current = term.items;
+      setPlannerItems(term.items);
+      blackoutsRef.current = term.blackouts;
+      setBlackoutsState(term.blackouts);
+      timePrefsRef.current = term.timePrefs;
+      setTimePrefsState(term.timePrefs);
+      currentSolutionIndexRef.current = term.lastSolutionIndex;
+      setCurrentSolutionIndexState(term.lastSolutionIndex);
+      if (!cancelled) {
+        await loadCatalog(term.items);
+        setIsHydrating(false);
+        if (term.items.length > 0) {
+          scheduleRecalculateSolutions();
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [termCode, loadCatalog, scheduleRecalculateSolutions]);
+
+  useEffect(() => {
+    return subscribeLocalDoc(() => {
+      const term = readTerm(termRef.current);
+      itemsRef.current = term.items;
+      setPlannerItems(term.items);
+      blackoutsRef.current = term.blackouts;
+      setBlackoutsState(term.blackouts);
+      timePrefsRef.current = term.timePrefs;
+      setTimePrefsState(term.timePrefs);
+      currentSolutionIndexRef.current = term.lastSolutionIndex;
+      setCurrentSolutionIndexState(term.lastSolutionIndex);
+      void loadCatalog(term.items);
+      scheduleRecalculateSolutions();
+    });
+  }, [loadCatalog, scheduleRecalculateSolutions]);
+
   useEffect(() => {
     return () => {
       if (recalcDebounceTimerRef.current) {
@@ -838,40 +679,6 @@ export function PlannerProvider({
       }
     };
   }, []);
-
-  const refreshCatalogFromServer = useCallback(async (): Promise<boolean> => {
-    const res = await loadPlannerCatalogBootstrapAction(termCode);
-    if (!res.ok) {
-      setSyncError(res.error);
-      return false;
-    }
-    itemsRef.current = res.plannerItems;
-    setPlannerItems(res.plannerItems);
-    setCatalog(res.catalog);
-    const nextBlackouts = res.termUiState?.blackouts ?? EMPTY_BLACKOUTS;
-    blackoutsRef.current = nextBlackouts;
-    setBlackoutsState(nextBlackouts);
-    const nextKept = res.termUiState?.keptSolutions ?? EMPTY_KEPT_SOLUTIONS;
-    keptSolutionsRef.current = nextKept;
-    setKeptSolutionsState(nextKept);
-    const nextPrefs = res.termUiState?.timePrefs ?? EMPTY_TIME_PREFS;
-    timePrefsRef.current = nextPrefs;
-    setTimePrefsState(nextPrefs);
-    const nextIdx = res.termUiState?.lastSolutionIndex ?? 0;
-    currentSolutionIndexRef.current = nextIdx;
-    setCurrentSolutionIndexState(nextIdx);
-    persistFlushedGenRef.current = persistDirtyGenRef.current;
-    blackoutPersistFlushedGenRef.current = blackoutPersistDirtyGenRef.current;
-    keptPersistFlushedGenRef.current = keptPersistDirtyGenRef.current;
-    timePrefsPersistFlushedGenRef.current = timePrefsPersistDirtyGenRef.current;
-    setSyncError(null);
-    scheduleRecalculateSolutions();
-    return true;
-  }, [termCode, scheduleRecalculateSolutions]);
-
-  useEffect(() => {
-    refreshCatalogFromServerRef.current = refreshCatalogFromServer;
-  }, [refreshCatalogFromServer]);
 
   const applyPlannerItemSelection = useCallback(
     (itemId: number, sel: ResolvedPlannerSelection) => {
@@ -902,14 +709,15 @@ export function PlannerProvider({
         return;
       }
       setScheduleFeasibilityError(null);
+      recordHistorySnapshot();
       setPlannerItems(() => {
         itemsRef.current = next;
         return next;
       });
-      schedulePersist();
+      persistTerm();
       scheduleRecalculateSolutions();
     },
-    [schedulePersist, scheduleRecalculateSolutions],
+    [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot],
   );
 
   const toggleSectionPin = useCallback(
@@ -946,14 +754,15 @@ export function PlannerProvider({
         return;
       }
       setScheduleFeasibilityError(null);
+      recordHistorySnapshot();
       setPlannerItems(() => {
         itemsRef.current = next;
         return next;
       });
-      schedulePersist();
+      persistTerm();
       scheduleRecalculateSolutions();
     },
-    [schedulePersist, scheduleRecalculateSolutions],
+    [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot],
   );
 
   const setSectionPinFromDrag = useCallback(
@@ -985,23 +794,16 @@ export function PlannerProvider({
         return;
       }
       setScheduleFeasibilityError(null);
+      recordHistorySnapshot();
       setPlannerItems(() => {
         itemsRef.current = next;
         return next;
       });
-      schedulePersist();
+      persistTerm();
       scheduleRecalculateSolutions();
     },
-    [schedulePersist, scheduleRecalculateSolutions],
+    [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot],
   );
-
-  // Counter bumped only by user-initiated `setBlackouts`. The side-effect
-  // useEffect below reads it to skip side effects for server-driven sets
-  // (e.g. `refreshCatalogFromServer`). Under React Strict Mode the previous
-  // implementation ran the functional updater twice, which doubled the
-  // queueMicrotask side-effect scheduling.
-  const blackoutsUserGenRef = useRef(0);
-  const blackoutsHandledGenRef = useRef(0);
 
   const setBlackouts = useCallback(
     (
@@ -1009,6 +811,7 @@ export function PlannerProvider({
         | PlannerBlackoutsDocV1
         | ((prev: PlannerBlackoutsDocV1) => PlannerBlackoutsDocV1),
     ) => {
+      recordHistorySnapshot();
       blackoutsUserGenRef.current += 1;
       setBlackoutsState((prev) => {
         const doc = typeof next === "function" ? next(prev) : next;
@@ -1016,22 +819,18 @@ export function PlannerProvider({
         return doc;
       });
     },
-    [],
+    [recordHistorySnapshot],
   );
 
   useEffect(() => {
     if (blackoutsUserGenRef.current === blackoutsHandledGenRef.current) {
-      // Either the initial mount or a server-driven reset; no side effects.
       return;
     }
     blackoutsHandledGenRef.current = blackoutsUserGenRef.current;
-    scheduleBlackoutPersist();
+    persistTerm();
     scheduleRecalculateSolutions();
-  }, [blackouts, scheduleBlackoutPersist, scheduleRecalculateSolutions]);
+  }, [blackouts, persistTerm, scheduleRecalculateSolutions]);
 
-  // Stable signature of which courses are in the cart, so unrelated edits
-  // (color, instructor prefs, pin toggles) don't restart the debounce timer
-  // or kick off a redundant prefetch round.
   const plannerCourseKeysSignature = useMemo(() => {
     const keys = plannerItems.map((row) =>
       courseSolvePackCourseKey(row.subject, row.courseNumber),
@@ -1041,12 +840,10 @@ export function PlannerProvider({
   }, [plannerItems]);
 
   useEffect(() => {
-    if (plannerCourseKeysSignature.length === 0) return;
+    if (isHydrating || plannerCourseKeysSignature.length === 0) return;
     const t = termCode;
     let cancelled = false;
     const timer = setTimeout(() => {
-      // Bump the prefetch generation so any in-flight Promise.all from a prior
-      // term/items snapshot bails before merging stale packs (P0 #5).
       const myGen = ++prefetchGenRef.current;
       const keyToCourse = new Map<
         string,
@@ -1085,7 +882,13 @@ export function PlannerProvider({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [termCode, plannerCourseKeysSignature, mergeSolvePack, scheduleRecalculateSolutions]);
+  }, [
+    termCode,
+    plannerCourseKeysSignature,
+    isHydrating,
+    mergeSolvePack,
+    scheduleRecalculateSolutions,
+  ]);
 
   const setCurrentSolutionIndex = useCallback(
     (
@@ -1098,7 +901,7 @@ export function PlannerProvider({
       currentSolutionIndexRef.current = clamped;
       setCurrentSolutionIndexState(clamped);
       if (clamped !== prev) {
-        scheduleLastIndexPersist();
+        persistTerm();
         track("planner_solution_changed", {
           method: method ?? "keep",
           from: prev,
@@ -1107,41 +910,8 @@ export function PlannerProvider({
         });
       }
     },
-    [scheduleLastIndexPersist],
+    [persistTerm],
   );
-
-  const toggleCurrentSolutionKept = useCallback(() => {
-    const total = solutionsRef.current.length;
-    const idx = clampSolutionIndex(
-      currentSolutionIndexRef.current,
-      total,
-    );
-    const sol = solutionsRef.current[idx];
-    if (!sol) return;
-    const fp = solutionFingerprint(sol);
-    const prevDoc = keptSolutionsRef.current;
-    const has = prevDoc.keys.includes(fp);
-    let nextKeys: string[];
-    if (has) {
-      nextKeys = prevDoc.keys.filter((k) => k !== fp);
-    } else {
-      nextKeys = [...prevDoc.keys, fp];
-      if (nextKeys.length > MAX_KEPT_SOLUTIONS) {
-        nextKeys = nextKeys.slice(nextKeys.length - MAX_KEPT_SOLUTIONS);
-      }
-    }
-    const nextDoc: PlannerKeptSolutionsDocV1 = { v: 1, keys: nextKeys };
-    keptSolutionsRef.current = nextDoc;
-    setKeptSolutionsState(nextDoc);
-    scheduleKeptPersist();
-    track(has ? "planner_solution_unkept" : "planner_solution_kept", {
-      index: idx,
-      total,
-    });
-  }, [scheduleKeptPersist]);
-
-  const timePrefsUserGenRef = useRef(0);
-  const timePrefsHandledGenRef = useRef(0);
 
   const setTimePrefs = useCallback(
     (
@@ -1149,6 +919,7 @@ export function PlannerProvider({
         | PlannerTimePrefsV1
         | ((prev: PlannerTimePrefsV1) => PlannerTimePrefsV1),
     ) => {
+      recordHistorySnapshot();
       timePrefsUserGenRef.current += 1;
       setTimePrefsState((prev) => {
         const doc = typeof next === "function" ? next(prev) : next;
@@ -1156,30 +927,55 @@ export function PlannerProvider({
         return doc;
       });
     },
-    [],
+    [recordHistorySnapshot],
   );
 
-  // The setter wraps each toggle so we don't need to diff individual prefs
-  // here — the user-facing per-pref `track` call lives in the rail component.
   useEffect(() => {
     if (timePrefsUserGenRef.current === timePrefsHandledGenRef.current) {
       return;
     }
     timePrefsHandledGenRef.current = timePrefsUserGenRef.current;
-    scheduleTimePrefsPersist();
+    persistTerm();
     scheduleRecalculateSolutions();
-  }, [timePrefs, scheduleTimePrefsPersist, scheduleRecalculateSolutions]);
+  }, [timePrefs, persistTerm, scheduleRecalculateSolutions]);
+
+  const setRequireOpenSectionsWithHistory = useCallback(
+    (v: boolean) => {
+      recordHistorySnapshot();
+      setRequireOpenSections(v);
+      scheduleRecalculateSolutions({ requireOpenSections: v });
+    },
+    [recordHistorySnapshot, scheduleRecalculateSolutions],
+  );
+
+  const setExcludeTbaWithHistory = useCallback(
+    (v: boolean) => {
+      recordHistorySnapshot();
+      setExcludeTba(v);
+      scheduleRecalculateSolutions({ excludeTba: v });
+    },
+    [recordHistorySnapshot, scheduleRecalculateSolutions],
+  );
+
+  const setExcludeOnlineAsyncWithHistory = useCallback(
+    (v: boolean) => {
+      recordHistorySnapshot();
+      setExcludeOnlineAsync(v);
+      scheduleRecalculateSolutions({ excludeOnlineAsync: v });
+    },
+    [recordHistorySnapshot, scheduleRecalculateSolutions],
+  );
 
   const dataValue = useMemo<PlannerDataContextValue>(
     () => ({
       termCode,
       plannerItems,
       catalog,
+      isHydrating,
       refreshCatalogFromServer,
       setPlannerItems: setPlannerItemsFromContext,
       removePlannerItem,
       updatePlannerItem,
-      schedulePersist,
       toggleSectionPin,
       setSectionPinFromDrag,
       applyPlannerItemSelection,
@@ -1191,11 +987,11 @@ export function PlannerProvider({
       termCode,
       plannerItems,
       catalog,
+      isHydrating,
       refreshCatalogFromServer,
       setPlannerItemsFromContext,
       removePlannerItem,
       updatePlannerItem,
-      schedulePersist,
       toggleSectionPin,
       setSectionPinFromDrag,
       applyPlannerItemSelection,
@@ -1218,10 +1014,6 @@ export function PlannerProvider({
       solutionsTimedOut,
       currentSolutionIndex: safeCurrentSolutionIndex,
       setCurrentSolutionIndex,
-      keptSolutions,
-      isCurrentSolutionKept,
-      toggleCurrentSolutionKept,
-      keptSolutionIndices,
       infeasibilityHints,
       recalculateSolutions,
       scheduleRecalculateSolutions,
@@ -1240,10 +1032,6 @@ export function PlannerProvider({
       solutionsTimedOut,
       safeCurrentSolutionIndex,
       setCurrentSolutionIndex,
-      keptSolutions,
-      isCurrentSolutionKept,
-      toggleCurrentSolutionKept,
-      keptSolutionIndices,
       infeasibilityHints,
       recalculateSolutions,
       scheduleRecalculateSolutions,
@@ -1255,11 +1043,11 @@ export function PlannerProvider({
   const uiValue = useMemo<PlannerUiContextValue>(
     () => ({
       requireOpenSections,
-      setRequireOpenSections,
+      setRequireOpenSections: setRequireOpenSectionsWithHistory,
       excludeTba,
-      setExcludeTba,
+      setExcludeTba: setExcludeTbaWithHistory,
       excludeOnlineAsync,
-      setExcludeOnlineAsync,
+      setExcludeOnlineAsync: setExcludeOnlineAsyncWithHistory,
       blackouts,
       setBlackouts,
       timePrefs,
@@ -1273,14 +1061,40 @@ export function PlannerProvider({
       timePrefs,
       setBlackouts,
       setTimePrefs,
+      setRequireOpenSectionsWithHistory,
+      setExcludeTbaWithHistory,
+      setExcludeOnlineAsyncWithHistory,
     ],
+  );
+
+  const historyValue = useMemo<PlannerHistoryContextValue>(
+    () => ({
+      canUndo,
+      canRedo,
+      undo,
+      redo,
+      recordHistorySnapshot,
+    }),
+    [canUndo, canRedo, undo, redo, recordHistorySnapshot],
   );
 
   return (
     <PlannerDataContext.Provider value={dataValue}>
       <PlannerSolveContext.Provider value={solveValue}>
         <PlannerUiContext.Provider value={uiValue}>
-          {children}
+          <PlannerHistoryContext.Provider value={historyValue}>
+            {isHydrating ? (
+              <p
+                className="rounded-xl border border-border bg-card px-4 py-6 text-sm text-muted-foreground"
+                role="status"
+                aria-live="polite"
+              >
+                Restoring your courses&hellip;
+              </p>
+            ) : (
+              children
+            )}
+          </PlannerHistoryContext.Provider>
         </PlannerUiContext.Provider>
       </PlannerSolveContext.Provider>
     </PlannerDataContext.Provider>
@@ -1302,5 +1116,13 @@ export function usePlannerSolve(): PlannerSolveContextValue {
 export function usePlannerUi(): PlannerUiContextValue {
   const ctx = useContext(PlannerUiContext);
   if (!ctx) throw new Error("usePlannerUi must be used within PlannerProvider");
+  return ctx;
+}
+
+export function usePlannerHistory(): PlannerHistoryContextValue {
+  const ctx = useContext(PlannerHistoryContext);
+  if (!ctx) {
+    throw new Error("usePlannerHistory must be used within PlannerProvider");
+  }
   return ctx;
 }

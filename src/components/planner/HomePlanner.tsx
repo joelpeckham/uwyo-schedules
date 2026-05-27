@@ -3,14 +3,7 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ensurePlannerSessionAction } from "@/app/planner/actions";
-import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
-import type { PlannerTermUiStateRow } from "@/lib/planner/catalog-bootstrap";
 import type { CalendarBlock } from "@/lib/planner/data";
-import type { PlannerItemRow } from "@/lib/planner/data";
-import { parseBlackoutsJson } from "@/lib/planner/blackouts";
-import { parseKeptSolutionsJson } from "@/lib/planner/kept-solutions";
-import { parseTimePrefs } from "@/lib/planner/time-prefs";
 
 import { CourseManager } from "./CourseManager";
 import { NotOnGridRail, useNotOnGridRailRows } from "./NotOnGridRail";
@@ -21,8 +14,6 @@ import { ShareLinkApplier } from "./ShareLinkApplier";
 import { FiltersCard } from "./FiltersCard";
 import { WeekCalendar } from "./WeekCalendar";
 
-// Loaded only when the user opens a section block; the modal owns a
-// non-trivial JSON tree view that we keep out of the initial bundle.
 const SectionJsonModal = dynamic(
   () => import("./SectionJsonModal").then((m) => m.SectionJsonModal),
   { ssr: false },
@@ -30,32 +21,13 @@ const SectionJsonModal = dynamic(
 
 type Props = {
   termCode: string;
-  plannerItems: PlannerItemRow[];
-  catalog: PlannerCatalogJson;
-  termUiState: PlannerTermUiStateRow | null;
-  hasSessionCookie: boolean;
   /** When false, the page shows the empty-state message (no ingest yet). */
   hasData: boolean;
 };
 
-export function HomePlanner({
-  termCode,
-  plannerItems,
-  catalog,
-  termUiState,
-  hasSessionCookie,
-  hasData,
-}: Props) {
-  const router = useRouter();
+export function HomePlanner({ termCode, hasData }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCrn, setModalCrn] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (hasSessionCookie) return;
-    void ensurePlannerSessionAction().then(() => {
-      router.refresh();
-    });
-  }, [hasSessionCookie, router]);
 
   const onBlockActivate = useCallback((block: CalendarBlock) => {
     setModalCrn(block.sectionCrn);
@@ -92,25 +64,8 @@ export function HomePlanner({
           <NoDataNotice />
         ) : (
           <>
-            <ShareLinkApplier termCode={termCode} plannerItems={plannerItems} />
-            <PlannerProvider
-              key={termCode}
-              termCode={termCode}
-              initialPlannerItems={plannerItems}
-              initialCatalog={catalog}
-              initialTermUiState={
-                termUiState
-                  ? {
-                      blackouts: parseBlackoutsJson(termUiState.blackouts),
-                      keptSolutions: parseKeptSolutionsJson(
-                        termUiState.keptSolutionKeys,
-                      ),
-                      timePrefs: parseTimePrefs(termUiState.timePrefs),
-                      lastSolutionIndex: termUiState.lastSolutionIndex,
-                    }
-                  : null
-              }
-            >
+            <PlannerProvider key={termCode} termCode={termCode}>
+              <ShareLinkApplier termCode={termCode} />
               <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
                 <div className="min-w-0 space-y-4">
                   <CourseManager key={termCode} termCode={termCode} />
