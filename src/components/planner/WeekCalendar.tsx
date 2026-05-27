@@ -34,9 +34,15 @@ import {
   useTransition,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Ban, Minus, Pin, ZoomIn } from "lucide-react";
+import { Ban, Minus, Pin, Redo2, Undo2, ZoomIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { usePlannerData, usePlannerSolve, usePlannerUi } from "./PlannerContext";
+import {
+  usePlannerData,
+  usePlannerHistory,
+  usePlannerSolve,
+  usePlannerUi,
+} from "./PlannerContext";
+import { usePlannerUndoRedoShortcuts } from "./usePlannerUndoRedoShortcuts";
 import { BusyTimeDialog } from "./week-calendar/BusyTimeDialog";
 import {
   buildFloatStyle,
@@ -105,6 +111,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     excludeTba,
     excludeOnlineAsync,
   } = usePlannerUi();
+  const { canUndo, canRedo, undo, redo } = usePlannerHistory();
+
+  usePlannerUndoRedoShortcuts({ undo, redo, canUndo, canRedo });
 
   const plannerItemsById = useMemo(() => {
     const m = new Map<number, PlannerItemRow>();
@@ -994,6 +1003,32 @@ export function WeekCalendar({ onBlockActivate }: Props) {
           exportSlot={<ExportMenu />}
           actions={
             <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 touch-manipulation"
+                aria-label="Undo"
+                title="Undo (⌘Z)"
+                disabled={!canUndo}
+                onClick={undo}
+              >
+                <Undo2 className="size-4" aria-hidden />
+                <span className="ml-1.5 hidden sm:inline">Undo</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 touch-manipulation"
+                aria-label="Redo"
+                title="Redo (⇧⌘Z)"
+                disabled={!canRedo}
+                onClick={redo}
+              >
+                <Redo2 className="size-4" aria-hidden />
+                <span className="ml-1.5 hidden sm:inline">Redo</span>
+              </Button>
               <Button
                 type="button"
                 variant={markBusyMode ? "default" : "outline"}

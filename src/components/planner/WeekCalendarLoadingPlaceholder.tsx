@@ -2,7 +2,7 @@ import { WeekCalendarGridSkeleton } from "./week-calendar/WeekCalendarGridSkelet
 
 /**
  * Reserves the same vertical space as the mounted `WeekCalendar` card (alerts +
- * toolbar + pager + grid) so dynamic import and route Suspense do not cause CLS.
+ * toolbar + grid) so dynamic import and route Suspense do not cause CLS.
  */
 export function WeekCalendarLoadingPlaceholder() {
   return (
@@ -29,12 +29,6 @@ export function WeekCalendarLoadingPlaceholder() {
           </div>
         </div>
         <div className="mt-2 h-4 w-full max-w-md rounded bg-muted/50" />
-      </div>
-      <div
-        className="flex min-h-20 items-center border-b border-border bg-muted/15 px-3 sm:min-h-11 sm:px-4"
-        aria-hidden
-      >
-        <div className="h-3 w-40 rounded bg-muted/60" />
       </div>
       <WeekCalendarGridSkeleton />
     </section>

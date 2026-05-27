@@ -1,8 +1,16 @@
 "use client";
 
-import { Ban, ChevronDown, CircleHelp, Copy, Minus, ZoomIn } from "lucide-react";
+import {
+  Ban,
+  ChevronDown,
+  CircleHelp,
+  Copy,
+  Minus,
+  Redo2,
+  Undo2,
+  ZoomIn,
+} from "lucide-react";
 
-import { SolutionsPagerBar } from "@/components/planner/SolutionsPager";
 import { WeekCalendarGrid } from "@/components/planner/week-calendar/WeekCalendarGrid";
 import { WeekCalendarShell } from "@/components/planner/week-calendar/WeekCalendarShell";
 import { WeekCalendarToolbar } from "@/components/planner/week-calendar/WeekCalendarToolbar";
@@ -18,7 +26,6 @@ import {
   LANDING_PREVIEW_BLOCKS,
   LANDING_PREVIEW_CREDIT_HOURS,
   LANDING_PREVIEW_PLANNER_ITEM_COUNT,
-  LANDING_PREVIEW_SOLUTION_TOTAL,
 } from "@/lib/planner/landing-preview-blocks";
 import { cn } from "@/lib/utils";
 
@@ -60,15 +67,6 @@ export function LandingWeekCalendarPreview() {
         onClearSwapError={() => {}}
         isRecalculatingSolutions={false}
         noSchedulesHelp={null}
-        solutionsPager={
-          <SolutionsPagerBar
-            current={0}
-            total={LANDING_PREVIEW_SOLUTION_TOTAL}
-            canUndo={false}
-            canRedo={false}
-            disabled
-          />
-        }
         toolbar={
           <WeekCalendarToolbar
             tourSlot={null}
@@ -90,6 +88,30 @@ export function LandingWeekCalendarPreview() {
             }
             actions={
               <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 touch-manipulation"
+                  disabled
+                  tabIndex={-1}
+                  aria-label="Undo"
+                >
+                  <Undo2 className="size-4" aria-hidden />
+                  <span className="ml-1.5 hidden sm:inline">Undo</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 touch-manipulation"
+                  disabled
+                  tabIndex={-1}
+                  aria-label="Redo"
+                >
+                  <Redo2 className="size-4" aria-hidden />
+                  <span className="ml-1.5 hidden sm:inline">Redo</span>
+                </Button>
                 <Button
                   type="button"
                   variant="outline"

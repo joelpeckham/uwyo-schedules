@@ -32,14 +32,6 @@ type Props = {
   termDescription: string | null;
 };
 
-function clampSolutionIndex(index: number, total: number): number {
-  if (total <= 0) return 0;
-  if (!Number.isFinite(index)) return 0;
-  if (index < 0) return 0;
-  if (index >= total) return total - 1;
-  return Math.floor(index);
-}
-
 export function PrintBootstrap({ termCode, termDescription }: Props) {
   const searchParams = useSearchParams();
   const printParam = searchParams.get("p");
@@ -80,11 +72,7 @@ export function PrintBootstrap({ termCode, termDescription }: Props) {
           setStatus("error");
           return;
         }
-        const idx = clampSolutionIndex(
-          term.lastSolutionIndex,
-          res.result.solutions.length,
-        );
-        const sol = res.result.solutions[idx];
+        const sol = res.result.solutions[0];
         if (sol) {
           displayItems = applyResolvedSelectionsToPlannerItems(
             term.items,

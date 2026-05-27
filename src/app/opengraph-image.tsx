@@ -7,7 +7,6 @@ import { formatHour } from "@/components/planner/week-calendar/block-metrics";
 import {
   LANDING_PREVIEW_BLOCKS,
   LANDING_PREVIEW_CREDIT_HOURS,
-  LANDING_PREVIEW_SOLUTION_TOTAL,
 } from "@/lib/planner/landing-preview-blocks";
 import {
   groupOgDragGhostsByDay,
@@ -377,43 +376,7 @@ export default async function OpengraphImage() {
                   {LANDING_PREVIEW_CREDIT_HOURS} cr
                 </span>
               </div>
-              <span
-                style={{
-                  fontSize: 10,
-                  color: COLORS.fgSoft,
-                  fontFamily: "ui-sans-serif, system-ui, sans-serif",
-                }}
-              >
-                Copy / export
-              </span>
-            </div>
-
-            {/* Solutions pager — matches SolutionsPagerBar */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "6px 14px",
-                borderBottom: `1px solid ${COLORS.border}`,
-                backgroundColor: "rgba(245, 239, 227, 0.35)",
-              }}
-            >
               <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: COLORS.fgMuted,
-                    fontFamily:
-                      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                  }}
-                >
-                  1 / {LANDING_PREVIEW_SOLUTION_TOTAL}
-                </span>
-                <span style={{ fontSize: 11, color: COLORS.fgSoft }}>‹ ›</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "row", gap: 6 }}>
                 <span
                   style={{
                     fontSize: 10,
@@ -435,6 +398,15 @@ export default async function OpengraphImage() {
                   }}
                 >
                   Redo
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: COLORS.fgSoft,
+                    fontFamily: "ui-sans-serif, system-ui, sans-serif",
+                  }}
+                >
+                  Copy / export
                 </span>
               </div>
             </div>

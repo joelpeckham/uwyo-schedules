@@ -106,7 +106,7 @@ export function PlannerEmptyHero({ termCode }: Props) {
               number={4}
               icon={<ArrowRight className="size-4" />}
               title="Undo changes"
-              body="Pin a section to lock it, drag a block to try other times, or undo a change from the pager above."
+              body="Pin a section to lock it, drag a block to try other times, or use Undo in the week toolbar."
             />
           </ol>
 

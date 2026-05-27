@@ -152,7 +152,6 @@ export async function solveSchedulesAction(
     const db = createDb();
     const result = await solveSchedulesForTerm(db, termCode, items, {
       ...filters,
-      maxSolutions: 25,
       blackoutIntervals: blackoutsDocToTimeIntervals(
         parseBlackoutsJson(blackouts),
       ),

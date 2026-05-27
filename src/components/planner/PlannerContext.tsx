@@ -12,10 +12,6 @@ import {
   type PlannerBlackoutsDocV1,
 } from "@/lib/planner/blackouts";
 import {
-  findSolutionIndexByFingerprint,
-  solutionFingerprint,
-} from "@/lib/planner/kept-solutions";
-import {
   capturePlannerHistorySnapshot,
   createPlannerHistoryStacks,
   type PlannerHistorySnapshot,
@@ -25,7 +21,6 @@ import { computeInfeasibilityHints } from "@/lib/planner/infeasibility-hints";
 import { mergePackConstraintMaps } from "@/lib/planner/planner-swap-feasibility";
 import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
 import { DEFAULT_PLANNER_SCHEDULE_FILTERS } from "@/lib/planner/schedule-filters";
-import { track } from "@/lib/analytics/track";
 import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
 import {
   EMPTY_SECTION_PINS,
@@ -60,7 +55,6 @@ import {
 } from "react";
 
 const PACK_PREFETCH_DEBOUNCE_MS = 400;
-const PLANNER_MAX_SOLUTIONS = 25 as const;
 const PREVIEW_FEASIBILITY_TIMEOUT_MS = 250;
 
 const EMPTY_BLACKOUTS: PlannerBlackoutsDocV1 = { v: 1, items: [] };
@@ -91,14 +85,6 @@ function applySolutionToPlannerItems(
       linkedBundleId: sel.linkedBundleId,
     };
   });
-}
-
-function clampSolutionIndex(i: number, total: number): number {
-  if (total <= 0) return 0;
-  if (!Number.isFinite(i)) return 0;
-  if (i < 0) return 0;
-  if (i >= total) return total - 1;
-  return Math.floor(i);
 }
 
 type PlannerDataContextValue = {
@@ -133,13 +119,6 @@ type PlannerSolveContextValue = {
   scheduleFeasibilityError: string | null;
   clearScheduleFeasibilityError: () => void;
   solutions: ScheduleSolution[];
-  solutionsCapped: boolean;
-  solutionsTimedOut: boolean;
-  currentSolutionIndex: number;
-  setCurrentSolutionIndex: (
-    next: number,
-    method?: "next" | "prev" | "first" | "last" | "keep" | "drop",
-  ) => void;
   infeasibilityHints: string[];
   recalculateSolutions: (
     filterOverrides?: Partial<PlannerScheduleFilters>,
@@ -196,9 +175,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   >(null);
 
   const [solutions, setSolutions] = useState<ScheduleSolution[]>([]);
-  const [solutionsCapped, setSolutionsCapped] = useState(false);
-  const [solutionsTimedOut, setSolutionsTimedOut] = useState(false);
-  const [currentSolutionIndex, setCurrentSolutionIndexState] = useState(0);
   const [requireOpenSections, setRequireOpenSections] = useState(
     DEFAULT_PLANNER_SCHEDULE_FILTERS.requireOpenSections,
   );
@@ -236,7 +212,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const excludeTbaRef = useRef(excludeTba);
   const excludeOnlineAsyncRef = useRef(excludeOnlineAsync);
   const blackoutsRef = useRef(blackouts);
-  const currentSolutionIndexRef = useRef(currentSolutionIndex);
   const historyApiRef = useRef(createPlannerHistoryStacks());
   const historyStacksRef = useRef<PlannerHistoryStacks>({ undo: [], redo: [] });
   const isApplyingHistoryRef = useRef(false);
@@ -267,15 +242,11 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   useEffect(() => {
     blackoutsRef.current = blackouts;
   }, [blackouts]);
-  useEffect(() => {
-    currentSolutionIndexRef.current = currentSolutionIndex;
-  }, [currentSolutionIndex]);
 
   const persistTerm = useCallback(() => {
     writeTerm(termRef.current, {
       items: itemsRef.current,
       blackouts: blackoutsRef.current,
-      lastSolutionIndex: currentSolutionIndexRef.current,
     });
   }, []);
 
@@ -317,38 +288,13 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
             setSyncError(null);
             setScheduleFeasibilityError(null);
             setSolutions([]);
-            setSolutionsCapped(false);
-            setSolutionsTimedOut(false);
           }
           return;
         }
 
         const blackoutIv = blackoutsDocToTimeIntervals(blackoutsRef.current);
-        const prevIdx = clampSolutionIndex(
-          currentSolutionIndexRef.current,
-          solutionsRef.current.length,
-        );
-        const prevSol = solutionsRef.current[prevIdx] ?? null;
-        const prevFp = prevSol ? solutionFingerprint(prevSol) : null;
+        const prevSol = solutionsRef.current[0] ?? null;
         const prevSelections = prevSol?.selections ?? null;
-
-        const adoptSolutions = (
-          next: ScheduleSolution[],
-          capped: boolean,
-          timedOut: boolean,
-        ) => {
-          setSolutions(next);
-          setSolutionsCapped(capped);
-          setSolutionsTimedOut(timedOut);
-          let nextIdx = 0;
-          if (next.length > 0 && prevFp) {
-            const i = findSolutionIndexByFingerprint(next, prevFp);
-            if (i >= 0) nextIdx = i;
-          }
-          currentSolutionIndexRef.current = nextIdx;
-          setCurrentSolutionIndexState(nextIdx);
-          persistTerm();
-        };
 
         if (everyPlannerItemHasSolvePack(rows, packs)) {
           await yieldToMain();
@@ -357,12 +303,12 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
           const result = solveSchedulesFromPacks(rows, packs, {
             ...filters,
             blackoutIntervals: blackoutIv,
-            maxSolutions: PLANNER_MAX_SOLUTIONS,
             previousSelections: prevSelections,
           });
           if (myGen !== recalcGenRef.current) return;
           setSyncError(null);
-          adoptSolutions(result.solutions, result.capped, result.timedOut);
+          setSolutions(result.solutions);
+          persistTerm();
           return;
         }
 
@@ -401,15 +347,10 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [recalculateSolutions],
   );
 
-  const safeCurrentSolutionIndex = useMemo(
-    () => clampSolutionIndex(currentSolutionIndex, solutions.length),
-    [currentSolutionIndex, solutions.length],
-  );
-
   const effectivePlannerItems = useMemo(() => {
-    const sol = solutions[safeCurrentSolutionIndex] ?? null;
+    const sol = solutions[0] ?? null;
     return applySolutionToPlannerItems(plannerItems, sol);
-  }, [plannerItems, solutions, safeCurrentSolutionIndex]);
+  }, [plannerItems, solutions]);
 
   const calendarBlocks = useMemo(
     () => buildCalendarBlocksFromCatalog(effectivePlannerItems, catalog),
@@ -595,8 +536,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setPlannerItems(term.items);
       blackoutsRef.current = term.blackouts;
       setBlackoutsState(term.blackouts);
-      currentSolutionIndexRef.current = term.lastSolutionIndex;
-      setCurrentSolutionIndexState(term.lastSolutionIndex);
       if (!cancelled) {
         await loadCatalog(term.items);
         setIsHydrating(false);
@@ -614,8 +553,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setPlannerItems(term.items);
       blackoutsRef.current = term.blackouts;
       setBlackoutsState(term.blackouts);
-      currentSolutionIndexRef.current = term.lastSolutionIndex;
-      setCurrentSolutionIndexState(term.lastSolutionIndex);
       void loadCatalog(term.items);
       scheduleRecalculateSolutions();
     });
@@ -839,29 +776,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     scheduleRecalculateSolutions,
   ]);
 
-  const setCurrentSolutionIndex = useCallback(
-    (
-      next: number,
-      method?: "next" | "prev" | "first" | "last" | "keep" | "drop",
-    ) => {
-      const total = solutionsRef.current.length;
-      const clamped = clampSolutionIndex(next, total);
-      const prev = currentSolutionIndexRef.current;
-      currentSolutionIndexRef.current = clamped;
-      setCurrentSolutionIndexState(clamped);
-      if (clamped !== prev) {
-        persistTerm();
-        track("planner_solution_changed", {
-          method: method ?? "keep",
-          from: prev,
-          to: clamped,
-          total,
-        });
-      }
-    },
-    [persistTerm],
-  );
-
   const setRequireOpenSectionsWithHistory = useCallback(
     (v: boolean) => {
       recordHistorySnapshot();
@@ -933,10 +847,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       scheduleFeasibilityError,
       clearScheduleFeasibilityError,
       solutions,
-      solutionsCapped,
-      solutionsTimedOut,
-      currentSolutionIndex: safeCurrentSolutionIndex,
-      setCurrentSolutionIndex,
       infeasibilityHints,
       recalculateSolutions,
       scheduleRecalculateSolutions,
@@ -951,10 +861,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       clearSyncError,
       clearScheduleFeasibilityError,
       solutions,
-      solutionsCapped,
-      solutionsTimedOut,
-      safeCurrentSolutionIndex,
-      setCurrentSolutionIndex,
       infeasibilityHints,
       recalculateSolutions,
       scheduleRecalculateSolutions,

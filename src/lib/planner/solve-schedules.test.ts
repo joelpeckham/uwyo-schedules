@@ -249,7 +249,7 @@ describe("solveSchedulesFromPacks", () => {
     const items = [itemStub({ id: 1, subject: "CS", courseNumber: "1000" })];
     const r = solveSchedulesFromPacks(items, packs, {
       ...relaxedFilters,
-      maxSolutions: 25,
+      maxSolutions: 2,
     });
     expect(r.solutions).toHaveLength(2);
     const keys = r.solutions.map((sol) =>
