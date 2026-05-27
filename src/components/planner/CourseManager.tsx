@@ -489,27 +489,67 @@ export function CourseManager({ termCode }: Props) {
           <Label htmlFor="course-search" className="text-muted-foreground">
             Search courses
           </Label>
-          <Input
-            id="course-search"
-            role="combobox"
-            aria-expanded={hits.length > 0}
-            aria-controls="course-search-listbox"
-            aria-activedescendant={
-              searchActiveIndex >= 0
-                ? `course-search-hit-${searchActiveIndex}`
-                : undefined
-            }
-            aria-autocomplete="list"
-            value={searchQ}
-            onChange={(e) => {
-              setSearchQ(e.target.value);
-              setSearchActiveIndex(-1);
-            }}
-            onKeyDown={onSearchKeyDown}
-            placeholder="Subject or number"
-            className="mt-1 min-h-11"
-            autoComplete="off"
-          />
+          <div className="relative">
+            <Input
+              id="course-search"
+              role="combobox"
+              aria-expanded={hits.length > 0}
+              aria-controls="course-search-listbox"
+              aria-activedescendant={
+                searchActiveIndex >= 0
+                  ? `course-search-hit-${searchActiveIndex}`
+                  : undefined
+              }
+              aria-autocomplete="list"
+              value={searchQ}
+              onChange={(e) => {
+                setSearchQ(e.target.value);
+                setSearchActiveIndex(-1);
+              }}
+              onKeyDown={onSearchKeyDown}
+              placeholder="Subject or number"
+              className="mt-1 min-h-11"
+              autoComplete="off"
+            />
+            {hits.length > 0 ? (
+              <ul
+                id="course-search-listbox"
+                className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-auto rounded-md border border-border bg-popover shadow-md"
+                role="listbox"
+                aria-label="Course search results"
+              >
+                {hits.map((h, idx) => (
+                  <li key={`${h.subject}-${h.courseNumber}`} role="none">
+                    <button
+                      type="button"
+                      id={`course-search-hit-${idx}`}
+                      role="option"
+                      aria-selected={searchActiveIndex === idx}
+                      className={cn(
+                        "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/60",
+                        picked?.subject === h.subject &&
+                          picked?.courseNumber === h.courseNumber &&
+                          "bg-muted",
+                        searchActiveIndex === idx &&
+                          "bg-muted/80 ring-1 ring-ring/60",
+                      )}
+                      onClick={() => onPickCourseFromSearch(h)}
+                      onMouseEnter={() => setSearchActiveIndex(idx)}
+                    >
+                      <span className="font-mono text-foreground">
+                        {h.subjectCourse ?? `${h.subject} ${h.courseNumber}`}
+                      </span>
+                      {h.previewTitle ? (
+                        <span className="text-muted-foreground">
+                          {h.previewTitle}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
           {searchQueryLen > 0 && searchQueryLen < 2 ? (
             <p className="mt-1 text-xs text-muted-foreground">
               Type at least 2 characters to search.
@@ -524,41 +564,6 @@ export function CourseManager({ termCode }: Props) {
             <p className="mt-1 text-xs text-muted-foreground" role="status">
               No courses match that search.
             </p>
-          ) : null}
-          {hits.length > 0 ? (
-            <ul
-              id="course-search-listbox"
-              className="mt-1 max-h-48 overflow-auto rounded-md border border-border bg-background"
-              role="listbox"
-              aria-label="Course search results"
-            >
-              {hits.map((h, idx) => (
-                <li key={`${h.subject}-${h.courseNumber}`} role="none">
-                  <button
-                    type="button"
-                    id={`course-search-hit-${idx}`}
-                    role="option"
-                    aria-selected={searchActiveIndex === idx}
-                    className={cn(
-                      "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/60",
-                      picked?.subject === h.subject &&
-                        picked?.courseNumber === h.courseNumber &&
-                        "bg-muted",
-                      searchActiveIndex === idx && "bg-muted/80 ring-1 ring-ring/60",
-                    )}
-                    onClick={() => onPickCourseFromSearch(h)}
-                    onMouseEnter={() => setSearchActiveIndex(idx)}
-                  >
-                    <span className="font-mono text-foreground">
-                      {h.subjectCourse ?? `${h.subject} ${h.courseNumber}`}
-                    </span>
-                    {h.previewTitle ? (
-                      <span className="text-muted-foreground">{h.previewTitle}</span>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
           ) : null}
           {picked && prefetchPackPending ? (
             <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">

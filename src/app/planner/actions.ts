@@ -17,6 +17,7 @@ import {
 } from "@/lib/planner/solve-schedules";
 import { cookies } from "next/headers";
 import {
+  blackoutsDocToTimeIntervals,
   parseBlackoutsJson,
   type PlannerBlackoutsDocV1,
 } from "@/lib/planner/blackouts";
@@ -43,6 +44,32 @@ async function readSessionIdFromCookie(): Promise<string | null> {
   const raw = jar.get(PLANNER_SESSION_COOKIE)?.value;
   if (!raw || !UUID_RE.test(raw)) return null;
   return raw;
+}
+
+/** Avoid surfacing raw SQL / driver errors in the planner UI. */
+function plannerActionErrorMessage(e: unknown): string {
+  if (!(e instanceof Error)) return "Something went wrong.";
+  const m = e.message;
+  if (
+    m.includes("Failed query") ||
+    m.includes("relation ") ||
+    m.includes("does not exist") ||
+    m.includes("ECONNREFUSED") ||
+    m.includes("connection")
+  ) {
+    return "Could not reach the schedule database. Try again in a moment.";
+  }
+  return m;
+}
+
+function isLegacyPlannerMigrationSkippable(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const m = e.message;
+  return (
+    m.includes("relation ") ||
+    m.includes("does not exist") ||
+    m.includes("Failed query")
+  );
 }
 
 /**
@@ -101,8 +128,10 @@ export async function migratePlannerStateFromServerAction(): Promise<
 
     return { ok: true, terms };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Something went wrong.";
-    return { ok: false, error: msg };
+    if (isLegacyPlannerMigrationSkippable(e)) {
+      return { ok: true, terms: {} };
+    }
+    return { ok: false, error: plannerActionErrorMessage(e) };
   }
 }
 
@@ -110,6 +139,7 @@ export async function solveSchedulesAction(
   termCode: string,
   items: PlannerItemRow[],
   filters: PlannerScheduleFilters,
+  blackouts: PlannerBlackoutsDocV1,
 ): Promise<
   | { ok: true; result: SolveSchedulesResult }
   | { ok: false; error: string }
@@ -123,11 +153,13 @@ export async function solveSchedulesAction(
     const result = await solveSchedulesForTerm(db, termCode, items, {
       ...filters,
       maxSolutions: 25,
+      blackoutIntervals: blackoutsDocToTimeIntervals(
+        parseBlackoutsJson(blackouts),
+      ),
     });
     return { ok: true, result };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Something went wrong.";
-    return { ok: false, error: msg };
+    return { ok: false, error: plannerActionErrorMessage(e) };
   }
 }
 

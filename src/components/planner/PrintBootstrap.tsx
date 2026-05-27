@@ -72,6 +72,7 @@ export function PrintBootstrap({ termCode, termDescription }: Props) {
           termCode,
           term.items,
           DEFAULT_PLANNER_SCHEDULE_FILTERS,
+          term.blackouts,
         );
         if (cancelled) return;
         if (!res.ok) {

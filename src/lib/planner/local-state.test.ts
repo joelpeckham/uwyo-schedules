@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   allocateNextItemId,
+  markPlannerMigrated,
   mergeMigrationTerms,
   PLANNER_LOCAL_STORAGE_KEY,
   readLocalDoc,
@@ -66,6 +67,13 @@ describe("local-state", () => {
     storage.set(PLANNER_LOCAL_STORAGE_KEY, "{not valid");
     expect(readLocalDoc().v).toBe(2);
     expect(readLocalDoc().terms).toEqual({});
+  });
+
+  it("markPlannerMigrated sets migrated without changing terms", () => {
+    mockLocalStorage();
+    writeLocalDoc({ v: 2, migrated: false, nextId: 1, terms: {} });
+    markPlannerMigrated();
+    expect(readLocalDoc().migrated).toBe(true);
   });
 
   it("mergeMigrationTerms sets migrated and bumps nextId", () => {

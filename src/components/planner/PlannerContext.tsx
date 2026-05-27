@@ -4,7 +4,6 @@ import {
   loadPlannerCatalogForItemsAction,
   migratePlannerStateFromServerAction,
   prefetchCourseSolvePackAction,
-  solveSchedulesAction,
 } from "@/app/planner/actions";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import { buildCalendarBlocksFromCatalog } from "@/lib/planner/client/derive";
@@ -36,7 +35,6 @@ import type { ResolvedPlannerSelection } from "@/lib/planner/resolve-display-crn
 import {
   courseSolvePackCourseKey,
   plannerItemsFeasibility,
-  scheduleSolutionStillValidForItems,
   solveSchedulesFromPacks,
   everyPlannerItemHasSolvePack,
   type CourseSolvePack,
@@ -45,6 +43,7 @@ import {
 import { yieldToMain } from "@/lib/planner/yield-to-main";
 import {
   isMigrated,
+  markPlannerMigrated,
   mergeMigrationTerms,
   readTerm,
   subscribeLocalDoc,
@@ -367,28 +366,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
           return;
         }
 
-        const res = await solveSchedulesAction(termRef.current, rows, filters);
-        if (myGen !== recalcGenRef.current) return;
-        if (!res.ok) {
-          setSyncError(res.error);
-          return;
-        }
-        if (myGen !== recalcGenRef.current) return;
-        setSyncError(null);
-        const sols = res.result.solutions;
-        const packsAfter = solvePacksRef.current;
-        if (
-          prevSol &&
-          everyPlannerItemHasSolvePack(rows, packsAfter) &&
-          scheduleSolutionStillValidForItems(rows, packsAfter, prevSol, {
-            ...filters,
-            blackoutIntervals: blackoutIv,
-          })
-        ) {
-          adoptSolutions([prevSol], false, false);
-        } else {
-          adoptSolutions(sols, res.result.capped, res.result.timedOut);
-        }
+        // Solve packs load via prefetch; avoid server fallback (legacy DB blackouts).
       } finally {
         recalcDepthRef.current -= 1;
         if (recalcDepthRef.current === 0) {
@@ -608,6 +586,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
         if (res.ok) {
           mergeMigrationTerms(res.terms);
         } else {
+          markPlannerMigrated();
           setSyncError(res.error);
         }
       }
@@ -621,9 +600,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       if (!cancelled) {
         await loadCatalog(term.items);
         setIsHydrating(false);
-        if (term.items.length > 0) {
-          scheduleRecalculateSolutions();
-        }
       }
     })();
     return () => {

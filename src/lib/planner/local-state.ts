@@ -150,6 +150,14 @@ export function isMigrated(): boolean {
   return readLocalDoc().migrated;
 }
 
+/** Skip legacy Postgres migration on future loads (e.g. after a failed attempt). */
+export function markPlannerMigrated(): void {
+  const doc = readLocalDoc();
+  if (doc.migrated) return;
+  doc.migrated = true;
+  writeLocalDoc(doc);
+}
+
 /**
  * Merge server migration payload into local storage and bump `nextId` past
  * any imported item ids.

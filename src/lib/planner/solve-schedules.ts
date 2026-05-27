@@ -1,7 +1,6 @@
 import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
-import { blackoutsDocToTimeIntervals, parseBlackoutsJson } from "./blackouts";
 import { buildDeliveryModeByCrn } from "@/lib/sections/delivery-mode";
 import type { PlannerScheduleFilters } from "./schedule-filters";
 import {
@@ -354,6 +353,7 @@ export async function solveSchedulesForTerm(
   opts: PlannerScheduleFilters & {
     maxSolutions?: number;
     timeoutMs?: number;
+    blackoutIntervals?: TimeInterval[];
   },
 ): Promise<SolveSchedulesResult> {
   const maxSolutions = opts.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
@@ -386,13 +386,7 @@ export async function solveSchedulesForTerm(
   }
   const crnList = [...allCrns];
 
-  const sessionId = items[0]!.sessionId;
   for (const r of items) {
-    if (r.sessionId !== sessionId) {
-      throw new Error(
-        "solveSchedulesForTerm: planner items must share a single session.",
-      );
-    }
     if (r.termCode !== termCode) {
       throw new Error(
         "solveSchedulesForTerm: planner items must match the requested term.",
@@ -400,11 +394,11 @@ export async function solveSchedulesForTerm(
     }
   }
 
-  // All four reads (meetings, faculty, sections, planner ui) are independent.
-  // Fan them out in a single `Promise.all` so total wall time is the slowest
-  // round-trip rather than their sum, and merge the previous two `sections`
-  // selects (seats + schedule type) into a single query.
-  const [meetingRows, facRows, secRows, uiRow] = await Promise.all([
+  const blackoutIntervals = opts.blackoutIntervals ?? [];
+
+  // Meetings, faculty, and sections reads are independent — fan out in one
+  // `Promise.all` so wall time is the slowest round-trip, not their sum.
+  const [meetingRows, facRows, secRows] = await Promise.all([
     crnList.length === 0
       ? Promise.resolve([] as (typeof schema.sectionMeetings.$inferSelect)[])
       : db
@@ -465,19 +459,6 @@ export async function solveSchedulesForTerm(
               inArray(schema.sections.crn, crnList),
             ),
           ),
-    db
-      .select({
-        blackouts: schema.plannerTermUiState.blackouts,
-      })
-      .from(schema.plannerTermUiState)
-      .where(
-        and(
-          eq(schema.plannerTermUiState.sessionId, sessionId),
-          eq(schema.plannerTermUiState.termCode, termCode),
-        ),
-      )
-      .limit(1)
-      .then((rows) => rows[0]),
   ]);
 
   const meetingsByCrn = new Map<string, TimeInterval[]>();
@@ -515,10 +496,6 @@ export async function solveSchedulesForTerm(
     });
     facultyByCrn.set(r.sectionCrn, list);
   }
-
-  const blackoutIntervals = uiRow
-    ? blackoutsDocToTimeIntervals(parseBlackoutsJson(uiRow.blackouts))
-    : [];
 
   const deliveryModeByCrn = new Map(
     Object.entries(buildDeliveryModeByCrn(secRows, meetingRows)),
