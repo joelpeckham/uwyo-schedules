@@ -22,10 +22,6 @@ import {
   type PlannerHistorySnapshot,
   type PlannerHistoryStacks,
 } from "@/lib/planner/planner-action-history";
-import {
-  EMPTY_TIME_PREFS,
-  type PlannerTimePrefsV1,
-} from "@/lib/planner/time-prefs";
 import { computeInfeasibilityHints } from "@/lib/planner/infeasibility-hints";
 import { mergePackConstraintMaps } from "@/lib/planner/planner-swap-feasibility";
 import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
@@ -169,12 +165,6 @@ type PlannerUiContextValue = {
       | PlannerBlackoutsDocV1
       | ((prev: PlannerBlackoutsDocV1) => PlannerBlackoutsDocV1),
   ) => void;
-  timePrefs: PlannerTimePrefsV1;
-  setTimePrefs: (
-    next:
-      | PlannerTimePrefsV1
-      | ((prev: PlannerTimePrefsV1) => PlannerTimePrefsV1),
-  ) => void;
 };
 
 type PlannerHistoryContextValue = {
@@ -222,9 +212,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const [blackouts, setBlackoutsState] = useState<PlannerBlackoutsDocV1>(
     EMPTY_BLACKOUTS,
   );
-  const [timePrefs, setTimePrefsState] = useState<PlannerTimePrefsV1>(
-    EMPTY_TIME_PREFS,
-  );
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [solvePacks, setSolvePacks] = useState<Record<string, CourseSolvePack>>(
@@ -250,15 +237,12 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const excludeTbaRef = useRef(excludeTba);
   const excludeOnlineAsyncRef = useRef(excludeOnlineAsync);
   const blackoutsRef = useRef(blackouts);
-  const timePrefsRef = useRef(timePrefs);
   const currentSolutionIndexRef = useRef(currentSolutionIndex);
   const historyApiRef = useRef(createPlannerHistoryStacks());
   const historyStacksRef = useRef<PlannerHistoryStacks>({ undo: [], redo: [] });
   const isApplyingHistoryRef = useRef(false);
   const blackoutsUserGenRef = useRef(0);
   const blackoutsHandledGenRef = useRef(0);
-  const timePrefsUserGenRef = useRef(0);
-  const timePrefsHandledGenRef = useRef(0);
 
   useEffect(() => {
     solvePacksRef.current = solvePacks;
@@ -285,9 +269,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     blackoutsRef.current = blackouts;
   }, [blackouts]);
   useEffect(() => {
-    timePrefsRef.current = timePrefs;
-  }, [timePrefs]);
-  useEffect(() => {
     currentSolutionIndexRef.current = currentSolutionIndex;
   }, [currentSolutionIndex]);
 
@@ -295,7 +276,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     writeTerm(termRef.current, {
       items: itemsRef.current,
       blackouts: blackoutsRef.current,
-      timePrefs: timePrefsRef.current,
       lastSolutionIndex: currentSolutionIndexRef.current,
     });
   }, []);
@@ -504,7 +484,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       return capturePlannerHistorySnapshot({
         plannerItems: itemsRef.current,
         blackouts: blackoutsRef.current,
-        timePrefs: timePrefsRef.current,
         filters: {
           requireOpenSections: requireOpenRef.current,
           excludeTba: excludeTbaRef.current,
@@ -569,8 +548,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setPlannerItems(snap.plannerItems);
       blackoutsRef.current = snap.blackouts;
       setBlackoutsState(snap.blackouts);
-      timePrefsRef.current = snap.timePrefs;
-      setTimePrefsState(snap.timePrefs);
       requireOpenRef.current = snap.filters.requireOpenSections;
       setRequireOpenSections(snap.filters.requireOpenSections);
       excludeTbaRef.current = snap.filters.excludeTba;
@@ -639,8 +616,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setPlannerItems(term.items);
       blackoutsRef.current = term.blackouts;
       setBlackoutsState(term.blackouts);
-      timePrefsRef.current = term.timePrefs;
-      setTimePrefsState(term.timePrefs);
       currentSolutionIndexRef.current = term.lastSolutionIndex;
       setCurrentSolutionIndexState(term.lastSolutionIndex);
       if (!cancelled) {
@@ -663,8 +638,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setPlannerItems(term.items);
       blackoutsRef.current = term.blackouts;
       setBlackoutsState(term.blackouts);
-      timePrefsRef.current = term.timePrefs;
-      setTimePrefsState(term.timePrefs);
       currentSolutionIndexRef.current = term.lastSolutionIndex;
       setCurrentSolutionIndexState(term.lastSolutionIndex);
       void loadCatalog(term.items);
@@ -913,32 +886,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [persistTerm],
   );
 
-  const setTimePrefs = useCallback(
-    (
-      next:
-        | PlannerTimePrefsV1
-        | ((prev: PlannerTimePrefsV1) => PlannerTimePrefsV1),
-    ) => {
-      recordHistorySnapshot();
-      timePrefsUserGenRef.current += 1;
-      setTimePrefsState((prev) => {
-        const doc = typeof next === "function" ? next(prev) : next;
-        timePrefsRef.current = doc;
-        return doc;
-      });
-    },
-    [recordHistorySnapshot],
-  );
-
-  useEffect(() => {
-    if (timePrefsUserGenRef.current === timePrefsHandledGenRef.current) {
-      return;
-    }
-    timePrefsHandledGenRef.current = timePrefsUserGenRef.current;
-    persistTerm();
-    scheduleRecalculateSolutions();
-  }, [timePrefs, persistTerm, scheduleRecalculateSolutions]);
-
   const setRequireOpenSectionsWithHistory = useCallback(
     (v: boolean) => {
       recordHistorySnapshot();
@@ -1050,17 +997,13 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setExcludeOnlineAsync: setExcludeOnlineAsyncWithHistory,
       blackouts,
       setBlackouts,
-      timePrefs,
-      setTimePrefs,
     }),
     [
       requireOpenSections,
       excludeTba,
       excludeOnlineAsync,
       blackouts,
-      timePrefs,
       setBlackouts,
-      setTimePrefs,
       setRequireOpenSectionsWithHistory,
       setExcludeTbaWithHistory,
       setExcludeOnlineAsyncWithHistory,

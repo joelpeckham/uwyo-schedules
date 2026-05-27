@@ -2,7 +2,7 @@
 
 /**
  * Planner server actions: catalog/solve/search only. Per-user planner cart,
- * blackouts, and time prefs live in browser localStorage (`planner:v2`).
+ * blackouts live in browser localStorage (`planner:v2`).
  */
 
 import { createDb } from "@/db/index";
@@ -36,10 +36,6 @@ import {
   PLANNER_SESSION_COOKIE,
   UUID_RE,
 } from "@/lib/planner/constants";
-import {
-  parseTimePrefs,
-  type PlannerTimePrefsV1,
-} from "@/lib/planner/time-prefs";
 import type { PlannerTermLocalState } from "@/lib/planner/local-state";
 
 async function readSessionIdFromCookie(): Promise<string | null> {
@@ -80,7 +76,6 @@ export async function migratePlannerStateFromServerAction(): Promise<
       terms[row.termCode] = {
         items: [],
         blackouts: parseBlackoutsJson(row.blackouts),
-        timePrefs: parseTimePrefs(row.timePrefs),
         lastSolutionIndex: row.lastSolutionIndex,
       };
     }
@@ -89,7 +84,6 @@ export async function migratePlannerStateFromServerAction(): Promise<
       const t = terms[row.termCode] ?? {
         items: [],
         blackouts: { v: 1, items: [] } satisfies PlannerBlackoutsDocV1,
-        timePrefs: { v: 1 } satisfies PlannerTimePrefsV1,
         lastSolutionIndex: 0,
       };
       t.items.push(row);

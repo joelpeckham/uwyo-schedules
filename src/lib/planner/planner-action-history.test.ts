@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { EMPTY_TIME_PREFS } from "@/lib/planner/time-prefs";
 import {
   capturePlannerHistorySnapshot,
   createPlannerHistoryStacks,
@@ -18,7 +17,6 @@ function snap(items: { id: number }[] = []) {
   return capturePlannerHistorySnapshot({
     plannerItems: items as never,
     blackouts: EMPTY_BLACKOUTS,
-    timePrefs: EMPTY_TIME_PREFS,
     filters: baseFilters,
   });
 }
@@ -30,7 +28,6 @@ describe("capturePlannerHistorySnapshot", () => {
     const captured = capturePlannerHistorySnapshot({
       plannerItems: [{ id: 1 }] as never,
       blackouts: EMPTY_BLACKOUTS,
-      timePrefs: EMPTY_TIME_PREFS,
       filters: baseFilters,
     });
     expect(captured.plannerItems).toHaveLength(1);

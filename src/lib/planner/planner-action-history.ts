@@ -1,12 +1,10 @@
 import type { PlannerBlackoutsDocV1 } from "@/lib/planner/blackouts";
 import type { PlannerItemRow } from "@/lib/planner/data";
 import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
-import type { PlannerTimePrefsV1 } from "@/lib/planner/time-prefs";
 
 export type PlannerHistorySnapshot = {
   plannerItems: PlannerItemRow[];
   blackouts: PlannerBlackoutsDocV1;
-  timePrefs: PlannerTimePrefsV1;
   filters: PlannerScheduleFilters;
 };
 

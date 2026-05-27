@@ -1,5 +1,5 @@
 /**
- * Browser-local planner state (items, blackouts, time prefs, solution index).
+ * Browser-local planner state (items, blackouts, solution index).
  * Source of truth for the planner UI; server Postgres rows are legacy / migration only.
  */
 
@@ -7,11 +7,6 @@ import type { PlannerBlackoutsDocV1 } from "@/lib/planner/blackouts";
 import { parseBlackoutsJson } from "@/lib/planner/blackouts";
 import type { PlannerItemRow } from "@/lib/planner/data";
 import { MAX_PLANNER_COURSES_PER_TERM } from "@/lib/planner/constants";
-import {
-  EMPTY_TIME_PREFS,
-  parseTimePrefs,
-  type PlannerTimePrefsV1,
-} from "@/lib/planner/time-prefs";
 
 export const PLANNER_LOCAL_STORAGE_KEY = "uwyoschedule:planner:v2";
 
@@ -21,7 +16,6 @@ export const DUPLICATE_COURSE_ERROR =
 export type PlannerTermLocalState = {
   items: PlannerItemRow[];
   blackouts: PlannerBlackoutsDocV1;
-  timePrefs: PlannerTimePrefsV1;
   lastSolutionIndex: number;
 };
 
@@ -38,7 +32,6 @@ function emptyTermState(): PlannerTermLocalState {
   return {
     items: [],
     blackouts: EMPTY_BLACKOUTS,
-    timePrefs: EMPTY_TIME_PREFS,
     lastSolutionIndex: 0,
   };
 }
@@ -68,7 +61,6 @@ function parseDoc(raw: unknown): PlannerLocalDoc | null {
       terms[termCode] = {
         items,
         blackouts: parseBlackoutsJson(termRaw.blackouts),
-        timePrefs: parseTimePrefs(termRaw.timePrefs),
         lastSolutionIndex:
           typeof termRaw.lastSolutionIndex === "number" &&
           Number.isFinite(termRaw.lastSolutionIndex)
@@ -139,7 +131,6 @@ export function writeTerm(
   doc.terms[termCode] = {
     items: partial.items ?? prev.items,
     blackouts: partial.blackouts ?? prev.blackouts,
-    timePrefs: partial.timePrefs ?? prev.timePrefs,
     lastSolutionIndex:
       partial.lastSolutionIndex ?? prev.lastSolutionIndex,
   };
@@ -192,14 +183,6 @@ export function mergeMigrationTerms(
           existing.blackouts.items.length > 0
             ? existing.blackouts
             : state.blackouts,
-        timePrefs:
-          Object.keys(existing.timePrefs).length > 1 ||
-          existing.timePrefs.noFridays ||
-          existing.timePrefs.noBefore != null ||
-          existing.timePrefs.noAfter != null ||
-          existing.timePrefs.protectLunch
-            ? existing.timePrefs
-            : state.timePrefs,
         lastSolutionIndex: existing.lastSolutionIndex || state.lastSolutionIndex,
       };
     }

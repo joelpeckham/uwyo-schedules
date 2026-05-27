@@ -19,7 +19,7 @@ type Status = "idle" | "ok" | "err";
 export function ExportMenu() {
   const { termCode, plannerItems, catalog } = usePlannerData();
   const { effectivePlannerItems } = usePlannerSolve();
-  const { blackouts, timePrefs } = usePlannerUi();
+  const { blackouts } = usePlannerUi();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [statusMessage, setStatusMessage] = useState<string>("");
@@ -109,7 +109,6 @@ export function ExportMenu() {
       termCode,
       pins,
       blackouts,
-      timePrefs,
     });
     const url = `${window.location.origin}/planner?s=${code}`;
     try {
@@ -120,7 +119,7 @@ export function ExportMenu() {
       flash("err", "Couldn't copy share link.");
     }
     setOpen(false);
-  }, [plannerItems, termCode, blackouts, timePrefs, flash]);
+  }, [plannerItems, termCode, blackouts, flash]);
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">

@@ -217,6 +217,51 @@ describe("solveSchedulesFromPacks", () => {
     expect(r.solutions[0]!.selections[2]!.anchorCrn).toBe("B1");
   });
 
+  it("orders multiple solutions deterministically by anchor CRNs", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "B1",
+            linkedBundleId: null,
+            crns: ["B1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A1",
+            linkedBundleId: null,
+            crns: ["A1"],
+          },
+        ],
+        meetingsByCrn: {
+          A1: [{ dayIndex: 0, start: 600, end: 660 }],
+          B1: [{ dayIndex: 1, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: {},
+        seatsByCrn: {
+          A1: { seatsAvailable: 1, openSection: true },
+          B1: { seatsAvailable: 1, openSection: true },
+        },
+      }),
+    };
+    const items = [itemStub({ id: 1, subject: "CS", courseNumber: "1000" })];
+    const r = solveSchedulesFromPacks(items, packs, {
+      ...relaxedFilters,
+      maxSolutions: 25,
+    });
+    expect(r.solutions).toHaveLength(2);
+    const keys = r.solutions.map((sol) =>
+      Object.values(sol.selections)
+        .map((s) => s.anchorCrn)
+        .sort()
+        .join(","),
+    );
+    expect(keys).toEqual(["A1", "B1"]);
+    expect(r.solutions.every((sol) => sol.score === 0)).toBe(true);
+  });
+
   it("blackout overlapping the only meeting yields no solutions", () => {
     const packs: Record<string, CourseSolvePack> = {
       [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {

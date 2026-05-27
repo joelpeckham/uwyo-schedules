@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { addCourseLocal } from "@/lib/planner/add-course-local";
 import { decodeShareState } from "@/lib/planner/share-state";
 import { parseBlackoutsItemsArray } from "@/lib/planner/blackouts";
-import { parseTimePrefs } from "@/lib/planner/time-prefs";
 
 import { usePlannerData, usePlannerUi } from "./PlannerContext";
 
@@ -15,8 +14,8 @@ type Props = {
 };
 
 /**
- * Reads `?s=...` from the URL, applies the encoded courses, blackouts, and
- * time preferences to local storage, then strips the param.
+ * Reads `?s=...` from the URL, applies the encoded courses and blackouts to
+ * local storage, then strips the param.
  */
 export function ShareLinkApplier({ termCode }: Props) {
   const router = useRouter();
@@ -24,7 +23,7 @@ export function ShareLinkApplier({ termCode }: Props) {
   const code = searchParams.get("s");
   const appliedRef = useRef(false);
   const { plannerItems, isHydrating, setPlannerItems } = usePlannerData();
-  const { setBlackouts, setTimePrefs } = usePlannerUi();
+  const { setBlackouts } = usePlannerUi();
 
   useEffect(() => {
     if (!code || appliedRef.current || isHydrating) return;
@@ -70,15 +69,6 @@ export function ShareLinkApplier({ termCode }: Props) {
         );
       }
 
-      const prefs: Record<string, unknown> = { v: 1 };
-      if (doc.tp.nf === 1) prefs.noFridays = true;
-      if (typeof doc.tp.nb === "number") prefs.noBefore = doc.tp.nb;
-      if (typeof doc.tp.na === "number") prefs.noAfter = doc.tp.na;
-      if (Array.isArray(doc.tp.pl) && doc.tp.pl.length === 2) {
-        prefs.protectLunch = { start: doc.tp.pl[0], end: doc.tp.pl[1] };
-      }
-      setTimePrefs(parseTimePrefs(prefs));
-
       stripParam();
     })();
   }, [
@@ -89,7 +79,6 @@ export function ShareLinkApplier({ termCode }: Props) {
     router,
     setPlannerItems,
     setBlackouts,
-    setTimePrefs,
   ]);
 
   return null;

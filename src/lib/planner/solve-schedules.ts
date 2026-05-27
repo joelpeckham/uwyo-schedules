@@ -2,7 +2,6 @@ import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { blackoutsDocToTimeIntervals, parseBlackoutsJson } from "./blackouts";
-import { parseTimePrefs } from "./time-prefs";
 import { buildDeliveryModeByCrn } from "@/lib/sections/delivery-mode";
 import type { PlannerScheduleFilters } from "./schedule-filters";
 import {
@@ -469,7 +468,6 @@ export async function solveSchedulesForTerm(
     db
       .select({
         blackouts: schema.plannerTermUiState.blackouts,
-        timePrefs: schema.plannerTermUiState.timePrefs,
       })
       .from(schema.plannerTermUiState)
       .where(
@@ -522,7 +520,6 @@ export async function solveSchedulesForTerm(
     ? blackoutsDocToTimeIntervals(parseBlackoutsJson(uiRow.blackouts))
     : [];
 
-  const timePrefs = uiRow ? parseTimePrefs(uiRow.timePrefs) : null;
   const deliveryModeByCrn = new Map(
     Object.entries(buildDeliveryModeByCrn(secRows, meetingRows)),
   );
@@ -539,7 +536,6 @@ export async function solveSchedulesForTerm(
     excludeTba: opts.excludeTba,
     excludeOnlineAsync: opts.excludeOnlineAsync,
     blackoutIntervals,
-    timePrefs,
     maxSolutions,
     timeoutMs,
   });

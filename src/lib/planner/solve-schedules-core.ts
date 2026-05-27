@@ -13,7 +13,6 @@ import {
 } from "./section-pins";
 import { normalizeScheduleTypeKey } from "./swap-helpers";
 import type { PlannerScheduleFilters } from "./schedule-filters";
-import type { PlannerTimePrefsV1 } from "./time-prefs";
 import type { DeliveryMode } from "@/lib/sections/delivery-mode";
 import { candidateViolatesDeliveryFilters } from "@/lib/sections/delivery-mode";
 
@@ -179,29 +178,23 @@ function prefMatchesFacultyName(pref: string, facultyName: string): boolean {
   return true;
 }
 
-function orderedPrefScore(prefs: string[], facultyNames: (string | null)[]): number {
-  const names = facultyNames
-    .map((n) => (n ?? "").trim())
-    .filter((n) => n.length > 0);
-  if (names.length === 0 || prefs.length === 0) return 0;
-  for (let i = 0; i < prefs.length; i++) {
-    const p = prefs[i]!.trim();
-    if (!p) continue;
-    for (const n of names) {
-      if (prefMatchesFacultyName(p, n)) {
-        return (prefs.length - i) * 10;
-      }
-    }
-  }
-  return 0;
-}
-
 /** True if at least one non-empty pref matches some faculty name (bidirectional includes, case-insensitive). */
-function facultyNamesMatchAnyListedPref(
+function facultyMatchesAnyListedPref(
   prefs: string[],
   facultyNames: (string | null)[],
 ): boolean {
-  return orderedPrefScore(prefs, facultyNames) > 0;
+  const names = facultyNames
+    .map((n) => (n ?? "").trim())
+    .filter((n) => n.length > 0);
+  if (names.length === 0 || prefs.length === 0) return false;
+  for (const p of prefs) {
+    const trimmed = p.trim();
+    if (!trimmed) continue;
+    for (const n of names) {
+      if (prefMatchesFacultyName(trimmed, n)) return true;
+    }
+  }
+  return false;
 }
 
 function anchorPrimaryFacultyPool(
@@ -226,7 +219,7 @@ export function candidateViolatesHardInstructorPrefs(
   if (primaryPrefs.length > 0) {
     const anchorFaculty = facultyByCrn.get(cand.anchorCrn) ?? [];
     const pool = anchorPrimaryFacultyPool(anchorFaculty);
-    if (!facultyNamesMatchAnyListedPref(primaryPrefs, pool)) return true;
+    if (!facultyMatchesAnyListedPref(primaryPrefs, pool)) return true;
   }
 
   if (prefs.byScheduleType) {
@@ -242,7 +235,7 @@ export function candidateViolatesHardInstructorPrefs(
       for (const crn of crnsOfType) {
         const fac = facultyByCrn.get(crn) ?? [];
         const pool = fac.map((f) => f.displayName);
-        if (!facultyNamesMatchAnyListedPref(typePrefs, pool)) return true;
+        if (!facultyMatchesAnyListedPref(typePrefs, pool)) return true;
       }
     }
   }
@@ -250,74 +243,12 @@ export function candidateViolatesHardInstructorPrefs(
   return false;
 }
 
-function scoreCandidate(
-  item: PlannerItemRow,
-  cand: ScheduleCandidate,
-  prefs: InstructorPrefsV1,
-  facultyByCrn: Map<string, { displayName: string | null; primaryIndicator: boolean | null }[]>,
-  scheduleTypeByCrn: Map<string, string | null>,
-): number {
-  let score = 0;
-  const anchorFaculty = facultyByCrn.get(cand.anchorCrn) ?? [];
-  const primaryPool = anchorPrimaryFacultyPool(anchorFaculty);
-  score += orderedPrefScore(prefs.primary, primaryPool);
-
-  if (prefs.byScheduleType) {
-    for (const crn of cand.crns) {
-      const st = scheduleTypeByCrn.get(crn) ?? null;
-      const key = normalizeScheduleTypeKey(st);
-      const typePrefs = prefs.byScheduleType[key];
-      if (!typePrefs?.length) continue;
-      const fac = facultyByCrn.get(crn) ?? [];
-      const pool = fac.map((f) => f.displayName);
-      score += orderedPrefScore(typePrefs, pool);
-    }
-  }
-  return score;
-}
-
-const TIME_PREF_PENALTY_PER_VIOLATION = 4;
-const FRIDAY_DAY_INDEX = 4;
-
-/**
- * Soft time-of-day score adjustment per candidate. Each meeting that
- * violates a configured pref subtracts a small constant from the candidate
- * score, so weeks with fewer violations rank higher. Hard exclusion remains
- * the job of `blackoutIntervals`.
- */
-function timePrefsPenaltyForIntervals(
-  intervals: TimeInterval[],
-  prefs: PlannerTimePrefsV1 | null | undefined,
-): number {
-  if (!prefs) return 0;
-  if (
-    !prefs.noFridays &&
-    prefs.noBefore == null &&
-    prefs.noAfter == null &&
-    !prefs.protectLunch
-  ) {
-    return 0;
-  }
-  let penalty = 0;
-  for (const iv of intervals) {
-    if (prefs.noFridays && iv.dayIndex === FRIDAY_DAY_INDEX) {
-      penalty += TIME_PREF_PENALTY_PER_VIOLATION;
-    }
-    if (prefs.noBefore != null && iv.start < prefs.noBefore) {
-      penalty += TIME_PREF_PENALTY_PER_VIOLATION;
-    }
-    if (prefs.noAfter != null && iv.end > prefs.noAfter) {
-      penalty += TIME_PREF_PENALTY_PER_VIOLATION;
-    }
-    if (
-      prefs.protectLunch &&
-      iv.start < prefs.protectLunch.end &&
-      prefs.protectLunch.start < iv.end
-    ) {
-      penalty += TIME_PREF_PENALTY_PER_VIOLATION;
-    }
-  }
-  return penalty;
+/** Stable lexicographic key for deterministic solution ordering. */
+function solutionSortKey(solution: ScheduleSolution): string {
+  return Object.values(solution.selections)
+    .map((s) => s.anchorCrn)
+    .sort()
+    .join(",");
 }
 
 /**
@@ -534,8 +465,6 @@ export function runSolveSearch(params: {
   excludeOnlineAsync: boolean;
   /** User busy times; any overlap with a candidate section meeting rejects the candidate. */
   blackoutIntervals?: TimeInterval[];
-  /** Soft time-of-day preferences that bias scoring (lower score per violation). */
-  timePrefs?: PlannerTimePrefsV1 | null;
   maxSolutions?: number;
   timeoutMs?: number;
 }): SolveSchedulesResult {
@@ -554,7 +483,6 @@ export function runSolveSearch(params: {
   const deliveryFilters = { excludeTba, excludeOnlineAsync };
   const blackoutIntervalsRaw = params.blackoutIntervals ?? [];
   const blackoutIntervals = blackoutIntervalsRaw.slice().sort(intervalSortCmp);
-  const timePrefs = params.timePrefs ?? null;
   const maxSolutions = params.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const started = Date.now();
@@ -656,21 +584,12 @@ export function runSolveSearch(params: {
     }
     if (depth === indices.length) {
       const selections: Record<number, ResolvedPlannerSelection> = {};
-      let score = 0;
       for (let i = 0; i < items.length; i++) {
         const item = items[i]!;
         const c = chosen[i]!;
         selections[item.id] = selectionFromCandidate(c);
-        score += scoreCandidate(
-          item,
-          c,
-          prefsByItemIndex[i]!,
-          facultyByCrn,
-          scheduleTypeByCrn,
-        );
       }
-      score -= timePrefsPenaltyForIntervals(accIntervals, timePrefs);
-      solutions.push({ score, selections });
+      solutions.push({ score: 0, selections });
       return;
     }
 
@@ -721,7 +640,9 @@ export function runSolveSearch(params: {
 
   dfs(0);
 
-  solutions.sort((a, b) => b.score - a.score);
+  solutions.sort((a, b) =>
+    solutionSortKey(a).localeCompare(solutionSortKey(b)),
+  );
 
   return {
     solutions,

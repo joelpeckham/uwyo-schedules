@@ -13,7 +13,7 @@ const steps = [
   },
   {
     title: "Set constraints",
-    body: "Mark busy times, rank instructor preferences, and turn on filters like no Fridays or open seats only. All optional—the planner ranks weeks that fit you higher.",
+    body: "Mark busy times, limit sections by instructor, and turn on filters like open seats only. All optional—the planner finds conflict-free weeks that fit.",
     icon: SlidersHorizontal,
   },
   {

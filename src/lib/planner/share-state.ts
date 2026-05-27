@@ -10,12 +10,12 @@
  *     t: termCode,
  *     pins: { sub: string; num: string; crn: string | null; lbid: number | null }[],
  *     bo:  { d: dayIndex; s: start; e: end; l?: label }[],
- *     tp:  { nf?: 1; nb?: minutes; na?: minutes; pl?: [start, end] },
  *   }
+ *
+ * Legacy links may include `tp` (time prefs); decode ignores it.
  */
 
 import type { PlannerBlackoutsDocV1 } from "./blackouts";
-import type { PlannerTimePrefsV1 } from "./time-prefs";
 
 export type SharePinV1 = {
   /** Subject ("MATH"). */
@@ -33,7 +33,6 @@ type ShareStateV1 = {
   t: string;
   pins: SharePinV1[];
   bo: { d: number; s: number; e: number; l?: string }[];
-  tp: { nf?: 1; nb?: number; na?: number; pl?: [number, number] };
 };
 
 function toBase64Url(s: string): string {
@@ -61,7 +60,6 @@ type ShareInput = {
   termCode: string;
   pins: SharePinV1[];
   blackouts: PlannerBlackoutsDocV1;
-  timePrefs: PlannerTimePrefsV1;
 };
 
 export function encodeShareState(input: ShareInput): string {
@@ -75,19 +73,6 @@ export function encodeShareState(input: ShareInput): string {
       e: b.end,
       ...(b.label ? { l: b.label } : {}),
     })),
-    tp: {
-      ...(input.timePrefs.noFridays ? { nf: 1 as const } : {}),
-      ...(input.timePrefs.noBefore != null ? { nb: input.timePrefs.noBefore } : {}),
-      ...(input.timePrefs.noAfter != null ? { na: input.timePrefs.noAfter } : {}),
-      ...(input.timePrefs.protectLunch
-        ? {
-            pl: [
-              input.timePrefs.protectLunch.start,
-              input.timePrefs.protectLunch.end,
-            ] as [number, number],
-          }
-        : {}),
-    },
   };
   return toBase64Url(JSON.stringify(doc));
 }
@@ -142,18 +127,5 @@ export function decodeShareState(raw: string): ShareStateV1 | null {
       });
     }
   }
-  const tpRaw = (obj.tp ?? {}) as Record<string, unknown>;
-  const tp: ShareStateV1["tp"] = {};
-  if (tpRaw.nf === 1) tp.nf = 1;
-  if (typeof tpRaw.nb === "number") tp.nb = tpRaw.nb;
-  if (typeof tpRaw.na === "number") tp.na = tpRaw.na;
-  if (
-    Array.isArray(tpRaw.pl) &&
-    tpRaw.pl.length === 2 &&
-    typeof tpRaw.pl[0] === "number" &&
-    typeof tpRaw.pl[1] === "number"
-  ) {
-    tp.pl = [tpRaw.pl[0], tpRaw.pl[1]];
-  }
-  return { v: 1, t: obj.t, pins, bo, tp };
+  return { v: 1, t: obj.t, pins, bo };
 }

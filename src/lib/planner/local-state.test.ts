@@ -89,7 +89,6 @@ describe("local-state", () => {
           },
         ],
         blackouts: { v: 1, items: [] },
-        timePrefs: { v: 1 },
         lastSolutionIndex: 2,
       },
     });

@@ -28,7 +28,6 @@ type PlannerAnalyticsEvent =
   | { name: "planner_solutions_recalculated"; props: { itemCount: number; solutionCount: number; capped: boolean; timedOut: boolean; ms: number } }
   | { name: "planner_solutions_empty"; props: { itemCount: number; hintCount: number } }
   | { name: "planner_solution_changed"; props: { from: number; to: number; total: number; method: "next" | "prev" | "first" | "last" | "keep" | "drop" } }
-  | { name: "planner_time_pref_changed"; props: { kind: "noFridays" | "noBefore" | "noAfter" | "protectLunch"; on: boolean; minutes?: number } }
   | { name: "planner_exclude_full_toggled"; props: { on: boolean } }
   | { name: "planner_exclude_tba_toggled"; props: { on: boolean } }
   | { name: "planner_exclude_online_async_toggled"; props: { on: boolean } }

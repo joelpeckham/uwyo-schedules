@@ -64,7 +64,6 @@ import {
 import { WeekCalendarDayGhosts } from "./week-calendar/WeekCalendarDayGhosts";
 import { WeekCalendarGrid } from "./week-calendar/WeekCalendarGrid";
 import { WeekCalendarShell } from "./week-calendar/WeekCalendarShell";
-import { activeTimePrefsCount } from "@/lib/planner/time-prefs";
 import { ExportMenu } from "./ExportMenu";
 
 type Props = {
@@ -991,12 +990,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       toolbar={
         <WeekCalendarToolbar
           plannerItemCount={plannerItems.length}
-          meta={
-            <>
-              <CreditHoursPill />
-              <TimePrefsBadge />
-            </>
-          }
+          meta={<CreditHoursPill />}
           exportSlot={<ExportMenu />}
           actions={
             <>
@@ -1260,24 +1254,6 @@ function CreditHoursPill() {
       <span>cr</span>
       {isFullTime ? <span className="ml-0.5">· full-time</span> : null}
     </span>
-  );
-}
-
-function TimePrefsBadge() {
-  const { timePrefs } = usePlannerUi();
-  const count = activeTimePrefsCount(timePrefs);
-  if (count === 0) return null;
-  const label = `${count} time ${count === 1 ? "preference" : "preferences"} active`;
-  return (
-    <a
-      href="#planner-filters"
-      className="inline-flex h-6 items-center rounded-full border border-border bg-muted/50 px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-      title={label}
-      aria-label={label}
-    >
-      <span className="font-mono tabular-nums">{count}</span>
-      <span className="ml-1">time pref{count === 1 ? "" : "s"}</span>
-    </a>
   );
 }
 

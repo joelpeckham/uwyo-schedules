@@ -306,7 +306,7 @@ export const catalogActionRateLimit = pgTable("catalog_action_rate_limit", {
 });
 
 /**
- * Last-viewed schedule index, blackouts, time prefs (legacy per session + term).
+ * Last-viewed schedule index, blackouts (legacy per session + term).
  *
  * @deprecated Planner UI state is stored in browser localStorage; table kept for migration cleanup.
  */
@@ -329,10 +329,6 @@ export const plannerTermUiState = pgTable(
     keptSolutionKeys: jsonb("kept_solution_keys")
       .notNull()
       .default(sql`'{"v":1,"keys":[]}'::jsonb`),
-    /** Versioned JSON: `{ v: 1, noFridays?, noBefore?, noAfter?, protectLunch? }` — soft scoring weights. */
-    timePrefs: jsonb("time_prefs")
-      .notNull()
-      .default(sql`'{"v":1}'::jsonb`),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

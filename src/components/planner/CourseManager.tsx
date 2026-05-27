@@ -645,8 +645,8 @@ export function CourseManager({ termCode }: Props) {
                       )}
                       title={
                         primaryVal === INSTRUCTOR_SELECT_ANY
-                          ? "No instructor preference set"
-                          : `Instructor preference: ${primaryVal}`
+                          ? "No instructor filter set"
+                          : `Instructor filter: ${primaryVal}`
                       }
                     >
                       {instructorPill}

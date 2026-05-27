@@ -24,11 +24,11 @@ export function buildLlmsTxt(
     "## Planner capabilities",
     "",
     "- Solver-backed conflict-free week that updates as your course list and constraints change",
-    "- Busy-time blackouts and soft instructor preferences",
+    "- Busy-time blackouts and per-course instructor filters",
     "- Section pins and same-type drag swaps on the week calendar",
     "- Page alternate conflict-free weeks; keep favorites and compare two side by side",
-    "- Share link restores course list, blackouts, and time preferences (not section pins)",
-    "- Filters: open seats only, exclude TBA, exclude online or async, no Fridays, protect lunch, earliest or latest start",
+    "- Share link restores course list and blackouts (not section pins)",
+    "- Filters: open seats only, exclude TBA, exclude online or async",
     "- Linked lecture, lab, and discussion sections treated as one choice when the catalog requires it",
     "",
     "## Key pages",
@@ -83,9 +83,9 @@ export function buildLlmsFullTxt(
 
 ## Product behavior
 
-- **Primary surface:** \`/planner\` — pick a term, add courses, set optional instructor preferences, busy-time blackouts, and schedule filters; the planner continuously resolves a scored best-fit conflict-free week (not a browsable list of full schedules).
+- **Primary surface:** \`/planner\` — pick a term, add courses, set optional instructor filters, busy-time blackouts, and schedule filters; the planner continuously resolves a conflict-free week (not a browsable list of full schedules).
 - **Refinements:** Section pins and same-type drag swaps on the week calendar; page through alternate conflict-free weeks; keep favorites and compare two weeks side by side.
-- **Share:** Encoded \`?s=\` links restore courses (as wish-list rows), blackouts, and time preferences for the same term. Section pins are not applied from share links — the recipient confirms sections in the planner.
+- **Share:** Encoded \`?s=\` links restore courses (as wish-list rows) and blackouts for the same term. Section pins are not applied from share links — the recipient confirms sections in the planner.
 - **Export:** Calendar export and share link from the planner UI.
 - **Linked sections:** Lecture, lab, and discussion combinations required by the catalog are treated as single choices.
 - **Catalog browsing:** \`/courses\` and \`/terms\` support discovery; the planner is where schedules are built.
