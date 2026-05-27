@@ -6,8 +6,6 @@
  */
 
 import { createDb } from "@/db/index";
-import * as schema from "@/db/schema";
-import { eq } from "drizzle-orm";
 import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
 import type { CourseSolvePack } from "@/lib/planner/solve-schedules-core";
 import type { SolveSchedulesResult } from "@/lib/planner/solve-schedules";
@@ -15,7 +13,6 @@ import {
   loadCourseSolvePack,
   solveSchedulesForTerm,
 } from "@/lib/planner/solve-schedules";
-import { cookies } from "next/headers";
 import {
   blackoutsDocToTimeIntervals,
   parseBlackoutsJson,
@@ -33,18 +30,6 @@ import {
   type CourseSearchRow,
   type PlannerItemRow,
 } from "@/lib/planner/data";
-import {
-  PLANNER_SESSION_COOKIE,
-  UUID_RE,
-} from "@/lib/planner/constants";
-import type { PlannerTermLocalState } from "@/lib/planner/local-state";
-
-async function readSessionIdFromCookie(): Promise<string | null> {
-  const jar = await cookies();
-  const raw = jar.get(PLANNER_SESSION_COOKIE)?.value;
-  if (!raw || !UUID_RE.test(raw)) return null;
-  return raw;
-}
 
 /** Avoid surfacing raw SQL / driver errors in the planner UI. */
 function plannerActionErrorMessage(e: unknown): string {
@@ -60,79 +45,6 @@ function plannerActionErrorMessage(e: unknown): string {
     return "Could not reach the schedule database. Try again in a moment.";
   }
   return m;
-}
-
-function isLegacyPlannerMigrationSkippable(e: unknown): boolean {
-  if (!(e instanceof Error)) return false;
-  const m = e.message;
-  return (
-    m.includes("relation ") ||
-    m.includes("does not exist") ||
-    m.includes("Failed query")
-  );
-}
-
-/**
- * One-shot migration: read legacy Postgres planner state for this session,
- * return it grouped by term, then delete those rows.
- */
-export async function migratePlannerStateFromServerAction(): Promise<
-  | { ok: true; terms: Record<string, PlannerTermLocalState> }
-  | { ok: false; error: string }
-> {
-  try {
-    const sessionId = await readSessionIdFromCookie();
-    if (!sessionId) {
-      return { ok: true, terms: {} };
-    }
-    const db = createDb();
-
-    const itemRows = await db
-      .select()
-      .from(schema.plannerItems)
-      .where(eq(schema.plannerItems.sessionId, sessionId));
-
-    const uiRows = await db
-      .select()
-      .from(schema.plannerTermUiState)
-      .where(eq(schema.plannerTermUiState.sessionId, sessionId));
-
-    const terms: Record<string, PlannerTermLocalState> = {};
-
-    for (const row of uiRows) {
-      terms[row.termCode] = {
-        items: [],
-        blackouts: parseBlackoutsJson(row.blackouts),
-        lastSolutionIndex: row.lastSolutionIndex,
-      };
-    }
-
-    for (const row of itemRows) {
-      const t = terms[row.termCode] ?? {
-        items: [],
-        blackouts: { v: 1, items: [] } satisfies PlannerBlackoutsDocV1,
-        lastSolutionIndex: 0,
-      };
-      t.items.push(row);
-      terms[row.termCode] = t;
-    }
-
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(schema.plannerItems)
-        .where(eq(schema.plannerItems.sessionId, sessionId));
-      await tx
-        .delete(schema.plannerTermUiState)
-        .where(eq(schema.plannerTermUiState.sessionId, sessionId));
-    });
-
-    return { ok: true, terms };
-  } catch (e) {
-    if (isLegacyPlannerMigrationSkippable(e)) {
-      return { ok: true, terms: {} };
-    }
-    return { ok: false, error: plannerActionErrorMessage(e) };
-  }
 }
 
 export async function solveSchedulesAction(

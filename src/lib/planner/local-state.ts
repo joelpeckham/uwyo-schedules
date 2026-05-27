@@ -1,19 +1,18 @@
 /**
  * Browser-local planner state (items, blackouts, solution index).
- * Source of truth for the planner UI; server Postgres rows are legacy / migration only.
+ * Source of truth for the planner UI.
  */
 
 import type { PlannerBlackoutsDocV1 } from "@/lib/planner/blackouts";
 import { parseBlackoutsJson } from "@/lib/planner/blackouts";
 import type { PlannerItemRow } from "@/lib/planner/data";
-import { MAX_PLANNER_COURSES_PER_TERM } from "@/lib/planner/constants";
 
 export const PLANNER_LOCAL_STORAGE_KEY = "uwyoschedule:planner:v2";
 
 export const DUPLICATE_COURSE_ERROR =
   "That course is already on your planner.";
 
-export type PlannerTermLocalState = {
+type PlannerTermLocalState = {
   items: PlannerItemRow[];
   blackouts: PlannerBlackoutsDocV1;
   lastSolutionIndex: number;
@@ -21,7 +20,6 @@ export type PlannerTermLocalState = {
 
 type PlannerLocalDoc = {
   v: 2;
-  migrated: boolean;
   nextId: number;
   terms: Record<string, PlannerTermLocalState>;
 };
@@ -37,7 +35,7 @@ function emptyTermState(): PlannerTermLocalState {
 }
 
 function freshDoc(): PlannerLocalDoc {
-  return { v: 2, migrated: false, nextId: 1, terms: {} };
+  return { v: 2, nextId: 1, terms: {} };
 }
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -46,7 +44,6 @@ function isRecord(x: unknown): x is Record<string, unknown> {
 
 function parseDoc(raw: unknown): PlannerLocalDoc | null {
   if (!isRecord(raw) || raw.v !== 2) return null;
-  const migrated = raw.migrated === true;
   const nextId =
     typeof raw.nextId === "number" && Number.isFinite(raw.nextId) && raw.nextId >= 1
       ? Math.floor(raw.nextId)
@@ -69,7 +66,7 @@ function parseDoc(raw: unknown): PlannerLocalDoc | null {
       };
     }
   }
-  return { v: 2, migrated, nextId, terms };
+  return { v: 2, nextId, terms };
 }
 
 /** Stable key for subject + course number (duplicate detection). */
@@ -108,7 +105,7 @@ export function readLocalDoc(): PlannerLocalDoc {
   }
 }
 
-export function writeLocalDoc(doc: PlannerLocalDoc): void {
+function writeLocalDoc(doc: PlannerLocalDoc): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(PLANNER_LOCAL_STORAGE_KEY, JSON.stringify(doc));
@@ -144,63 +141,6 @@ export function allocateNextItemId(): number {
   doc.nextId = id + 1;
   writeLocalDoc(doc);
   return id;
-}
-
-export function isMigrated(): boolean {
-  return readLocalDoc().migrated;
-}
-
-/** Skip legacy Postgres migration on future loads (e.g. after a failed attempt). */
-export function markPlannerMigrated(): void {
-  const doc = readLocalDoc();
-  if (doc.migrated) return;
-  doc.migrated = true;
-  writeLocalDoc(doc);
-}
-
-/**
- * Merge server migration payload into local storage and bump `nextId` past
- * any imported item ids.
- */
-export function mergeMigrationTerms(
-  terms: Record<string, PlannerTermLocalState>,
-): void {
-  const doc = readLocalDoc();
-  let maxId = doc.nextId - 1;
-  for (const [termCode, state] of Object.entries(terms)) {
-    const existing = doc.terms[termCode];
-    if (!existing || existing.items.length === 0) {
-      doc.terms[termCode] = state;
-    } else {
-      const have = new Set(
-        existing.items.map((i) =>
-          plannerCourseKey(i.subject, i.courseNumber),
-        ),
-      );
-      const merged = [...existing.items];
-      for (const item of state.items) {
-        const k = plannerCourseKey(item.subject, item.courseNumber);
-        if (have.has(k)) continue;
-        if (merged.length >= MAX_PLANNER_COURSES_PER_TERM) break;
-        merged.push(item);
-        have.add(k);
-      }
-      doc.terms[termCode] = {
-        items: merged,
-        blackouts:
-          existing.blackouts.items.length > 0
-            ? existing.blackouts
-            : state.blackouts,
-        lastSolutionIndex: existing.lastSolutionIndex || state.lastSolutionIndex,
-      };
-    }
-    for (const item of doc.terms[termCode]!.items) {
-      if (item.id > maxId) maxId = item.id;
-    }
-  }
-  doc.nextId = Math.max(doc.nextId, maxId + 1);
-  doc.migrated = true;
-  writeLocalDoc(doc);
 }
 
 export function subscribeLocalDoc(onChange: () => void): () => void {

@@ -2,7 +2,6 @@
 
 import {
   loadPlannerCatalogForItemsAction,
-  migratePlannerStateFromServerAction,
   prefetchCourseSolvePackAction,
 } from "@/app/planner/actions";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
@@ -37,9 +36,6 @@ import {
 } from "@/lib/planner/solve-schedules-core";
 import { yieldToMain } from "@/lib/planner/yield-to-main";
 import {
-  isMigrated,
-  markPlannerMigrated,
-  mergeMigrationTerms,
   readTerm,
   subscribeLocalDoc,
   writeTerm,
@@ -521,16 +517,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     let cancelled = false;
     void (async () => {
       setIsHydrating(true);
-      if (!isMigrated()) {
-        const res = await migratePlannerStateFromServerAction();
-        if (cancelled) return;
-        if (res.ok) {
-          mergeMigrationTerms(res.terms);
-        } else {
-          markPlannerMigrated();
-          setSyncError(res.error);
-        }
-      }
       const term = readTerm(termCode);
       itemsRef.current = term.items;
       setPlannerItems(term.items);

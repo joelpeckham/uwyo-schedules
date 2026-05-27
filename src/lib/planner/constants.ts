@@ -1,9 +1,3 @@
-export const PLANNER_SESSION_COOKIE = "uwyo_planner_sid";
-
-/** UUID v4 pattern for cookie validation */
-export const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 /** Guardrail against unbounded list growth / abuse per session+term. */
 export const MAX_PLANNER_COURSES_PER_TERM = 40;
 

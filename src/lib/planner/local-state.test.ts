@@ -2,12 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   allocateNextItemId,
-  markPlannerMigrated,
-  mergeMigrationTerms,
   PLANNER_LOCAL_STORAGE_KEY,
   readLocalDoc,
   readTerm,
-  writeLocalDoc,
   writeTerm,
 } from "@/lib/planner/local-state";
 
@@ -67,43 +64,5 @@ describe("local-state", () => {
     storage.set(PLANNER_LOCAL_STORAGE_KEY, "{not valid");
     expect(readLocalDoc().v).toBe(2);
     expect(readLocalDoc().terms).toEqual({});
-  });
-
-  it("markPlannerMigrated sets migrated without changing terms", () => {
-    mockLocalStorage();
-    writeLocalDoc({ v: 2, migrated: false, nextId: 1, terms: {} });
-    markPlannerMigrated();
-    expect(readLocalDoc().migrated).toBe(true);
-  });
-
-  it("mergeMigrationTerms sets migrated and bumps nextId", () => {
-    mockLocalStorage();
-    writeLocalDoc({ v: 2, migrated: false, nextId: 1, terms: {} });
-    mergeMigrationTerms({
-      "202610": {
-        items: [
-          {
-            id: 99,
-            sessionId: "x",
-            termCode: "202610",
-            subject: "CHEM",
-            courseNumber: "1020",
-            displayColor: "#3CB44B",
-            selectionKind: "unresolved",
-            anchorCrn: null,
-            linkedBundleId: null,
-            instructorPrefs: { v: 1, primary: [] },
-            sectionPins: { v: 1, byType: {} },
-          },
-        ],
-        blackouts: { v: 1, items: [] },
-        lastSolutionIndex: 2,
-      },
-    });
-    const doc = readLocalDoc();
-    expect(doc.migrated).toBe(true);
-    expect(doc.nextId).toBeGreaterThanOrEqual(100);
-    expect(readTerm("202610").items).toHaveLength(1);
-    expect(readTerm("202610").lastSolutionIndex).toBe(2);
   });
 });

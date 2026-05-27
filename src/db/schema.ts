@@ -226,7 +226,7 @@ export const linkedBundleMembers = pgTable(
   ],
 );
 
-/** Anonymous browser planner session (HTTP-only cookie). */
+/** Legacy anonymous planner session; unused — planner state is browser-local only. */
 export const plannerSessions = pgTable("planner_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -239,7 +239,7 @@ export const plannerSessions = pgTable("planner_sessions", {
  * `selection_kind` + `anchor_crn` + optional `linked_bundle_id` resolve which CRNs appear on the calendar.
  * `unresolved`: wish-list row before automation picks a section; `anchor_crn` / `linked_bundle_id` are null.
  *
- * @deprecated Planner cart is stored in browser localStorage; table kept for one-shot migration cleanup.
+ * @deprecated Planner cart is in browser localStorage; table retained but unused by the app.
  */
 export const plannerItems = pgTable(
   "planner_items",
@@ -308,7 +308,7 @@ export const catalogActionRateLimit = pgTable("catalog_action_rate_limit", {
 /**
  * Last-viewed schedule index, blackouts (legacy per session + term).
  *
- * @deprecated Planner UI state is stored in browser localStorage; table kept for migration cleanup.
+ * @deprecated Planner UI state is in browser localStorage; table retained but unused by the app.
  */
 export const plannerTermUiState = pgTable(
   "planner_term_ui_state",
