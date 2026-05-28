@@ -550,40 +550,6 @@ export function CourseManager({ termCode }: Props) {
               </ul>
             ) : null}
           </div>
-          {searchQueryLen > 0 && searchQueryLen < 2 ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Type at least 2 characters to search.
-            </p>
-          ) : null}
-          {searchQueryLen >= 2 && searchFetching ? (
-            <p className="mt-1 text-xs text-muted-foreground" role="status">
-              Searching&hellip;
-            </p>
-          ) : null}
-          {searchQueryLen >= 2 && !searchFetching && !pending && hits.length === 0 ? (
-            <p className="mt-1 text-xs text-muted-foreground" role="status">
-              No courses match that search.
-            </p>
-          ) : null}
-          {picked && prefetchPackPending ? (
-            <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
-              Loading sections for this course&hellip;
-            </p>
-          ) : null}
-          {picked && !prefetchPackPending && !prefetchPackError && hasPackForPicked ? (
-            <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
-              Ready to add.
-            </p>
-          ) : null}
-          {picked && prefetchPackError ? (
-            <p
-              className="mt-1 text-xs text-destructive"
-              role="alert"
-              aria-live="polite"
-            >
-              {prefetchPackError}
-            </p>
-          ) : null}
         </div>
         <Button
           type="button"
@@ -604,6 +570,36 @@ export function CourseManager({ termCode }: Props) {
           )}
           <span className="ml-2">Add</span>
         </Button>
+      </div>
+      <div className="mt-1 min-h-5 text-xs" aria-live="polite">
+        {searchQueryLen > 0 && searchQueryLen < 2 ? (
+          <p className="text-muted-foreground">
+            Type at least 2 characters to search.
+          </p>
+        ) : null}
+        {searchQueryLen >= 2 && searchFetching ? (
+          <p className="text-muted-foreground" role="status">
+            Searching&hellip;
+          </p>
+        ) : null}
+        {searchQueryLen >= 2 && !searchFetching && !pending && hits.length === 0 ? (
+          <p className="text-muted-foreground" role="status">
+            No courses match that search.
+          </p>
+        ) : null}
+        {picked && prefetchPackPending ? (
+          <p className="text-muted-foreground">
+            Loading sections for this course&hellip;
+          </p>
+        ) : null}
+        {picked && !prefetchPackPending && !prefetchPackError && hasPackForPicked ? (
+          <p className="text-muted-foreground">Ready to add.</p>
+        ) : null}
+        {picked && prefetchPackError ? (
+          <p className="text-destructive" role="alert">
+            {prefetchPackError}
+          </p>
+        ) : null}
       </div>
 
       <ul className="mt-6 space-y-2">

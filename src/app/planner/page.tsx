@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
-import { PlannerBootstrapScript } from "@/components/planner/PlannerBootstrapScript";
 import { HomePlanner } from "@/components/planner/HomePlanner";
-import { PlannerSkeleton } from "@/components/planner/PlannerSkeleton";
 import { PlannerTermSelect } from "@/components/planner/PlannerTermSelect";
 import { PlannerJsonLd } from "@/components/seo/PlannerJsonLd";
 import { SiteChrome } from "@/components/seo/SiteChrome";
+import { buildPlannerBootstrapScript } from "@/lib/planner/planner-bootstrap";
 import {
   getLatestTermCodeForSeo,
   listTermsForSeo,
@@ -26,7 +24,7 @@ export const metadata: Metadata = {
   },
 };
 
-async function PlannerBody({
+export default async function PlannerPage({
   searchParams,
 }: {
   searchParams: Promise<{ term?: string }>;
@@ -49,21 +47,15 @@ async function PlannerBody({
         hasData ? <PlannerTermSelect terms={terms} termCode={termCode} /> : null
       }
     >
+      {hasData ? (
+        <script
+          dangerouslySetInnerHTML={{
+            __html: buildPlannerBootstrapScript(termCode),
+          }}
+        />
+      ) : null}
       <PlannerJsonLd />
-      {hasData ? <PlannerBootstrapScript termCode={termCode} /> : null}
       <HomePlanner termCode={termCode} hasData={hasData} />
     </SiteChrome>
-  );
-}
-
-export default function PlannerPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ term?: string }>;
-}) {
-  return (
-    <Suspense fallback={<PlannerSkeleton />}>
-      <PlannerBody searchParams={searchParams} />
-    </Suspense>
   );
 }

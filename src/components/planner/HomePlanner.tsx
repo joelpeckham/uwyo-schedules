@@ -12,6 +12,8 @@ import { PlannerEmptyHero } from "./PlannerEmptyHero";
 import { PlannerCollapsibleSlot } from "./PlannerCollapsibleSlot";
 import { ShareLinkApplier } from "./ShareLinkApplier";
 import { FiltersCard } from "./FiltersCard";
+import { PlannerHydrationGate } from "./PlannerHydrationGate";
+import { PlannerIntroHeader } from "./PlannerIntroHeader";
 import { WeekCalendar } from "./WeekCalendar";
 
 const SectionJsonModal = dynamic(
@@ -42,23 +44,7 @@ export function HomePlanner({ termCode, hasData }: Props) {
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:max-w-[90rem]">
-        <div
-          id="planner"
-          tabIndex={-1}
-          className="scroll-mt-24 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Planner
-          </p>
-          <h1 className="mt-1 font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-            Your week
-          </h1>
-          <p className="mt-2 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Add courses, set optional instructor preferences, and the planner
-            keeps a conflict-free week ready. Pin sections you like, drag a
-            block to try other times, or tap for details.
-          </p>
-        </div>
+        <PlannerIntroHeader />
 
         {!hasData ? (
           <NoDataNotice />
@@ -66,17 +52,19 @@ export function HomePlanner({ termCode, hasData }: Props) {
           <>
             <PlannerProvider key={termCode} termCode={termCode}>
               <ShareLinkApplier termCode={termCode} />
-              <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
-                <div className="min-w-0 space-y-4">
-                  <CourseManager key={termCode} termCode={termCode} />
-                  <FiltersCard />
+              <PlannerHydrationGate>
+                <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
+                  <div className="min-w-0 space-y-4">
+                    <CourseManager key={termCode} termCode={termCode} />
+                    <FiltersCard />
+                  </div>
+                  <PlannerCalendarColumn
+                    termCode={termCode}
+                    onBlockActivate={onBlockActivate}
+                    onCrnActivate={onCrnActivate}
+                  />
                 </div>
-                <PlannerCalendarColumn
-                  termCode={termCode}
-                  onBlockActivate={onBlockActivate}
-                  onCrnActivate={onCrnActivate}
-                />
-              </div>
+              </PlannerHydrationGate>
             </PlannerProvider>
             {modalOpen ? (
               <SectionJsonModal
@@ -115,7 +103,7 @@ function PlannerCalendarColumn({
         prePaintBootstrap
         className={showEmptyHero ? "mb-4" : undefined}
       >
-        <PlannerEmptyHero termCode={termCode} />
+        {showEmptyHero ? <PlannerEmptyHero termCode={termCode} /> : null}
       </PlannerCollapsibleSlot>
       <WeekCalendar onBlockActivate={onBlockActivate} />
       <PlannerCollapsibleSlot show={showOffGridRail} className={showOffGridRail ? "mt-4" : undefined}>

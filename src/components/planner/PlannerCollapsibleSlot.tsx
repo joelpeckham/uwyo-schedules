@@ -40,7 +40,7 @@ export function PlannerCollapsibleSlot({
       <div
         className={cn(
           "min-h-0 overflow-hidden transition-opacity duration-200",
-          !prePaintBootstrap && !show && "pointer-events-none opacity-0",
+          !show && "pointer-events-none opacity-0",
         )}
         {...(!show ? { inert: true as const } : {})}
       >

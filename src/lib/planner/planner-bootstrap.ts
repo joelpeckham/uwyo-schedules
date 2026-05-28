@@ -15,6 +15,13 @@ export function getStoredItemCount(termCode: string): number {
  * Inline IIFE run before planner body paint. Keep parse logic aligned with
  * `readLocalDoc` / `readTerm` in local-state.ts.
  */
+/** Reads `html[data-planner-items]` set by the blocking bootstrap script (0 on server). */
+export function readBootstrapPlannerItemCount(): number {
+  if (typeof document === "undefined") return 0;
+  const n = Number(document.documentElement.dataset.plannerItems);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
 /** Keep html[data-planner-items] aligned with React after local restore / edits. */
 export function syncPlannerItemsDataset(itemCount: number): void {
   if (typeof document === "undefined") return;
@@ -22,8 +29,12 @@ export function syncPlannerItemsDataset(itemCount: number): void {
   delete document.documentElement.dataset.plannerNoTransition;
 }
 
-export function buildPlannerBootstrapScript(termCode: string): string {
-  const termJson = JSON.stringify(termCode);
+function buildPlannerBootstrapScriptBody(termExpr: string): string {
   const keyJson = JSON.stringify(PLANNER_LOCAL_STORAGE_KEY);
-  return `(()=>{try{var k=${keyJson};var term=${termJson};var raw=localStorage.getItem(k);var n=0;if(raw){var doc=JSON.parse(raw);if(doc&&doc.v===2&&doc.terms&&doc.terms[term]&&Array.isArray(doc.terms[term].items)){n=doc.terms[term].items.length;}}document.documentElement.dataset.plannerItems=String(n);document.documentElement.dataset.plannerNoTransition="1";}catch(e){document.documentElement.dataset.plannerItems="0";document.documentElement.dataset.plannerNoTransition="1";}})();`;
+  return `(()=>{try{var k=${keyJson};var term=${termExpr};var raw=localStorage.getItem(k);var n=0;if(raw){var doc=JSON.parse(raw);if(doc&&doc.v===2&&doc.terms&&doc.terms[term]&&Array.isArray(doc.terms[term].items)){n=doc.terms[term].items.length;}}document.documentElement.dataset.plannerItems=String(n);document.documentElement.dataset.plannerNoTransition="1";}catch(e){document.documentElement.dataset.plannerItems="0";document.documentElement.dataset.plannerNoTransition="1";}})();`;
+}
+
+/** Inline blocking script: sets `html[data-planner-items]` before planner UI paints. */
+export function buildPlannerBootstrapScript(termCode: string): string {
+  return buildPlannerBootstrapScriptBody(JSON.stringify(termCode));
 }
