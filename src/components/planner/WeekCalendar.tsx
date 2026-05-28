@@ -21,6 +21,7 @@ import type { PlannerItemRow } from "@/lib/planner/data";
 import { filterFeasibleSwapGhosts } from "@/lib/planner/planner-swap-feasibility";
 import { pickCourseSwapSnap } from "@/lib/planner/course-swap-snap";
 import {
+  everyPlannerItemHasSolvePack,
   feasibleSinglePinChoicesForDrag,
 } from "@/lib/planner/solve-schedules-core";
 import { track } from "@/lib/analytics/track";
@@ -983,7 +984,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     hasAttemptedSolve &&
     !isRecalculatingSolutions &&
     solutions.length === 0 &&
-    plannerItems.length > 0;
+    plannerItems.length > 0 &&
+    everyPlannerItemHasSolvePack(plannerItems, solvePacks);
   const busyCount = blackouts.items.length;
 
   return (
