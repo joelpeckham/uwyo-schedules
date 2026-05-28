@@ -7,6 +7,7 @@ import type { CalendarBlock } from "@/lib/planner/data";
 
 import { CourseManager } from "./CourseManager";
 import { NotOnGridRail, useNotOnGridRailRows } from "./NotOnGridRail";
+import { PlannerBootstrap } from "./PlannerBootstrap";
 import { PlannerProvider, usePlannerData } from "./PlannerContext";
 import { PlannerEmptyHero } from "./PlannerEmptyHero";
 import { PlannerCollapsibleSlot } from "./PlannerCollapsibleSlot";
@@ -50,6 +51,7 @@ export function HomePlanner({ termCode, hasData }: Props) {
           <NoDataNotice />
         ) : (
           <>
+            <PlannerBootstrap termCode={termCode} />
             <PlannerProvider key={termCode} termCode={termCode}>
               <ShareLinkApplier termCode={termCode} />
               <PlannerHydrationGate>

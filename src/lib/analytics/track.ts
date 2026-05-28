@@ -37,7 +37,16 @@ type PlannerAnalyticsEvent =
   | { name: "planner_first_run_seeded"; props: { courses: number } }
   | { name: "planner_example_courses_added"; props: { courseCount: number } }
   | { name: "planner_tour_step_seen"; props: { step: number } }
-  | { name: "planner_tour_dismissed"; props: { step: number } };
+  | { name: "planner_tour_dismissed"; props: { step: number } }
+  | {
+      name: "seo_add_to_planner_clicked";
+      props: {
+        source: "crn" | "course";
+        subject: string;
+        courseNumber: string;
+        wasAdded: boolean;
+      };
+    };
 
 /**
  * Fire and forget; safe to call from any client component.

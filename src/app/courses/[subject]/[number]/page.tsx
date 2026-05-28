@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
+import { AddToPlannerCta } from "@/components/planner/AddToPlannerCta";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
   getCourseSeoDetailForSeo,
@@ -92,6 +93,8 @@ export default async function CourseDetailPage({ params }: Props) {
     courseCode: `${detail.subject} ${detail.courseNumber}`,
   };
 
+  const courseLabel = `${detail.subject} ${detail.courseNumber}`;
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:max-w-[90rem]">
       <JsonLd data={courseJson} />
@@ -106,10 +109,18 @@ export default async function CourseDetailPage({ params }: Props) {
           { name: `${detail.subject} ${detail.courseNumber}`, href: canonicalPath },
         ]}
       />
-      <h1 className="mt-4 max-w-4xl font-heading text-balance text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
-        {detail.subject} {detail.courseNumber} — {displayTitle} at the
-        University of Wyoming
-      </h1>
+      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <h1 className="max-w-4xl font-heading text-balance text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
+          {detail.subject} {detail.courseNumber} — {displayTitle} at the
+          University of Wyoming
+        </h1>
+        <AddToPlannerCta
+          termCode={primaryTerm}
+          subject={detail.subject}
+          courseNumber={detail.courseNumber}
+          courseLabel={courseLabel}
+        />
+      </div>
       <p className="mt-4 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">
         Catalog data from the UW course catalog via uwyoschedule. Seat counts and meeting
         times can change; confirm in the UW course catalog before you register.

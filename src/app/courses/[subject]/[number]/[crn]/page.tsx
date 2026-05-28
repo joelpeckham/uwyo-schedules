@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
+import { AddToPlannerCta } from "@/components/planner/AddToPlannerCta";
 import { SectionDetailPanels } from "@/components/planner/SectionDetailPanels";
 import {
   asRecord,
@@ -297,35 +298,45 @@ export default async function CrnDetailPage({ params }: Props) {
           { name: `CRN ${detail.crn}`, href: canonicalPath },
         ]}
       />
-      <header className="mt-4 flex flex-col gap-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {detail.termDescription ?? "Section"}
-        </p>
-        <h1 className="max-w-4xl font-heading text-balance text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
-          {courseLabel} CRN {detail.crn}
-          {detail.courseTitle ? (
-            <span className="block text-2xl font-normal text-muted-foreground sm:text-3xl">
-              {detail.courseTitle}
-            </span>
-          ) : null}
-        </h1>
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground sm:text-base">
-          {detail.scheduleTypeDescription ? (
-            <span>{detail.scheduleTypeDescription}</span>
-          ) : null}
-          {campus ? <span>{campus}</span> : null}
-          {detail.facultyNames ? <span>{detail.facultyNames}</span> : null}
-          {deliveryPill ? (
-            <span className="rounded-full border border-border bg-card px-2 py-0.5 text-xs font-medium text-foreground">
-              {deliveryPill}
-            </span>
-          ) : null}
-          {heroDays && heroTimeRange ? (
-            <span className="font-mono">
-              {heroDays} {heroTimeRange}
-            </span>
-          ) : null}
-        </p>
+      <header className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {detail.termDescription ?? "Section"}
+          </p>
+          <h1 className="max-w-4xl font-heading text-balance text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
+            {courseLabel} CRN {detail.crn}
+            {detail.courseTitle ? (
+              <span className="block text-2xl font-normal text-muted-foreground sm:text-3xl">
+                {detail.courseTitle}
+              </span>
+            ) : null}
+          </h1>
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground sm:text-base">
+            {detail.scheduleTypeDescription ? (
+              <span>{detail.scheduleTypeDescription}</span>
+            ) : null}
+            {campus ? <span>{campus}</span> : null}
+            {detail.facultyNames ? <span>{detail.facultyNames}</span> : null}
+            {deliveryPill ? (
+              <span className="rounded-full border border-border bg-card px-2 py-0.5 text-xs font-medium text-foreground">
+                {deliveryPill}
+              </span>
+            ) : null}
+            {heroDays && heroTimeRange ? (
+              <span className="font-mono">
+                {heroDays} {heroTimeRange}
+              </span>
+            ) : null}
+          </p>
+        </div>
+        <AddToPlannerCta
+          termCode={detail.termCode}
+          subject={detail.subject}
+          courseNumber={detail.courseNumber}
+          courseLabel={courseLabel}
+          crn={detail.crn}
+          scheduleTypeDescription={detail.scheduleTypeDescription}
+        />
       </header>
 
       <p className="mt-4 max-w-prose text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base">

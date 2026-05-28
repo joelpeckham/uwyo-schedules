@@ -3,7 +3,6 @@ import { HomePlanner } from "@/components/planner/HomePlanner";
 import { PlannerTermSelect } from "@/components/planner/PlannerTermSelect";
 import { PlannerJsonLd } from "@/components/seo/PlannerJsonLd";
 import { SiteChrome } from "@/components/seo/SiteChrome";
-import { buildPlannerBootstrapScript } from "@/lib/planner/planner-bootstrap";
 import {
   getLatestTermCodeForSeo,
   listTermsForSeo,
@@ -47,14 +46,6 @@ export default async function PlannerPage({
         hasData ? <PlannerTermSelect terms={terms} termCode={termCode} /> : null
       }
     >
-      {hasData ? (
-        <script
-          suppressHydrationWarning
-          dangerouslySetInnerHTML={{
-            __html: buildPlannerBootstrapScript(termCode),
-          }}
-        />
-      ) : null}
       <PlannerJsonLd />
       <HomePlanner termCode={termCode} hasData={hasData} />
     </SiteChrome>
