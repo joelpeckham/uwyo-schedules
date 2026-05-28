@@ -13,11 +13,26 @@ const baseFilters = {
   excludeOnlineAsync: true,
 };
 
-function snap(items: { id: number }[] = []) {
+const sampleSolution = {
+  score: 0,
+  selections: {
+    1: {
+      selectionKind: "single_crn" as const,
+      anchorCrn: "12345",
+      linkedBundleId: null,
+    },
+  },
+};
+
+function snap(
+  items: { id: number }[] = [],
+  solutions: typeof sampleSolution[] = [],
+) {
   return capturePlannerHistorySnapshot({
     plannerItems: items as never,
     blackouts: EMPTY_BLACKOUTS,
     filters: baseFilters,
+    solutions,
   });
 }
 
@@ -29,8 +44,25 @@ describe("capturePlannerHistorySnapshot", () => {
       plannerItems: [{ id: 1 }] as never,
       blackouts: EMPTY_BLACKOUTS,
       filters: baseFilters,
+      solutions: [],
     });
     expect(captured.plannerItems).toHaveLength(1);
+  });
+
+  it("deep-clones solutions so later mutations do not alias", () => {
+    const input = snap([{ id: 1 }], [sampleSolution]);
+    input.solutions[0]!.selections[1] = {
+      selectionKind: "single_crn",
+      anchorCrn: "99999",
+      linkedBundleId: null,
+    };
+    const captured = capturePlannerHistorySnapshot({
+      plannerItems: [{ id: 1 }] as never,
+      blackouts: EMPTY_BLACKOUTS,
+      filters: baseFilters,
+      solutions: [sampleSolution],
+    });
+    expect(captured.solutions[0]?.selections[1]?.anchorCrn).toBe("12345");
   });
 });
 
@@ -61,25 +93,30 @@ describe("createPlannerHistoryStacks", () => {
 
   it("undo restores prior snapshot and pushes current to redo", () => {
     const history = createPlannerHistoryStacks();
-    const s1 = snap([{ id: 1 }]);
-    const s2 = snap([{ id: 2 }]);
+    const s1 = snap([{ id: 1 }], [sampleSolution]);
+    const s2 = snap([{ id: 2 }], []);
     let stacks = history.record(history.stacks, s1).stacks;
     stacks = history.record(stacks, s2).stacks;
-    const current = snap([{ id: 3 }]);
+    const current = snap([{ id: 3 }], [sampleSolution]);
     const result = history.undo(stacks, current);
     expect(result.snapshot?.plannerItems[0]?.id).toBe(2);
+    expect(result.snapshot?.solutions).toEqual([]);
     expect(result.stacks.redo).toHaveLength(1);
     expect(result.stacks.redo[0]?.plannerItems[0]?.id).toBe(3);
+    expect(result.stacks.redo[0]?.solutions[0]?.selections[1]?.anchorCrn).toBe(
+      "12345",
+    );
     expect(result.stacks.undo).toHaveLength(1);
   });
 
-  it("redo restores from redo stack", () => {
+  it("redo restores solutions from redo stack", () => {
     const history = createPlannerHistoryStacks();
-    const s1 = snap([{ id: 1 }]);
+    const s1 = snap([{ id: 1 }], [sampleSolution]);
     const stacks = history.record(history.stacks, s1).stacks;
-    const undone = history.undo(stacks, snap([{ id: 2 }]));
-    const redone = history.redo(undone.stacks, snap([{ id: 1 }]));
+    const undone = history.undo(stacks, snap([{ id: 2 }], []));
+    const redone = history.redo(undone.stacks, snap([{ id: 1 }], [sampleSolution]));
     expect(redone.snapshot?.plannerItems[0]?.id).toBe(2);
+    expect(redone.snapshot?.solutions).toEqual([]);
   });
 
   it("clear resets both stacks", () => {

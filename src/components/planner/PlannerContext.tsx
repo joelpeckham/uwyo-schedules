@@ -36,7 +36,7 @@ import {
   type ScheduleSolution,
 } from "@/lib/planner/solve-schedules-core";
 import { yieldToMain } from "@/lib/planner/yield-to-main";
-import { syncPlannerItemsDataset } from "@/lib/planner/planner-bootstrap";
+import { applyPlannerBootstrap, syncPlannerItemsDataset } from "@/lib/planner/planner-bootstrap";
 import {
   readTerm,
   subscribeLocalDoc,
@@ -422,6 +422,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
           excludeTba: excludeTbaRef.current,
           excludeOnlineAsync: excludeOnlineAsyncRef.current,
         },
+        solutions: solutionsRef.current,
       });
     }, []);
 
@@ -477,6 +478,12 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const applyHistorySnapshot = useCallback(
     (snap: PlannerHistorySnapshot) => {
       isApplyingHistoryRef.current = true;
+      if (recalcDebounceTimerRef.current) {
+        clearTimeout(recalcDebounceTimerRef.current);
+        recalcDebounceTimerRef.current = null;
+      }
+      recalcFilterOverridesRef.current = undefined;
+      recalcGenRef.current += 1;
       itemsRef.current = snap.plannerItems;
       setPlannerItems(snap.plannerItems);
       blackoutsRef.current = snap.blackouts;
@@ -487,14 +494,15 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setExcludeTba(snap.filters.excludeTba);
       excludeOnlineAsyncRef.current = snap.filters.excludeOnlineAsync;
       setExcludeOnlineAsync(snap.filters.excludeOnlineAsync);
+      solutionsRef.current = snap.solutions;
+      setSolutions(snap.solutions);
       persistTerm();
       void loadCatalog(snap.plannerItems);
-      scheduleRecalculateSolutions({ ...snap.filters });
       queueMicrotask(() => {
         isApplyingHistoryRef.current = false;
       });
     },
-    [persistTerm, loadCatalog, scheduleRecalculateSolutions],
+    [persistTerm, loadCatalog],
   );
 
   const undo = useCallback(() => {
@@ -532,6 +540,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   }, [loadCatalog, scheduleRecalculateSolutions]);
 
   useLayoutEffect(() => {
+    applyPlannerBootstrap(termCode);
     const term = readTerm(termCode);
     itemsRef.current = term.items;
     blackoutsRef.current = term.blackouts;

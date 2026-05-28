@@ -29,6 +29,19 @@ export function syncPlannerItemsDataset(itemCount: number): void {
   delete document.documentElement.dataset.plannerNoTransition;
 }
 
+/** Client-side bootstrap (soft nav). Mirrors the inline IIFE in buildPlannerBootstrapScript. */
+export function applyPlannerBootstrap(termCode: string): void {
+  if (typeof document === "undefined") return;
+  try {
+    const n = getStoredItemCount(termCode);
+    document.documentElement.dataset.plannerItems = String(n);
+    document.documentElement.dataset.plannerNoTransition = "1";
+  } catch {
+    document.documentElement.dataset.plannerItems = "0";
+    document.documentElement.dataset.plannerNoTransition = "1";
+  }
+}
+
 function buildPlannerBootstrapScriptBody(termExpr: string): string {
   const keyJson = JSON.stringify(PLANNER_LOCAL_STORAGE_KEY);
   return `(()=>{try{var k=${keyJson};var term=${termExpr};var raw=localStorage.getItem(k);var n=0;if(raw){var doc=JSON.parse(raw);if(doc&&doc.v===2&&doc.terms&&doc.terms[term]&&Array.isArray(doc.terms[term].items)){n=doc.terms[term].items.length;}}document.documentElement.dataset.plannerItems=String(n);document.documentElement.dataset.plannerNoTransition="1";}catch(e){document.documentElement.dataset.plannerItems="0";document.documentElement.dataset.plannerNoTransition="1";}})();`;

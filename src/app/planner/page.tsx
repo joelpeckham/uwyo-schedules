@@ -49,6 +49,7 @@ export default async function PlannerPage({
     >
       {hasData ? (
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: buildPlannerBootstrapScript(termCode),
           }}

@@ -1,11 +1,13 @@
 import type { PlannerBlackoutsDocV1 } from "@/lib/planner/blackouts";
 import type { PlannerItemRow } from "@/lib/planner/data";
 import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
+import type { ScheduleSolution } from "@/lib/planner/solve-schedules-core";
 
 export type PlannerHistorySnapshot = {
   plannerItems: PlannerItemRow[];
   blackouts: PlannerBlackoutsDocV1;
   filters: PlannerScheduleFilters;
+  solutions: ScheduleSolution[];
 };
 
 const DEFAULT_PLANNER_HISTORY_MAX_ENTRIES = 50;
