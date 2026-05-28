@@ -18,7 +18,10 @@ import {
   parseBlackoutsJson,
   type PlannerBlackoutsDocV1,
 } from "@/lib/planner/blackouts";
-import { loadPlannerCatalogForItems } from "@/lib/planner/catalog-bootstrap";
+import {
+  loadPlannerCatalogCore,
+  loadPlannerCatalogExamEnrichment,
+} from "@/lib/planner/catalog-bootstrap";
 import { ensureSectionDescriptions } from "@/lib/planner/ensure-section-descriptions";
 import { sanitizeSectionRawJson } from "@/lib/planner/section-detail-sanitize";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
@@ -147,7 +150,7 @@ export async function getSectionDetailAction(
   return { rawJson: sanitized, title };
 }
 
-/** Catalog slices for client-side calendar / swap given planner items. */
+/** Fast catalog slice for calendar blocks and swap ghosts (no Banner fetch). */
 export async function loadPlannerCatalogForItemsAction(
   termCode: string,
   items: PlannerItemRow[],
@@ -161,8 +164,38 @@ export async function loadPlannerCatalogForItemsAction(
     }
     if (!termCode) return { ok: false, error: "Missing term." };
     const db = createDb();
-    const { catalog } = await loadPlannerCatalogForItems(db, termCode, items);
+    const { catalog } = await loadPlannerCatalogCore(db, termCode, items);
     return { ok: true, catalog };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
+/** Exam reservation badges from section information (background enrichment). */
+export async function loadPlannerCatalogExamEnrichmentAction(
+  termCode: string,
+  items: PlannerItemRow[],
+): Promise<
+  | {
+      ok: true;
+      examReservationsByCrn: PlannerCatalogJson["examReservationsByCrn"];
+      vagueExamNoteByCrn: PlannerCatalogJson["vagueExamNoteByCrn"];
+    }
+  | { ok: false; error: string }
+> {
+  try {
+    if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
+      return { ok: false, error: "Too many requests. Try again in a moment." };
+    }
+    if (!termCode) return { ok: false, error: "Missing term." };
+    const db = createDb();
+    const enrichment = await loadPlannerCatalogExamEnrichment(
+      db,
+      termCode,
+      items,
+    );
+    return { ok: true, ...enrichment };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
     return { ok: false, error: msg };

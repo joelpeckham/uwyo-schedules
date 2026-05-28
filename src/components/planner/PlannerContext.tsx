@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  loadPlannerCatalogExamEnrichmentAction,
   loadPlannerCatalogForItemsAction,
   prefetchCourseSolvePackAction,
 } from "@/app/planner/actions";
@@ -206,6 +207,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const itemsRef = useRef(plannerItems);
   const termRef = useRef(termCode);
   const prefetchGenRef = useRef(0);
+  const catalogLoadGenRef = useRef(0);
   const requireOpenRef = useRef(requireOpenSections);
   const excludeTbaRef = useRef(excludeTba);
   const excludeOnlineAsyncRef = useRef(excludeOnlineAsync);
@@ -255,13 +257,27 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
 
   const loadCatalog = useCallback(async (items: PlannerItemRow[]) => {
     const t = termRef.current;
+    const myGen = ++catalogLoadGenRef.current;
     const res = await loadPlannerCatalogForItemsAction(t, items);
+    if (myGen !== catalogLoadGenRef.current) return false;
     if (!res.ok) {
       setSyncError(res.error);
       return false;
     }
     setCatalog(res.catalog);
     setSyncError(null);
+
+    void (async () => {
+      const enrichRes = await loadPlannerCatalogExamEnrichmentAction(t, items);
+      if (myGen !== catalogLoadGenRef.current) return;
+      if (!enrichRes.ok) return;
+      setCatalog((prev) => ({
+        ...prev,
+        examReservationsByCrn: enrichRes.examReservationsByCrn,
+        vagueExamNoteByCrn: enrichRes.vagueExamNoteByCrn,
+      }));
+    })();
+
     return true;
   }, []);
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import {
+  loadPlannerCatalogExamEnrichmentAction,
   loadPlannerCatalogForItemsAction,
   solveSchedulesAction,
 } from "@/app/planner/actions";
@@ -91,8 +92,21 @@ export function PrintBootstrap({ termCode, termDescription }: Props) {
         setStatus("error");
         return;
       }
+      const enrichRes = await loadPlannerCatalogExamEnrichmentAction(
+        termCode,
+        displayItems,
+      );
+      if (cancelled) return;
+      const catalog: PlannerCatalogJson =
+        enrichRes.ok
+          ? {
+              ...catRes.catalog,
+              examReservationsByCrn: enrichRes.examReservationsByCrn,
+              vagueExamNoteByCrn: enrichRes.vagueExamNoteByCrn,
+            }
+          : catRes.catalog;
       setPlannerItems(displayItems);
-      setCatalog(catRes.catalog);
+      setCatalog(catalog);
       setStatus("ready");
     })();
     return () => {
