@@ -1,7 +1,6 @@
 import { SiteChrome } from "@/components/seo/SiteChrome";
 
-import { PlannerGridPlaceholder } from "./PlannerGridPlaceholder";
-import { PlannerIntroHeader } from "./PlannerIntroHeader";
+import { PlannerPageFallback } from "./PlannerPageFallback";
 
 const headerTermSelectStub = (
   <div
@@ -11,18 +10,13 @@ const headerTermSelectStub = (
 );
 
 /**
- * Suspense fallback that mirrors the planner page shell and reserves the
- * same vertical real estate as the eventual `<WeekCalendar />`.
+ * Route-level Suspense fallback and loading.tsx shell — mirrors the planner
+ * page with SiteChrome so soft navigations do not shift the header.
  */
 export function PlannerSkeleton() {
   return (
     <SiteChrome actions={headerTermSelectStub}>
-      <div className="flex min-w-0 flex-1 flex-col bg-background">
-        <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:max-w-[90rem]">
-          <PlannerIntroHeader />
-          <PlannerGridPlaceholder />
-        </div>
-      </div>
+      <PlannerPageFallback />
     </SiteChrome>
   );
 }

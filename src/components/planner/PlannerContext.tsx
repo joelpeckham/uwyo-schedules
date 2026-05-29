@@ -224,6 +224,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const isApplyingHistoryRef = useRef(false);
   const blackoutsUserGenRef = useRef(0);
   const blackoutsHandledGenRef = useRef(0);
+  const initialBootstrapDoneRef = useRef(false);
 
   useEffect(() => {
     solvePacksRef.current = solvePacks;
@@ -305,28 +306,34 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     async (items: PlannerItemRow[]) => {
       const t = termRef.current;
       const myGen = ++catalogLoadGenRef.current;
-      const res = await loadPlannerBootstrapAction(t, items);
-      if (myGen !== catalogLoadGenRef.current) return false;
-      if (!res.ok) {
-        setSyncError(res.error);
-        return false;
+      try {
+        const res = await loadPlannerBootstrapAction(t, items);
+        if (myGen !== catalogLoadGenRef.current) return false;
+        if (!res.ok) {
+          setSyncError(res.error);
+          return false;
+        }
+        setCatalog(res.catalog);
+        setSyncError(null);
+        mergeSolvePacks(res.packs);
+
+        void (async () => {
+          const enrichRes = await loadPlannerCatalogExamEnrichmentAction(t, items);
+          if (myGen !== catalogLoadGenRef.current) return;
+          if (!enrichRes.ok) return;
+          setCatalog((prev) => ({
+            ...prev,
+            examReservationsByCrn: enrichRes.examReservationsByCrn,
+            vagueExamNoteByCrn: enrichRes.vagueExamNoteByCrn,
+          }));
+        })();
+
+        return true;
+      } finally {
+        if (myGen === catalogLoadGenRef.current) {
+          initialBootstrapDoneRef.current = true;
+        }
       }
-      setCatalog(res.catalog);
-      setSyncError(null);
-      mergeSolvePacks(res.packs);
-
-      void (async () => {
-        const enrichRes = await loadPlannerCatalogExamEnrichmentAction(t, items);
-        if (myGen !== catalogLoadGenRef.current) return;
-        if (!enrichRes.ok) return;
-        setCatalog((prev) => ({
-          ...prev,
-          examReservationsByCrn: enrichRes.examReservationsByCrn,
-          vagueExamNoteByCrn: enrichRes.vagueExamNoteByCrn,
-        }));
-      })();
-
-      return true;
     },
     [mergeSolvePacks],
   );
@@ -582,6 +589,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   }, [loadCatalog, scheduleRecalculateSolutions]);
 
   useLayoutEffect(() => {
+    initialBootstrapDoneRef.current = false;
     applyPlannerBootstrap(termCode);
     const term = readTerm(termCode);
     itemsRef.current = term.items;
@@ -794,6 +802,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
 
   useEffect(() => {
     if (isHydrating || plannerCourseKeysSignature.length === 0) return;
+    if (!initialBootstrapDoneRef.current) return;
     const t = termCode;
     let cancelled = false;
     const timer = setTimeout(() => {

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import type { CalendarBlock } from "@/lib/planner/data";
 
 import { CourseManager } from "./CourseManager";
@@ -53,7 +53,9 @@ export function HomePlanner({ termCode, hasData }: Props) {
           <>
             <PlannerBootstrap termCode={termCode} />
             <PlannerProvider key={termCode} termCode={termCode}>
-              <ShareLinkApplier termCode={termCode} />
+              <Suspense fallback={null}>
+                <ShareLinkApplier termCode={termCode} />
+              </Suspense>
               <PlannerHydrationGate>
                 <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
                   <div className="min-w-0 space-y-4">

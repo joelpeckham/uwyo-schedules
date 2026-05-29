@@ -1,5 +1,7 @@
 "use client";
 
+import { useLayoutEffect } from "react";
+
 import { applyPlannerBootstrap } from "@/lib/planner/planner-bootstrap";
 
 type Props = {
@@ -11,8 +13,8 @@ type Props = {
  * inline blocking script removed for Next.js 16 / React 19 client navigations.
  */
 export function PlannerBootstrap({ termCode }: Props) {
-  if (typeof document !== "undefined") {
+  useLayoutEffect(() => {
     applyPlannerBootstrap(termCode);
-  }
+  }, [termCode]);
   return null;
 }

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { HomePlanner } from "@/components/planner/HomePlanner";
 import { PlannerTermSelect } from "@/components/planner/PlannerTermSelect";
 import { PlannerJsonLd } from "@/components/seo/PlannerJsonLd";
 import { SiteChrome } from "@/components/seo/SiteChrome";
+import type { TermOption } from "@/lib/planner/data";
 import {
   getLatestTermCodeForSeo,
   listTermsForSeo,
@@ -23,31 +25,81 @@ export const metadata: Metadata = {
   },
 };
 
+const headerTermSelectStub = (
+  <div
+    aria-hidden
+    className="h-9 min-w-48 rounded-md border border-border bg-muted/30 sm:w-56"
+  />
+);
+
+function resolveTermCode(
+  sp: { term?: string },
+  terms: TermOption[],
+  latest: string | null,
+): string {
+  const termFromQuery =
+    sp.term && terms.some((t) => t.code === sp.term) ? sp.term : null;
+  return termFromQuery ?? latest ?? (terms.length > 0 ? terms[0]!.code : "");
+}
+
+async function PlannerTermActions({
+  searchParams,
+  terms,
+  latest,
+}: {
+  searchParams: Promise<{ term?: string }>;
+  terms: TermOption[];
+  latest: string | null;
+}) {
+  const sp = await searchParams;
+  const termCode = resolveTermCode(sp, terms, latest);
+  const hasData = terms.length > 0 && termCode.length > 0;
+  return hasData ? (
+    <PlannerTermSelect terms={terms} termCode={termCode} />
+  ) : null;
+}
+
+async function PlannerMain({
+  searchParams,
+  terms,
+  latest,
+}: {
+  searchParams: Promise<{ term?: string }>;
+  terms: TermOption[];
+  latest: string | null;
+}) {
+  const sp = await searchParams;
+  const termCode = resolveTermCode(sp, terms, latest);
+  const hasData = terms.length > 0 && termCode.length > 0;
+  return <HomePlanner termCode={termCode} hasData={hasData} />;
+}
+
 export default async function PlannerPage({
   searchParams,
 }: {
   searchParams: Promise<{ term?: string }>;
 }) {
-  const [terms, latest, sp] = await Promise.all([
+  const [terms, latest] = await Promise.all([
     listTermsForSeo(),
     getLatestTermCodeForSeo(),
-    searchParams,
   ]);
-  const termFromQuery =
-    sp.term && terms.some((t) => t.code === sp.term) ? sp.term : null;
-  const termCode =
-    termFromQuery ?? latest ?? (terms.length > 0 ? terms[0]!.code : "");
-
-  const hasData = terms.length > 0 && termCode.length > 0;
 
   return (
     <SiteChrome
       actions={
-        hasData ? <PlannerTermSelect terms={terms} termCode={termCode} /> : null
+        <Suspense fallback={headerTermSelectStub}>
+          <PlannerTermActions
+            searchParams={searchParams}
+            terms={terms}
+            latest={latest}
+          />
+        </Suspense>
       }
     >
       <PlannerJsonLd />
-      <HomePlanner termCode={termCode} hasData={hasData} />
+      <Suspense fallback={null}>
+        <PlannerMain searchParams={searchParams} terms={terms} latest={latest} />
+      </Suspense>
     </SiteChrome>
   );
 }
