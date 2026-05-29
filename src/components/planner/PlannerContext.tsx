@@ -1,9 +1,10 @@
 "use client";
 
 import {
+  loadPlannerBootstrapAction,
   loadPlannerCatalogExamEnrichmentAction,
   loadPlannerCatalogForItemsAction,
-  prefetchCourseSolvePackAction,
+  prefetchCourseSolvePacksAction,
 } from "@/app/planner/actions";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import { buildCalendarBlocksFromCatalog } from "@/lib/planner/client/derive";
@@ -264,6 +265,16 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     setSolvePacks(solvePacksRef.current);
   }, []);
 
+  const mergeSolvePacks = useCallback((packs: CourseSolvePack[]) => {
+    if (packs.length === 0) return;
+    const next = { ...solvePacksRef.current };
+    for (const pack of packs) {
+      next[pack.courseKey] = pack;
+    }
+    solvePacksRef.current = next;
+    setSolvePacks(next);
+  }, []);
+
   const loadCatalog = useCallback(async (items: PlannerItemRow[]) => {
     const t = termRef.current;
     const myGen = ++catalogLoadGenRef.current;
@@ -289,6 +300,36 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
 
     return true;
   }, []);
+
+  const loadBootstrap = useCallback(
+    async (items: PlannerItemRow[]) => {
+      const t = termRef.current;
+      const myGen = ++catalogLoadGenRef.current;
+      const res = await loadPlannerBootstrapAction(t, items);
+      if (myGen !== catalogLoadGenRef.current) return false;
+      if (!res.ok) {
+        setSyncError(res.error);
+        return false;
+      }
+      setCatalog(res.catalog);
+      setSyncError(null);
+      mergeSolvePacks(res.packs);
+
+      void (async () => {
+        const enrichRes = await loadPlannerCatalogExamEnrichmentAction(t, items);
+        if (myGen !== catalogLoadGenRef.current) return;
+        if (!enrichRes.ok) return;
+        setCatalog((prev) => ({
+          ...prev,
+          examReservationsByCrn: enrichRes.examReservationsByCrn,
+          vagueExamNoteByCrn: enrichRes.vagueExamNoteByCrn,
+        }));
+      })();
+
+      return true;
+    },
+    [mergeSolvePacks],
+  );
 
   const recalculateSolutions = useCallback(
     async (filterOverrides?: Partial<PlannerScheduleFilters>) => {
@@ -558,14 +599,15 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     let cancelled = false;
     const term = readTerm(termCode);
     void (async () => {
-      if (!cancelled) {
-        await loadCatalog(term.items);
-      }
+      if (cancelled) return;
+      const ok = await loadBootstrap(term.items);
+      if (cancelled) return;
+      if (ok) scheduleRecalculateSolutions();
     })();
     return () => {
       cancelled = true;
     };
-  }, [termCode, loadCatalog]);
+  }, [termCode, loadBootstrap, scheduleRecalculateSolutions]);
 
   useEffect(() => {
     syncPlannerItemsDataset(plannerItems.length);
@@ -775,17 +817,12 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
         return;
       }
       void (async () => {
-        const results = await Promise.all(
-          missing.map(([, c]) =>
-            prefetchCourseSolvePackAction(t, c.subject, c.courseNumber),
-          ),
-        );
+        const missingCourses = missing.map(([, c]) => c);
+        const res = await prefetchCourseSolvePacksAction(t, missingCourses);
         if (cancelled) return;
         if (myGen !== prefetchGenRef.current) return;
         if (termRef.current !== t) return;
-        for (const res of results) {
-          if (res.ok) mergeSolvePack(res.pack);
-        }
+        if (res.ok) mergeSolvePacks(res.packs);
         scheduleRecalculateSolutions();
       })();
     }, PACK_PREFETCH_DEBOUNCE_MS);
@@ -797,7 +834,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     termCode,
     plannerCourseKeysSignature,
     isHydrating,
-    mergeSolvePack,
+    mergeSolvePacks,
     scheduleRecalculateSolutions,
   ]);
 

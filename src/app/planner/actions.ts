@@ -11,6 +11,8 @@ import type { CourseSolvePack } from "@/lib/planner/solve-schedules-core";
 import type { SolveSchedulesResult } from "@/lib/planner/solve-schedules";
 import {
   loadCourseSolvePack,
+  loadCourseSolvePacks,
+  type CourseSolvePackInput,
   solveSchedulesForTerm,
 } from "@/lib/planner/solve-schedules";
 import {
@@ -47,6 +49,19 @@ function plannerActionErrorMessage(e: unknown): string {
     return "Could not reach the schedule database. Try again in a moment.";
   }
   return m;
+}
+
+function distinctCoursesFromItems(
+  items: PlannerItemRow[],
+): CourseSolvePackInput[] {
+  const seen = new Map<string, CourseSolvePackInput>();
+  for (const item of items) {
+    const k = `${item.subject}\0${item.courseNumber}`;
+    if (!seen.has(k)) {
+      seen.set(k, { subject: item.subject, courseNumber: item.courseNumber });
+    }
+  }
+  return [...seen.values()];
 }
 
 export async function solveSchedulesAction(
@@ -103,6 +118,61 @@ export async function prefetchCourseSolvePackAction(
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
     return { ok: false, error: msg };
+  }
+}
+
+/** Batched solve packs for multiple courses (one server round-trip). */
+export async function prefetchCourseSolvePacksAction(
+  termCode: string,
+  courses: CourseSolvePackInput[],
+): Promise<
+  { ok: true; packs: CourseSolvePack[] } | { ok: false; error: string }
+> {
+  try {
+    if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
+      return { ok: false, error: "Too many requests. Try again in a moment." };
+    }
+    if (!termCode.trim()) return { ok: false, error: "Missing term." };
+    const normalized = courses
+      .map((c) => ({
+        subject: c.subject.trim(),
+        courseNumber: c.courseNumber.trim(),
+      }))
+      .filter((c) => c.subject && c.courseNumber);
+    if (normalized.length === 0) {
+      return { ok: true, packs: [] };
+    }
+    const db = createDb();
+    const packs = await loadCourseSolvePacks(db, termCode, normalized);
+    return { ok: true, packs };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    return { ok: false, error: msg };
+  }
+}
+
+/** Catalog + all solve packs in one round-trip (initial planner bootstrap). */
+export async function loadPlannerBootstrapAction(
+  termCode: string,
+  items: PlannerItemRow[],
+): Promise<
+  | { ok: true; catalog: PlannerCatalogJson; packs: CourseSolvePack[] }
+  | { ok: false; error: string }
+> {
+  try {
+    if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
+      return { ok: false, error: "Too many requests. Try again in a moment." };
+    }
+    if (!termCode) return { ok: false, error: "Missing term." };
+    const db = createDb();
+    const courses = distinctCoursesFromItems(items);
+    const [{ catalog }, packs] = await Promise.all([
+      loadPlannerCatalogCore(db, termCode, items),
+      loadCourseSolvePacks(db, termCode, courses),
+    ]);
+    return { ok: true, catalog, packs };
+  } catch (e) {
+    return { ok: false, error: plannerActionErrorMessage(e) };
   }
 }
 
