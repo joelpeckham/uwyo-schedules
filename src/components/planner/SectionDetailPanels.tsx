@@ -22,6 +22,10 @@ import {
   parseExamReservations,
 } from "@/lib/sections/parse-exam-reservations";
 import { likelyExamNoteForMeeting } from "@/lib/sections/match-exam-meeting";
+import {
+  pickPrimaryMeetingIndex,
+  reorderMeetingsPrimaryFirst,
+} from "@/lib/sections/pick-primary-meeting";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -233,24 +237,26 @@ export function SectionDetailPanels({ root }: Props) {
       stringField(mt ?? {}, "meetingTypeDescription") ??
       stringField(mt ?? {}, "meetingType");
     const scheduleCode = stringField(mt ?? {}, "meetingScheduleType");
-    const examMatch =
-      mt
-        ? likelyExamNoteForMeeting(
-            {
-              beginTime: stringField(mt, "beginTime") ?? null,
-              endTime: stringField(mt, "endTime") ?? null,
-              monday: booleanField(mt, "monday") ?? null,
-              tuesday: booleanField(mt, "tuesday") ?? null,
-              wednesday: booleanField(mt, "wednesday") ?? null,
-              thursday: booleanField(mt, "thursday") ?? null,
-              friday: booleanField(mt, "friday") ?? null,
-              saturday: booleanField(mt, "saturday") ?? null,
-              sunday: booleanField(mt, "sunday") ?? null,
-            },
-            parsedExamHints.reservations,
-            sectionMeetings,
-          )
-        : null;
+    const timedMeeting = mt
+      ? {
+          beginTime: stringField(mt, "beginTime") ?? null,
+          endTime: stringField(mt, "endTime") ?? null,
+          monday: booleanField(mt, "monday") ?? null,
+          tuesday: booleanField(mt, "tuesday") ?? null,
+          wednesday: booleanField(mt, "wednesday") ?? null,
+          thursday: booleanField(mt, "thursday") ?? null,
+          friday: booleanField(mt, "friday") ?? null,
+          saturday: booleanField(mt, "saturday") ?? null,
+          sunday: booleanField(mt, "sunday") ?? null,
+        }
+      : null;
+    const examMatch = timedMeeting
+      ? likelyExamNoteForMeeting(
+          timedMeeting,
+          parsedExamHints.reservations,
+          sectionMeetings,
+        )
+      : null;
     return {
       key: `meeting-${i}`,
       days,
@@ -260,13 +266,38 @@ export function SectionDetailPanels({ root }: Props) {
       type,
       scheduleCode,
       examMatch,
+      timedMeeting,
     };
   });
   const meetingShown = meetingBlocks.filter(
     (m) => m.days || m.time || m.place || m.dates,
   );
-  const firstMeeting = meetingShown[0];
-  const moreMeetings = meetingShown.length - 1;
+  const primaryIdx = pickPrimaryMeetingIndex(
+    meetingShown.map(
+      (m) =>
+        m.timedMeeting ?? {
+          beginTime: null,
+          endTime: null,
+          monday: null,
+          tuesday: null,
+          wednesday: null,
+          thursday: null,
+          friday: null,
+          saturday: null,
+          sunday: null,
+        },
+    ),
+    {
+      reservations: parsedExamHints.reservations,
+      sectionMeetings,
+    },
+  );
+  const orderedMeetings = reorderMeetingsPrimaryFirst(
+    meetingShown,
+    primaryIdx,
+  );
+  const firstMeeting = orderedMeetings[0];
+  const moreMeetings = orderedMeetings.length - 1;
 
   const hasTimedMeetings = meetingBlocks.some((m) => m.days && m.time);
   const deliveryMode = classifyDeliveryMode({
@@ -562,10 +593,10 @@ export function SectionDetailPanels({ root }: Props) {
             }
             className="sm:col-span-2 lg:col-span-3"
           >
-            {meetingShown.length > 1 ? (
+            {orderedMeetings.length > 1 ? (
               <ExpandDetails label="Every meeting time">
                 <ul className="space-y-3">
-                  {meetingShown.map((m) => (
+                  {orderedMeetings.map((m) => (
                     <li
                       key={m.key}
                       className="rounded-lg border border-border/60 bg-background/60 px-3 py-2"

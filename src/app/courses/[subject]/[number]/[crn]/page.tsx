@@ -19,6 +19,8 @@ import {
   deliveryModeLabel,
   type DeliveryMode,
 } from "@/lib/sections/delivery-mode";
+import { parseExamReservations } from "@/lib/sections/parse-exam-reservations";
+import { pickPrimaryMeetingIndex } from "@/lib/sections/pick-primary-meeting";
 import { absoluteUrl } from "@/lib/seo/site";
 import { uwyoOrganization } from "@/lib/seo/schema-org";
 import {
@@ -156,6 +158,26 @@ export default async function CrnDetailPage({ params }: Props) {
     .map((m) => asRecord(m.meetingTime))
     .filter((m): m is Record<string, unknown> => m !== null);
 
+  const sectionInformationText = stringField(root, "sectionInformationText");
+  const parsedExamHints = sectionInformationText
+    ? parseExamReservations(sectionInformationText)
+    : { reservations: [], vagueExamNote: false };
+  const sectionMeetings = meetingBlocks.map((m) => ({
+    beginTime: stringField(m, "beginTime") ?? null,
+    endTime: stringField(m, "endTime") ?? null,
+    monday: booleanField(m, "monday") ?? null,
+    tuesday: booleanField(m, "tuesday") ?? null,
+    wednesday: booleanField(m, "wednesday") ?? null,
+    thursday: booleanField(m, "thursday") ?? null,
+    friday: booleanField(m, "friday") ?? null,
+    saturday: booleanField(m, "saturday") ?? null,
+    sunday: booleanField(m, "sunday") ?? null,
+  }));
+  const primaryMeetingIdx = pickPrimaryMeetingIndex(sectionMeetings, {
+    reservations: parsedExamHints.reservations,
+    sectionMeetings,
+  });
+
   const hasTimedMeetings = meetingBlocks.some((m) => {
     if (!stringField(m, "beginTime") || !stringField(m, "endTime")) return false;
     return Object.keys(SCHEMA_DAY_BY_KEY).some((d) => booleanField(m, d) === true);
@@ -266,7 +288,7 @@ export default async function CrnDetailPage({ params }: Props) {
     hasCourseInstance: courseInstance,
   };
 
-  const firstMeeting = meetingBlocks[0];
+  const firstMeeting = meetingBlocks[primaryMeetingIdx];
   const heroDays = firstMeeting
     ? (Object.keys(SCHEMA_DAY_BY_KEY) as (keyof typeof SCHEMA_DAY_BY_KEY)[])
         .filter((d) => booleanField(firstMeeting, d) === true)
