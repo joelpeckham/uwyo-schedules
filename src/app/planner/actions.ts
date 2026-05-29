@@ -22,7 +22,6 @@ import {
   loadPlannerCatalogCore,
   loadPlannerCatalogExamEnrichment,
 } from "@/lib/planner/catalog-bootstrap";
-import { ensureSectionDescriptions } from "@/lib/planner/ensure-section-descriptions";
 import { sanitizeSectionRawJson } from "@/lib/planner/section-detail-sanitize";
 import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import { catalogActionClientKey } from "@/lib/planner/catalog-action-client-key";
@@ -129,7 +128,6 @@ export async function getSectionDetailAction(
     return null;
   }
   const db = createDb();
-  await ensureSectionDescriptions(db, termCode, [crn]);
   const r = await getSectionDetail(db, termCode, crn);
   if (!r) return null;
   const title =

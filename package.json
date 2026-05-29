@@ -21,7 +21,8 @@
     "db:push": "drizzle-kit push",
     "ingest:hot": "node scripts/trigger-banner-ingest.cjs hot",
     "ingest:archive": "node scripts/trigger-banner-ingest.cjs archive",
-    "ingest:archive:linked": "node scripts/trigger-banner-ingest.cjs archive --linked"
+    "ingest:archive:linked": "node scripts/trigger-banner-ingest.cjs archive --linked",
+    "ingest:descriptions": "node scripts/trigger-banner-ingest.cjs descriptions"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

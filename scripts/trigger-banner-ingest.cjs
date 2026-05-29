@@ -5,6 +5,7 @@
  * Usage:
  *   pnpm ingest:hot
  *   pnpm ingest:archive
+ *   pnpm ingest:descriptions
  *   node scripts/trigger-banner-ingest.cjs archive --linked
  */
 const { config: loadEnv } = require("dotenv");
@@ -28,9 +29,9 @@ async function main() {
   const includeLinked =
     argv.includes("--linked") || argv.includes("--include-linked");
 
-  if (mode !== "hot" && mode !== "archive") {
+  if (mode !== "hot" && mode !== "archive" && mode !== "descriptions") {
     console.error(
-      "Usage: node scripts/trigger-banner-ingest.cjs <hot|archive> [--linked]",
+      "Usage: node scripts/trigger-banner-ingest.cjs <hot|archive|descriptions> [--linked]",
     );
     process.exit(1);
   }
@@ -40,12 +41,20 @@ async function main() {
     process.exit(1);
   }
 
-  const params = new URLSearchParams({ mode });
-  if (mode === "archive" && includeLinked) {
-    params.set("includeLinkedArchive", "1");
+  const path =
+    mode === "descriptions"
+      ? "/api/cron/banner-descriptions"
+      : "/api/cron/banner-ingest";
+  const params = new URLSearchParams();
+  if (mode !== "descriptions") {
+    params.set("mode", mode);
+    if (mode === "archive" && includeLinked) {
+      params.set("includeLinkedArchive", "1");
+    }
   }
 
-  const url = `${base}/api/cron/banner-ingest?${params.toString()}`;
+  const qs = params.toString();
+  const url = `${base}${path}${qs ? `?${qs}` : ""}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${secret}` },
   });

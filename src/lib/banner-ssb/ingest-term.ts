@@ -13,6 +13,32 @@ import type { SectionGraph } from "./mappers";
 
 const BATCH = 250;
 
+/** Cached Banner description fields keyed by CRN for re-ingest preservation. */
+type PreservedSectionDescription = {
+  courseDescription: string | null;
+  sectionInformationText: string | null;
+  descriptionsFetchedAt: Date | null;
+};
+
+/** Re-attach cached descriptions when a CRN survives a full term replace. */
+export function applyPreservedSectionDescriptions<
+  T extends {
+    crn: string;
+    courseDescription?: string | null;
+    sectionInformationText?: string | null;
+    descriptionsFetchedAt?: Date | null;
+  },
+>(section: T, preservedByCrn: Map<string, PreservedSectionDescription>): T {
+  const prior = preservedByCrn.get(section.crn);
+  if (!prior) return section;
+  return {
+    ...section,
+    courseDescription: prior.courseDescription,
+    sectionInformationText: prior.sectionInformationText,
+    descriptionsFetchedAt: prior.descriptionsFetchedAt,
+  };
+}
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) {
@@ -53,6 +79,25 @@ export async function replaceTermData(
   }
 
   await db.transaction(async (tx) => {
+    const priorDescriptions = await tx
+      .select({
+        crn: schema.sections.crn,
+        courseDescription: schema.sections.courseDescription,
+        sectionInformationText: schema.sections.sectionInformationText,
+        descriptionsFetchedAt: schema.sections.descriptionsFetchedAt,
+      })
+      .from(schema.sections)
+      .where(eq(schema.sections.termCode, termCode));
+
+    const preservedByCrn = new Map<string, PreservedSectionDescription>();
+    for (const row of priorDescriptions) {
+      preservedByCrn.set(row.crn, {
+        courseDescription: row.courseDescription,
+        sectionInformationText: row.sectionInformationText,
+        descriptionsFetchedAt: row.descriptionsFetchedAt,
+      });
+    }
+
     await tx
       .delete(schema.sectionAttributes)
       .where(eq(schema.sectionAttributes.termCode, termCode));
@@ -93,7 +138,13 @@ export async function replaceTermData(
 
     for (const part of chunk(graphs, BATCH)) {
       if (!part.length) continue;
-      await tx.insert(schema.sections).values(part.map((g) => g.section));
+      await tx
+        .insert(schema.sections)
+        .values(
+          part.map((g) =>
+            applyPreservedSectionDescriptions(g.section, preservedByCrn),
+          ),
+        );
     }
 
     const meetings = graphs.flatMap((g) => g.meetings);

@@ -23,11 +23,15 @@
   "crons": [
     {
       "path": "/api/cron/banner-ingest?mode=hot",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/banner-ingest?mode=archive",
       "schedule": "30 0 * * *"
+    },
+    {
+      "path": "/api/cron/banner-descriptions",
+      "schedule": "45 1 * * *"
     }
   ]
 }
