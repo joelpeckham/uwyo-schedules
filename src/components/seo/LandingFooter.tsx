@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 
 const featuredSubjects = [
   "MATH",
@@ -32,44 +32,44 @@ export function LandingFooter({
           <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-2 text-sm">
             {featuredSubjects.map((code) => (
               <li key={code}>
-                <Link
+                <AppLink
                   href={subjectHref(code)}
                   className="text-primary underline-offset-4 hover:underline"
                 >
                   {code}
-                </Link>
+                </AppLink>
               </li>
             ))}
             <li>
-              <Link
+              <AppLink
                 href="/courses"
                 className="font-medium text-primary underline-offset-4 hover:underline"
               >
                 All subjects
-              </Link>
+              </AppLink>
             </li>
           </ul>
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-          <Link className="hover:text-primary hover:underline" href="/planner">
+          <AppLink className="hover:text-primary hover:underline" href="/planner">
             Planner
-          </Link>
-          <Link className="hover:text-primary hover:underline" href="/about">
+          </AppLink>
+          <AppLink className="hover:text-primary hover:underline" href="/about">
             About
-          </Link>
-          <Link className="hover:text-primary hover:underline" href="/faq">
+          </AppLink>
+          <AppLink className="hover:text-primary hover:underline" href="/faq">
             FAQ
-          </Link>
-          <Link className="hover:text-primary hover:underline" href="/terms">
+          </AppLink>
+          <AppLink className="hover:text-primary hover:underline" href="/terms">
             Terms
-          </Link>
+          </AppLink>
           {latestTerm ? (
-            <Link
+            <AppLink
               className="hover:text-primary hover:underline"
               href={`/terms/${encodeURIComponent(latestTerm.code)}`}
             >
               {latestTerm.description}
-            </Link>
+            </AppLink>
           ) : null}
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">

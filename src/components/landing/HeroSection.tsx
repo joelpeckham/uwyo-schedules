@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 
 import { SITE_TAGLINE } from "@/lib/seo/site";
 
@@ -28,12 +28,13 @@ export function HeroSection() {
           {SITE_TAGLINE}
         </p>
         <div className="mt-10 flex flex-wrap items-center gap-4">
-          <Link
+          <AppLink
             href="/planner"
+            prefetch
             className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow-sm transition hover:opacity-95"
           >
             Open the planner
-          </Link>
+          </AppLink>
         </div>
       </div>
     </section>

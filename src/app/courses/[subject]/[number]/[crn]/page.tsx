@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
@@ -372,19 +372,19 @@ export default async function CrnDetailPage({ params }: Props) {
 
       <p className="mt-10 text-sm text-muted-foreground">
         See every section of {courseLabel}?{" "}
-        <Link
+        <AppLink
           className="text-primary underline-offset-4 hover:underline"
           href={canonicalCoursePath}
         >
           Open the course page
-        </Link>
+        </AppLink>
         . Want to plan a full week?{" "}
-        <Link
+        <AppLink
           className="text-primary underline-offset-4 hover:underline"
           href="/planner"
         >
           Open the planner
-        </Link>
+        </AppLink>
         .
       </p>
     </div>

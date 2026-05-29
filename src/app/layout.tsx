@@ -105,7 +105,9 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: NO_THEME_FLASH_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col font-sans">
+      <body
+        className={`${inter.className} min-h-full flex flex-col font-sans`}
+      >
         <SkipToMain />
         {children}
         <Analytics />

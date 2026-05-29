@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
@@ -72,12 +72,12 @@ export default async function TermPage({ params }: Props) {
             key={s.subject}
             className="mb-2 break-inside-avoid rounded-md border border-border bg-card px-3 py-2 shadow-sm"
           >
-            <Link
+            <AppLink
               href={`/terms/${encodeURIComponent(term)}/${encodeURIComponent(subjectToPathSegment(s.subject))}`}
               className="font-mono text-sm font-medium text-primary underline-offset-4 hover:underline"
             >
               {s.subject}
-            </Link>
+            </AppLink>
             <span className="ml-2 text-xs text-muted-foreground">
               {s.sectionCount} sections
             </span>

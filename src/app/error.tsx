@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { SiteChrome } from "@/components/seo/SiteChrome";
@@ -38,7 +38,7 @@ export default function RouteError({ error, reset }: Props) {
             Try again
           </Button>
           <Button asChild variant="outline">
-            <Link href="/">Go home</Link>
+            <AppLink href="/">Go home</AppLink>
           </Button>
         </div>
       </main>

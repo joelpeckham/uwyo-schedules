@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
@@ -84,12 +84,12 @@ export default async function InstructorPage({ params }: Props) {
             >
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className="text-muted-foreground">{r.termDescription}</span>
-                <Link
+                <AppLink
                   className="font-mono font-medium text-primary underline-offset-4 hover:underline"
                   href={`/courses/${encodeURIComponent(subjectToPathSegment(r.subject))}/${encodeURIComponent(r.courseNumber.toLowerCase())}`}
                 >
                   {r.subject} {r.courseNumber}
-                </Link>
+                </AppLink>
                 <span className="text-muted-foreground">
                   {r.courseTitle ?? ""}
                 </span>

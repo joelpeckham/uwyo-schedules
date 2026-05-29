@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -67,12 +67,12 @@ async function TermSubjectBody({ params }: Props) {
       </h1>
       <p className="mt-3 max-w-prose text-sm text-muted-foreground sm:text-base">
         Evergreen course pages (all terms) live under{" "}
-        <Link
+        <AppLink
           className="text-primary underline-offset-4 hover:underline"
           href={`/courses/${encodeURIComponent(subjectToPathSegment(subject))}`}
         >
           /courses/{subjectToPathSegment(subject)}
-        </Link>
+        </AppLink>
         .
       </p>
       <div className="mt-8 overflow-x-auto rounded-lg border border-border">
@@ -88,12 +88,12 @@ async function TermSubjectBody({ params }: Props) {
             {courses.map((c) => (
               <tr key={c.courseNumber} className="border-t border-border">
                 <td className="px-4 py-3 font-mono font-medium">
-                  <Link
+                  <AppLink
                     className="text-primary underline-offset-4 hover:underline"
                     href={`/courses/${encodeURIComponent(subjectToPathSegment(subject))}/${encodeURIComponent(c.courseNumber.toLowerCase())}`}
                   >
                     {c.subject} {c.courseNumber}
-                  </Link>
+                  </AppLink>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
                   {c.title ?? "—"}

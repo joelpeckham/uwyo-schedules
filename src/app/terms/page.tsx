@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { listTermsForSeo } from "@/lib/seo/queries";
 import { absoluteUrl } from "@/lib/seo/site";
 
@@ -37,12 +37,12 @@ export default async function TermsIndexPage() {
       <ul className="mt-8 space-y-3">
         {terms.map((t) => (
           <li key={t.code}>
-            <Link
+            <AppLink
               href={`/terms/${encodeURIComponent(t.code)}`}
               className="text-base font-medium text-primary underline-offset-4 hover:underline"
             >
               {t.description}
-            </Link>
+            </AppLink>
           </li>
         ))}
       </ul>

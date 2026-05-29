@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
@@ -169,12 +169,12 @@ export default async function CourseDetailPage({ params }: Props) {
                   return (
                     <tr key={row.crn} className="border-t border-border">
                       <td className="px-3 py-2 font-mono">
-                        <Link
+                        <AppLink
                           href={crnHref}
                           className="text-primary underline-offset-4 hover:underline"
                         >
                           {row.crn}
-                        </Link>
+                        </AppLink>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">
                         <div className="flex flex-wrap items-center gap-2">
@@ -212,12 +212,12 @@ export default async function CourseDetailPage({ params }: Props) {
           <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
             {detail.terms.slice(1).map((t) => (
               <li key={t.termCode}>
-                <Link
+                <AppLink
                   className="text-primary underline-offset-4 hover:underline"
                   href={`/terms/${encodeURIComponent(t.termCode)}/${encodeURIComponent(subjectToPathSegment(detail.subject))}`}
                 >
                   {t.termDescription}
-                </Link>
+                </AppLink>
                 <span className="ml-2">· {t.sectionCount} section(s)</span>
               </li>
             ))}
@@ -227,12 +227,12 @@ export default async function CourseDetailPage({ params }: Props) {
 
       <p className="mt-10 text-sm text-muted-foreground">
         Prefer the planner?{" "}
-        <Link
+        <AppLink
           className="text-primary underline-offset-4 hover:underline"
           href="/planner"
         >
           Open the planner
-        </Link>
+        </AppLink>
         .
       </p>
     </div>

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 
 export function PlannerCtaBand() {
   return (
@@ -19,12 +19,13 @@ export function PlannerCtaBand() {
             that fits.
           </p>
         </div>
-        <Link
+        <AppLink
           href="/planner"
+          prefetch
           className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow-sm transition hover:opacity-95"
         >
           Open the planner
-        </Link>
+        </AppLink>
       </div>
     </section>
   );

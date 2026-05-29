@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 
 export function LaramieCallout() {
   return (
@@ -28,12 +28,12 @@ export function LaramieCallout() {
           You register through official UW systems when your window opens.
         </p>
         <p className="mt-6">
-          <Link
+          <AppLink
             href="/planner"
             className="text-sm font-medium text-primary underline-offset-4 hover:underline"
           >
             Open the planner
-          </Link>
+          </AppLink>
         </p>
       </div>
     </section>

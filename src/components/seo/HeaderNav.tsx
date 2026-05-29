@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { Menu } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { AppLink } from "@/components/seo/AppLink";
 import { type ReactNode, useState } from "react";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -49,11 +49,13 @@ function NavLink({
   onNavigate?: () => void;
   className?: string;
 }) {
+  const router = useRouter();
   return (
-    <Link
+    <AppLink
       href={href}
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
+      onMouseEnter={() => router.prefetch(href)}
       className={cn(
         "underline-offset-4 hover:underline",
         active
@@ -63,7 +65,7 @@ function NavLink({
       )}
     >
       {label}
-    </Link>
+    </AppLink>
   );
 }
 

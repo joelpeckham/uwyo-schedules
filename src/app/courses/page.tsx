@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { absoluteUrl } from "@/lib/seo/site";
 import {
   getLatestTermRowForSeo,
@@ -51,12 +51,12 @@ export default async function CoursesIndexPage() {
             key={s.subject}
             className="mb-2 break-inside-avoid rounded-md border border-border bg-card px-3 py-2 shadow-sm"
           >
-            <Link
+            <AppLink
               href={`/courses/${encodeURIComponent(subjectToPathSegment(s.subject))}`}
               className="font-mono text-sm font-medium text-primary underline-offset-4 hover:underline"
             >
               {s.subject}
-            </Link>
+            </AppLink>
             <span className="ml-2 text-xs text-muted-foreground">
               {s.sectionCount} sections
             </span>

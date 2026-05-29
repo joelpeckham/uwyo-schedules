@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
@@ -94,12 +94,12 @@ export default async function SubjectCoursesPage({ params }: Props) {
             {courses.map((c) => (
               <tr key={c.courseNumber} className="border-t border-border">
                 <td className="px-4 py-3 font-mono font-medium">
-                  <Link
+                  <AppLink
                     className="text-primary underline-offset-4 hover:underline"
                     href={`/courses/${encodeURIComponent(subjectToPathSegment(subject))}/${encodeURIComponent(c.courseNumber.toLowerCase())}`}
                   >
                     {c.subject} {c.courseNumber}
-                  </Link>
+                  </AppLink>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
                   {c.title ?? "—"}

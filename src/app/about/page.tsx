@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SiteChrome } from "@/components/seo/SiteChrome";
 import { absoluteUrl } from "@/lib/seo/site";
@@ -51,16 +51,16 @@ export default function AboutPage() {
           prerequisites, linked labs, holds, and seat counts.
         </p>
         <p className="mt-8 text-sm text-muted-foreground">
-          <Link
+          <AppLink
             className="text-primary underline-offset-4 hover:underline"
             href="/planner"
           >
             Open the planner
-          </Link>
+          </AppLink>
           {" · "}
-          <Link className="text-primary underline-offset-4 hover:underline" href="/faq">
+          <AppLink className="text-primary underline-offset-4 hover:underline" href="/faq">
             FAQ
-          </Link>
+          </AppLink>
         </p>
       </div>
     </SiteChrome>

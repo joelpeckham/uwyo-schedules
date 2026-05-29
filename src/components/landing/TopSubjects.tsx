@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { listSubjectsForTermForSeo, subjectToPathSegment } from "@/lib/seo/queries";
 
 const TOP_N = 18;
@@ -54,18 +54,19 @@ export async function TopSubjects({
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">
           By section count in{" "}
           <span className="text-foreground">{latestTerm.description}</span>.{" "}
-          <Link
+          <AppLink
             href="/planner"
+            prefetch
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
             Open the planner
-          </Link>{" "}
+          </AppLink>{" "}
           to build your week.
         </p>
         <ul className="mt-8 flex flex-wrap gap-2">
           {ranked.map((s) => (
             <li key={s.subject}>
-              <Link
+              <AppLink
                 href={`/courses/${encodeURIComponent(subjectToPathSegment(s.subject))}`}
                 className="inline-flex items-center rounded-md border border-border bg-card px-3 py-2 text-sm font-mono font-medium text-primary shadow-sm transition hover:bg-muted/40"
               >
@@ -73,7 +74,7 @@ export async function TopSubjects({
                 <span className="ml-2 text-xs font-sans font-normal text-muted-foreground">
                   {s.sectionCount}
                 </span>
-              </Link>
+              </AppLink>
             </li>
           ))}
         </ul>

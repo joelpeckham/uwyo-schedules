@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { absoluteUrl } from "@/lib/seo/site";
 
@@ -27,12 +27,12 @@ export function SeoBreadcrumbs({ items }: { items: Crumb[] }) {
               {i === items.length - 1 ? (
                 <span className="font-medium text-foreground">{c.name}</span>
               ) : (
-                <Link
+                <AppLink
                   href={c.href}
                   className="underline-offset-4 hover:text-primary hover:underline"
                 >
                   {c.name}
-                </Link>
+                </AppLink>
               )}
             </li>
           ))}

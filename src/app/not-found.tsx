@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 
 import { SiteChrome } from "@/components/seo/SiteChrome";
 
@@ -14,30 +14,30 @@ export default function NotFound() {
           subject, or pick a term from the catalog.
         </p>
         <nav className="flex flex-wrap items-center justify-center gap-4 text-sm font-medium">
-          <Link className="text-primary underline-offset-4 hover:underline" href="/">
+          <AppLink className="text-primary underline-offset-4 hover:underline" href="/">
             Home
-          </Link>
-          <Link
+          </AppLink>
+          <AppLink
             className="text-primary underline-offset-4 hover:underline"
             href="/planner"
           >
             Planner
-          </Link>
-          <Link
+          </AppLink>
+          <AppLink
             className="text-primary underline-offset-4 hover:underline"
             href="/courses"
           >
             Courses by subject
-          </Link>
-          <Link
+          </AppLink>
+          <AppLink
             className="text-primary underline-offset-4 hover:underline"
             href="/terms"
           >
             Terms
-          </Link>
-          <Link className="text-primary underline-offset-4 hover:underline" href="/faq">
+          </AppLink>
+          <AppLink className="text-primary underline-offset-4 hover:underline" href="/faq">
             FAQ
-          </Link>
+          </AppLink>
         </nav>
       </div>
     </SiteChrome>

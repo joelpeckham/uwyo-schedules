@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { AppLink } from "@/components/seo/AppLink";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SiteChrome } from "@/components/seo/SiteChrome";
 import { HOME_FAQ_ITEMS } from "@/lib/seo/home-faq";
@@ -51,23 +51,23 @@ export default function FaqPage() {
           ))}
         </dl>
         <p className="mt-12 text-sm text-muted-foreground">
-          <Link className="text-primary underline-offset-4 hover:underline" href="/">
+          <AppLink className="text-primary underline-offset-4 hover:underline" href="/">
             Home
-          </Link>
+          </AppLink>
           {" · "}
-          <Link
+          <AppLink
             className="text-primary underline-offset-4 hover:underline"
             href="/planner"
           >
             Planner
-          </Link>
+          </AppLink>
           {" · "}
-          <Link
+          <AppLink
             className="text-primary underline-offset-4 hover:underline"
             href="/about"
           >
             About
-          </Link>
+          </AppLink>
         </p>
       </div>
     </SiteChrome>
