@@ -1,18 +1,26 @@
 import type { VercelConfig } from '@vercel/config/v1';
 
-// Edge cache for course/term listing pages: 1h fresh, background revalidate up to 24h.
-const listingCacheControl =
-  'public, s-maxage=3600, stale-while-revalidate=86400';
-
 export const config: VercelConfig = {
   headers: [
     {
       source: '/courses(.*)',
-      headers: [{ key: 'Cache-Control', value: listingCacheControl }],
+      // Edge cache: 1h fresh, background revalidate up to 24h.
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      ],
     },
     {
       source: '/terms(.*)',
-      headers: [{ key: 'Cache-Control', value: listingCacheControl }],
+      // Same cache policy as /courses.
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      ],
     },
   ],
 
