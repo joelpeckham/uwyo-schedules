@@ -15,6 +15,16 @@ import { normalizeScheduleTypeKey } from "./swap-helpers";
 import type { PlannerScheduleFilters } from "./schedule-filters";
 import type { DeliveryMode } from "@/lib/sections/delivery-mode";
 import { candidateViolatesDeliveryFilters } from "@/lib/sections/delivery-mode";
+import {
+  buildBitmaskBasis,
+  flattenIntervalsForBasis,
+  intervalsToMask,
+  maskOrInto,
+  maskXorInto,
+  masksConflict,
+  validCandidateIntervals,
+  type PreparedCandidate,
+} from "./solve-bitmask";
 
 const DAY_FIELDS = [
   "monday",
@@ -84,6 +94,9 @@ export type ScheduleSolution = {
 
 export const DEFAULT_MAX_SOLUTIONS = 1;
 const DEFAULT_TIMEOUT_MS = 2000;
+/** Worker / full recalc budget — search is fast enough to allow deep exploration. */
+export const WORKER_SOLVE_TIMEOUT_MS = 5000;
+const TIMEOUT_CHECK_INTERVAL = 2048;
 
 export function courseSolvePackCourseKey(
   subject: string,
@@ -451,6 +464,61 @@ function sortedAnyOverlap(
   return false;
 }
 
+/** Static filters that do not depend on the partial assignment. */
+function staticFilterCandidate(
+  cand: ScheduleCandidate,
+  itemPrefs: InstructorPrefsV1,
+  params: {
+    requireOpenSections: boolean;
+    deliveryFilters: { excludeTba: boolean; excludeOnlineAsync: boolean };
+    seatsByCrn: Map<
+      string,
+      { seatsAvailable: number | null; openSection: boolean | null }
+    >;
+    deliveryModeByCrn: Map<string, DeliveryMode>;
+    facultyByCrn: Map<
+      string,
+      { displayName: string | null; primaryIndicator: boolean | null }[]
+    >;
+    scheduleTypeByCrn: Map<string, string | null>;
+    meetingsByCrn: Map<string, TimeInterval[]>;
+    blackoutIntervals: TimeInterval[];
+  },
+): boolean {
+  if (
+    params.requireOpenSections &&
+    !allCrnsHaveOpenSeats(cand.crns, params.seatsByCrn)
+  ) {
+    return false;
+  }
+  if (
+    candidateViolatesDeliveryFilters(
+      cand.crns,
+      params.deliveryModeByCrn,
+      params.deliveryFilters,
+    )
+  ) {
+    return false;
+  }
+  if (
+    candidateViolatesHardInstructorPrefs(
+      cand,
+      itemPrefs,
+      params.facultyByCrn,
+      params.scheduleTypeByCrn,
+    )
+  ) {
+    return false;
+  }
+  if (
+    validCandidateIntervals(cand, params.meetingsByCrn, params.blackoutIntervals) ===
+    null
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Shared DFS + scoring (no DB). Used by server solve and `solveSchedulesFromPacks`. */
 export function runSolveSearch(params: {
   items: PlannerItemRow[];
@@ -486,159 +554,152 @@ export function runSolveSearch(params: {
   const maxSolutions = params.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const started = Date.now();
+  const itemOrder = items.map((it) => it.id);
 
-  const indices = items.map((_, i) => i);
-  indices.sort(
-    (a, b) => candidateLists[a]!.length - candidateLists[b]!.length,
+  if (items.length === 0) {
+    return { solutions: [], capped: false, timedOut: false, itemOrder: [] };
+  }
+
+  const prefsByItemIndex = items.map((it) => parseInstructorPrefs(it.instructorPrefs));
+  const staticParams = {
+    requireOpenSections,
+    deliveryFilters,
+    seatsByCrn,
+    deliveryModeByCrn,
+    facultyByCrn,
+    scheduleTypeByCrn,
+    meetingsByCrn,
+    blackoutIntervals,
+  };
+
+  // 1a. One-pass static domain prefilter.
+  const allCandidatesFlat: ScheduleCandidate[] = [];
+  const domains: PreparedCandidate<ScheduleCandidate>[][] = [];
+  for (let i = 0; i < items.length; i++) {
+    const prepared: PreparedCandidate<ScheduleCandidate>[] = [];
+    for (const cand of candidateLists[i]!) {
+      if (!staticFilterCandidate(cand, prefsByItemIndex[i]!, staticParams)) {
+        continue;
+      }
+      allCandidatesFlat.push(cand);
+      prepared.push({ cand, mask: new Uint32Array(0) });
+    }
+    if (prepared.length === 0) {
+      return { solutions: [], capped: false, timedOut: false, itemOrder };
+    }
+    domains.push(prepared);
+  }
+
+  // 1b. Bitmask basis + per-candidate masks.
+  const basisIntervals = flattenIntervalsForBasis(
+    meetingsByCrn,
+    allCandidatesFlat,
+    blackoutIntervals,
   );
+  const basis = buildBitmaskBasis(basisIntervals);
+  for (const domain of domains) {
+    for (const entry of domain) {
+      const ivs = validCandidateIntervals(
+        entry.cand,
+        meetingsByCrn,
+        blackoutIntervals,
+      );
+      entry.mask =
+        ivs && ivs.length > 0 ? intervalsToMask(ivs, basis) : new Uint32Array(basis.totalWords);
+    }
+  }
 
   const solutions: ScheduleSolution[] = [];
   let capped = false;
   let timedOut = false;
+  let visitCount = 0;
 
+  const assigned = new Array<boolean>(items.length).fill(false);
   const chosen: (ScheduleCandidate | null)[] = items.map(() => null);
-  // Parse each row's instructor preferences once so the DFS leaves and the
-  // hard-prefs filter inside the inner loop don't re-parse JSON for every
-  // candidate considered.
-  const prefsByItemIndex = items.map((it) => parseInstructorPrefs(it.instructorPrefs));
+  const accMask = new Uint32Array(basis.totalWords);
 
-  // Precompute the flat, sorted interval list per candidate so the inner loop
-  // doesn't re-flatten / re-sort meetings on every visit. Candidates whose
-  // own meetings already self-overlap (or hit a blackout) are dropped here so
-  // the DFS never even considers them.
-  const candidateIntervalsCache = new WeakMap<ScheduleCandidate, TimeInterval[]>();
-  function intervalsForCandidate(cand: ScheduleCandidate): TimeInterval[] | null {
-    const cached = candidateIntervalsCache.get(cand);
-    if (cached) return cached;
-    const flat: TimeInterval[] = [];
-    for (const crn of cand.crns) {
-      const ivs = meetingsByCrn.get(crn);
-      if (!ivs) continue;
-      for (const iv of ivs) flat.push(iv);
+  function checkTimeout(): boolean {
+    visitCount++;
+    if (visitCount % TIMEOUT_CHECK_INTERVAL !== 0) return false;
+    if (Date.now() - started > timeoutMs) {
+      timedOut = true;
+      return true;
     }
-    flat.sort(intervalSortCmp);
-    if (sortedHasInternalOverlap(flat)) return null;
-    if (
-      blackoutIntervals.length > 0 &&
-      sortedAnyOverlap(flat, blackoutIntervals)
-    ) {
-      return null;
-    }
-    candidateIntervalsCache.set(cand, flat);
-    return flat;
+    return false;
   }
 
-  /**
-   * Persistent interval stack mirroring the union of `chosen` candidates'
-   * meeting intervals (sorted). DFS pushes a candidate's intervals before
-   * recursing and pops them on the way back, so we never re-flatten.
-   */
-  const accIntervals: TimeInterval[] = [];
-
-  function pushSorted(intervals: TimeInterval[]): void {
-    if (accIntervals.length === 0) {
-      for (const iv of intervals) accIntervals.push(iv);
-      return;
+  /** Count mask-compatible candidates for item `itemIndex` against `accMask`. */
+  function liveCount(itemIndex: number): number {
+    let n = 0;
+    for (const { mask } of domains[itemIndex]!) {
+      if (!masksConflict(accMask, mask)) n++;
     }
-    const merged: TimeInterval[] = [];
-    let i = 0;
-    let j = 0;
-    while (i < accIntervals.length && j < intervals.length) {
-      if (intervalSortCmp(accIntervals[i]!, intervals[j]!) <= 0) {
-        merged.push(accIntervals[i]!);
-        i++;
-      } else {
-        merged.push(intervals[j]!);
-        j++;
+    return n;
+  }
+
+  /** Forward check: every unassigned item has ≥1 live candidate. */
+  function forwardCheck(): boolean {
+    for (let i = 0; i < items.length; i++) {
+      if (assigned[i]) continue;
+      if (liveCount(i) === 0) return false;
+    }
+    return true;
+  }
+
+  /** Pick unassigned item with fewest live candidates (dynamic MRV). */
+  function pickNextItem(): number {
+    let best = -1;
+    let bestCount = Infinity;
+    for (let i = 0; i < items.length; i++) {
+      if (assigned[i]) continue;
+      const c = liveCount(i);
+      if (c < bestCount) {
+        bestCount = c;
+        best = i;
+        if (c <= 1) break;
       }
     }
-    while (i < accIntervals.length) merged.push(accIntervals[i++]!);
-    while (j < intervals.length) merged.push(intervals[j++]!);
-    accIntervals.length = 0;
-    for (const iv of merged) accIntervals.push(iv);
+    return best;
   }
 
-  function popIntervals(intervals: TimeInterval[]): void {
-    if (intervals.length === 0) return;
-    const removeSet = new Set<TimeInterval>(intervals);
-    let writeIdx = 0;
-    for (let readIdx = 0; readIdx < accIntervals.length; readIdx++) {
-      const iv = accIntervals[readIdx]!;
-      if (removeSet.has(iv)) {
-        removeSet.delete(iv);
-        continue;
-      }
-      accIntervals[writeIdx++] = iv;
-    }
-    accIntervals.length = writeIdx;
-  }
-
-  function dfs(depth: number): void {
+  function dfs(): void {
     if (solutions.length >= maxSolutions) {
       capped = true;
       return;
     }
-    if (Date.now() - started > timeoutMs) {
-      timedOut = true;
-      return;
-    }
-    if (depth === indices.length) {
+    if (checkTimeout()) return;
+
+    const itemIndex = pickNextItem();
+    if (itemIndex < 0) {
       const selections: Record<number, ResolvedPlannerSelection> = {};
       for (let i = 0; i < items.length; i++) {
-        const item = items[i]!;
-        const c = chosen[i]!;
-        selections[item.id] = selectionFromCandidate(c);
+        selections[items[i]!.id] = selectionFromCandidate(chosen[i]!);
       }
       solutions.push({ score: 0, selections });
       return;
     }
 
-    const itemIndex = indices[depth]!;
-    const list = candidateLists[itemIndex]!;
-    const itemPrefs = prefsByItemIndex[itemIndex]!;
+    if (liveCount(itemIndex) === 0) return;
 
-    for (const cand of list) {
-      if (Date.now() - started > timeoutMs) {
-        timedOut = true;
-        return;
-      }
-      if (requireOpenSections && !allCrnsHaveOpenSeats(cand.crns, seatsByCrn)) {
-        continue;
-      }
-      if (
-        candidateViolatesDeliveryFilters(
-          cand.crns,
-          deliveryModeByCrn,
-          deliveryFilters,
-        )
-      ) {
-        continue;
-      }
-      if (
-        candidateViolatesHardInstructorPrefs(
-          cand,
-          itemPrefs,
-          facultyByCrn,
-          scheduleTypeByCrn,
-        )
-      ) {
-        continue;
-      }
-      const candIntervals = intervalsForCandidate(cand);
-      if (candIntervals === null) continue;
-      if (sortedAnyOverlap(accIntervals, candIntervals)) continue;
+    for (const { cand, mask } of domains[itemIndex]!) {
+      if (checkTimeout()) return;
+      if (masksConflict(accMask, mask)) continue;
 
+      assigned[itemIndex] = true;
       chosen[itemIndex] = cand;
-      pushSorted(candIntervals);
-      dfs(depth + 1);
-      popIntervals(candIntervals);
+      maskOrInto(accMask, mask);
+
+      if (forwardCheck()) dfs();
+
+      maskXorInto(accMask, mask);
       chosen[itemIndex] = null;
+      assigned[itemIndex] = false;
 
       if (capped || timedOut) return;
     }
   }
 
-  dfs(0);
+  dfs();
 
   solutions.sort((a, b) =>
     solutionSortKey(a).localeCompare(solutionSortKey(b)),
@@ -648,7 +709,7 @@ export function runSolveSearch(params: {
     solutions,
     capped,
     timedOut,
-    itemOrder: indices.map((i) => items[i]!.id),
+    itemOrder,
   };
 }
 

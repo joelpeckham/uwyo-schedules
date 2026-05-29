@@ -743,4 +743,92 @@ describe("scheduleSolutionStillValidForItems", () => {
       }),
     ).toBe(false);
   });
+
+  it("proves infeasibility quickly when many courses share one time slot", () => {
+    const sharedSlot = { dayIndex: 0, start: 600, end: 660 };
+    const courseCount = 8;
+    const sectionsPerCourse = 12;
+    const packs: Record<string, CourseSolvePack> = {};
+    const items: PlannerItemRow[] = [];
+
+    for (let c = 0; c < courseCount; c++) {
+      const subject = `C${c}`;
+      const courseNumber = "1000";
+      const candidates = [];
+      const meetingsByCrn: CourseSolvePack["meetingsByCrn"] = {};
+      const seatsByCrn: CourseSolvePack["seatsByCrn"] = {};
+      for (let s = 0; s < sectionsPerCourse; s++) {
+        const crn = `${subject}${s}`;
+        candidates.push({
+          selectionKind: "single_crn" as const,
+          anchorCrn: crn,
+          linkedBundleId: null,
+          crns: [crn],
+        });
+        meetingsByCrn[crn] = [sharedSlot];
+        seatsByCrn[crn] = { seatsAvailable: 5, openSection: true };
+      }
+      packs[courseSolvePackCourseKey(subject, courseNumber)] = basePack(
+        subject,
+        courseNumber,
+        {
+          candidates,
+          meetingsByCrn,
+          facultyByCrn: {},
+          scheduleTypeByCrn: {},
+          seatsByCrn,
+        },
+      );
+      items.push(
+        itemStub({ id: c + 1, subject, courseNumber }),
+      );
+    }
+
+    const started = performance.now();
+    const r = solveSchedulesFromPacks(items, packs, {
+      ...relaxedFilters,
+      timeoutMs: 1000,
+    });
+    const elapsed = performance.now() - started;
+
+    expect(r.solutions).toHaveLength(0);
+    expect(r.timedOut).toBe(false);
+    expect(elapsed).toBeLessThan(500);
+  });
+
+  it("finds feasible schedule when one section per course uses staggered times", () => {
+    const packs: Record<string, CourseSolvePack> = {};
+    const items: PlannerItemRow[] = [];
+    for (let c = 0; c < 6; c++) {
+      const subject = `S${c}`;
+      const courseNumber = "1";
+      const crn = `${subject}A`;
+      packs[courseSolvePackCourseKey(subject, courseNumber)] = basePack(
+        subject,
+        courseNumber,
+        {
+          candidates: [
+            {
+              selectionKind: "single_crn",
+              anchorCrn: crn,
+              linkedBundleId: null,
+              crns: [crn],
+            },
+          ],
+          meetingsByCrn: {
+            [crn]: [{ dayIndex: 0, start: 600 + c * 70, end: 660 + c * 70 }],
+          },
+          facultyByCrn: {},
+          scheduleTypeByCrn: {},
+          seatsByCrn: {
+            [crn]: { seatsAvailable: 1, openSection: true },
+          },
+        },
+      );
+      items.push(itemStub({ id: c + 1, subject, courseNumber }));
+    }
+    const r = solveSchedulesFromPacks(items, packs, relaxedFilters);
+    expect(r.solutions).toHaveLength(1);
+    expect(r.timedOut).toBe(false);
+  });
 });

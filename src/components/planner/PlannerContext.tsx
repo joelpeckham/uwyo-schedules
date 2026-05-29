@@ -17,8 +17,11 @@ import {
   type PlannerHistorySnapshot,
   type PlannerHistoryStacks,
 } from "@/lib/planner/planner-action-history";
-import { computeInfeasibilityHints } from "@/lib/planner/infeasibility-hints";
 import { mergePackConstraintMaps } from "@/lib/planner/planner-swap-feasibility";
+import {
+  cancelSolveRequest,
+  requestSolve,
+} from "@/lib/planner/solve-worker-client";
 import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
 import { DEFAULT_PLANNER_SCHEDULE_FILTERS } from "@/lib/planner/schedule-filters";
 import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
@@ -30,8 +33,8 @@ import type { ResolvedPlannerSelection } from "@/lib/planner/resolve-display-crn
 import {
   courseSolvePackCourseKey,
   plannerItemsFeasibility,
-  solveSchedulesFromPacks,
   everyPlannerItemHasSolvePack,
+  WORKER_SOLVE_TIMEOUT_MS,
   type CourseSolvePack,
   type ScheduleSolution,
 } from "@/lib/planner/solve-schedules-core";
@@ -202,6 +205,8 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     Partial<PlannerScheduleFilters> | undefined
   >(undefined);
   const recalcGenRef = useRef(0);
+  const solveRequestIdRef = useRef(0);
+  const [infeasibilityHints, setInfeasibilityHints] = useState<string[]>([]);
   const solvePacksRef = useRef(solvePacks);
   const solutionsRef = useRef(solutions);
   const itemsRef = useRef(plannerItems);
@@ -212,6 +217,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const excludeTbaRef = useRef(excludeTba);
   const excludeOnlineAsyncRef = useRef(excludeOnlineAsync);
   const blackoutsRef = useRef(blackouts);
+  const catalogRef = useRef(catalog);
   const historyApiRef = useRef(createPlannerHistoryStacks());
   const historyStacksRef = useRef<PlannerHistoryStacks>({ undo: [], redo: [] });
   const isApplyingHistoryRef = useRef(false);
@@ -242,6 +248,9 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   useEffect(() => {
     blackoutsRef.current = blackouts;
   }, [blackouts]);
+  useEffect(() => {
+    catalogRef.current = catalog;
+  }, [catalog]);
 
   const persistTerm = useCallback(() => {
     writeTerm(termRef.current, {
@@ -302,6 +311,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
             setSyncError(null);
             setScheduleFeasibilityError(null);
             setSolutions([]);
+            setInfeasibilityHints([]);
           }
           return;
         }
@@ -314,14 +324,29 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
           await yieldToMain();
           if (myGen !== recalcGenRef.current) return;
 
-          const result = solveSchedulesFromPacks(rows, packs, {
-            ...filters,
-            blackoutIntervals: blackoutIv,
-            previousSelections: prevSelections,
-          });
-          if (myGen !== recalcGenRef.current) return;
+          const requestId = ++solveRequestIdRef.current;
+          const result = await requestSolve(
+            {
+              items: rows,
+              packs,
+              filters,
+              blackoutIntervals: blackoutIv,
+              previousSelections: prevSelections,
+              timeoutMs: WORKER_SOLVE_TIMEOUT_MS,
+              catalog: catalogRef.current,
+              blackouts: blackoutsRef.current,
+            },
+            { requestId },
+          );
+          if (myGen !== recalcGenRef.current) {
+            cancelSolveRequest(requestId);
+            return;
+          }
           setSyncError(null);
           setSolutions(result.solutions);
+          setInfeasibilityHints(
+            result.solutions.length > 0 ? [] : result.hints,
+          );
           persistTerm();
           return;
         }
@@ -375,30 +400,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     () => mergePackConstraintMaps(solvePacks),
     [solvePacks],
   );
-
-  const infeasibilityHints = useMemo(() => {
-    if (solutions.length > 0 || plannerItems.length === 0) return [];
-    if (!everyPlannerItemHasSolvePack(plannerItems, solvePacks)) return [];
-    return computeInfeasibilityHints({
-      items: plannerItems,
-      packs: solvePacks,
-      blackouts,
-      requireOpenSections,
-      excludeTba,
-      excludeOnlineAsync,
-      catalog,
-      baseAlreadyInfeasible: true,
-    });
-  }, [
-    solutions,
-    plannerItems,
-    solvePacks,
-    blackouts,
-    requireOpenSections,
-    excludeTba,
-    excludeOnlineAsync,
-    catalog,
-  ]);
 
   const clearSyncError = useCallback(() => setSyncError(null), []);
   const clearScheduleFeasibilityError = useCallback(
