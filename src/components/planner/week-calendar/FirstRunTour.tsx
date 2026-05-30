@@ -42,28 +42,19 @@ const TOUR_STEPS: readonly { title: string; body: React.ReactNode }[] = [
 
 type Props = {
   plannerItemCount: number;
+  onDismiss: () => void;
 };
 
-/**
- * Client-only first-run tour (reads localStorage). Parent reserves min-height
- * so mounting the tour does not shift the toolbar.
- */
-export function FirstRunTour({ plannerItemCount }: Props) {
-  const [step, setStep] = useState<number | null>(() => {
-    try {
-      return localStorage.getItem(GESTURE_TIP_STORAGE_KEY) ? null : 0;
-    } catch {
-      return null;
-    }
-  });
+/** Client-only first-run tour (reads localStorage). Mount/unmount is owned by {@link FirstRunTourSlot}. */
+export function FirstRunTour({ plannerItemCount, onDismiss }: Props) {
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
-    if (step == null) return;
     if (plannerItemCount === 0) return;
     track("planner_tour_step_seen", { step: step + 1 });
   }, [step, plannerItemCount]);
 
-  if (step == null || plannerItemCount === 0) return null;
+  if (plannerItemCount === 0) return null;
 
   const idx = Math.max(0, Math.min(step, TOUR_STEPS.length - 1));
   const current = TOUR_STEPS[idx]!;
@@ -76,11 +67,11 @@ export function FirstRunTour({ plannerItemCount }: Props) {
       /* ignore */
     }
     track("planner_tour_dismissed", { step: idx + 1 });
-    setStep(null);
+    onDismiss();
   };
 
   return (
-    <div className="mb-3 flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground sm:flex-row sm:items-start sm:gap-3">
+    <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground sm:flex-row sm:items-start sm:gap-3">
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2">
           <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
@@ -104,7 +95,7 @@ export function FirstRunTour({ plannerItemCount }: Props) {
           type="button"
           size="sm"
           className="h-8 px-3 text-xs"
-          onClick={isLast ? dismiss : () => setStep((s) => (s == null ? 0 : s + 1))}
+          onClick={isLast ? dismiss : () => setStep((s) => s + 1)}
         >
           {isLast ? "Got it" : "Next"}
         </Button>
