@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { CatalogBrowseSection } from "@/components/landing/CatalogBrowseSection";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { LandingFaq } from "@/components/landing/LandingFaq";
@@ -9,23 +10,25 @@ import { PlannerCtaBand } from "@/components/landing/PlannerCtaBand";
 import { PlannerPreview } from "@/components/landing/PlannerPreview";
 import { TopSubjects } from "@/components/landing/TopSubjects";
 import { HomeOrgFaqJsonLd } from "@/components/seo/HomeOrgFaqJsonLd";
+import { HomeWebSiteJsonLd } from "@/components/seo/HomeWebSiteJsonLd";
 import { LandingFooter } from "@/components/seo/LandingFooter";
 import { SiteChrome } from "@/components/seo/SiteChrome";
 import { getLatestTermRowForSeo } from "@/lib/seo/queries";
 import {
-  SITE_DESCRIPTION,
-  SITE_DESCRIPTION_SHORT,
+  LANDING_DESCRIPTION,
+  LANDING_DESCRIPTION_SHORT,
+  LANDING_TITLE,
   absoluteUrl,
 } from "@/lib/seo/site";
 
 export const metadata: Metadata = {
-  title: "UW class schedule planner · uwyoschedule",
-  description: SITE_DESCRIPTION,
+  title: LANDING_TITLE,
+  description: LANDING_DESCRIPTION,
   alternates: { canonical: "/" },
   openGraph: {
     url: absoluteUrl("/"),
-    title: "UW class schedule planner · uwyoschedule",
-    description: SITE_DESCRIPTION_SHORT,
+    title: LANDING_TITLE,
+    description: LANDING_DESCRIPTION_SHORT,
   },
 };
 
@@ -54,12 +57,14 @@ export default async function Page({
         <RedirectIfTerm searchParams={searchParams} />
       </Suspense>
       <HomeOrgFaqJsonLd />
+      <HomeWebSiteJsonLd />
       <SiteChrome>
         <HeroSection />
         <PlannerPreview />
         <HowItWorks />
         <PlannerCtaBand />
         <LaramieCallout />
+        <CatalogBrowseSection latestTerm={latestTerm} />
         <TopSubjects latestTerm={latestTerm} />
         <LandingFaq />
       </SiteChrome>

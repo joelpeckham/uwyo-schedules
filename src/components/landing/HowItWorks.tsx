@@ -5,6 +5,8 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 
+import { Reveal, Stagger, StaggerItem } from "@/components/landing/motion";
+
 const steps = [
   {
     title: "Add your courses",
@@ -18,7 +20,7 @@ const steps = [
   },
   {
     title: "Refine your week",
-    body: "See a conflict-free calendar that updates as you edit. Pin sections you want to keep, or drag a block to try a same-type alternative.",
+    body: "See a conflict-free calendar that updates as you edit. Pin a section to keep it, or drag a block to try a same-type alternative.",
     icon: CalendarCheck2,
   },
   {
@@ -35,25 +37,32 @@ export function HowItWorks() {
       aria-labelledby="how-it-works-heading"
     >
       <div className="mx-auto max-w-6xl lg:max-w-[90rem]">
-        <h2
-          id="how-it-works-heading"
-          className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
+        <Reveal>
+          <h2
+            id="how-it-works-heading"
+            className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
+          >
+            What the planner does
+          </h2>
+        </Reveal>
+        <Stagger
+          as="ol"
+          className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4"
+          stagger={0.12}
         >
-          What the planner does
-        </h2>
-        <ol className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map((step, i) => {
             const Icon = step.icon;
             return (
-              <li
+              <StaggerItem
                 key={step.title}
-                className="rounded-lg border border-border bg-card p-6 shadow-sm"
+                hoverLift
+                className="rounded-lg border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md"
               >
                 <span className="font-mono text-xs font-medium text-muted-foreground">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <Icon
-                  className="mt-3 h-6 w-6 text-primary"
+                  className="mt-3 h-6 w-6 text-primary transition-transform duration-200 group-hover:scale-105"
                   strokeWidth={1.75}
                   aria-hidden
                 />
@@ -63,10 +72,10 @@ export function HowItWorks() {
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   {step.body}
                 </p>
-              </li>
+              </StaggerItem>
             );
           })}
-        </ol>
+        </Stagger>
       </div>
     </section>
   );

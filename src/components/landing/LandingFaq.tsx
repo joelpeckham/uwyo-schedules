@@ -1,4 +1,5 @@
 import { HOME_FAQ_ITEMS } from "@/lib/seo/home-faq";
+import { Reveal } from "@/components/landing/motion";
 
 export function LandingFaq() {
   return (
@@ -7,20 +8,24 @@ export function LandingFaq() {
       aria-labelledby="landing-faq-heading"
     >
       <div className="mx-auto max-w-3xl">
-        <h2
-          id="landing-faq-heading"
-          className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
-        >
-          Common questions
-        </h2>
+        <Reveal>
+          <h2
+            id="landing-faq-heading"
+            className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
+          >
+            Common questions
+          </h2>
+        </Reveal>
         <dl className="mt-10 space-y-8">
-          {HOME_FAQ_ITEMS.map((item) => (
-            <div key={item.question}>
-              <dt className="font-medium text-foreground">{item.question}</dt>
-              <dd className="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-base">
-                {item.answer}
-              </dd>
-            </div>
+          {HOME_FAQ_ITEMS.map((item, index) => (
+            <Reveal key={item.question} delay={Math.min(index * 0.05, 0.35)}>
+              <div>
+                <dt className="font-medium text-foreground">{item.question}</dt>
+                <dd className="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                  {item.answer}
+                </dd>
+              </div>
+            </Reveal>
           ))}
         </dl>
       </div>

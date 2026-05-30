@@ -244,7 +244,7 @@ function OgCalendarBlock({
 }
 
 export const alt =
-  "uwyoschedule UW class schedule planner with sample conflict-free week and drag-to-swap preview on ENGL 1010 (MATH 2200, COSC 2030 with discussion and lab)";
+  "uwyoschedule — University of Wyoming catalog and UW schedule planner with sample conflict-free week (MATH 2200, ENGL 1010, COSC 2030)";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 

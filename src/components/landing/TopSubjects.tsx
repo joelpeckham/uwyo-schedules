@@ -1,4 +1,5 @@
 import { AppLink } from "@/components/seo/AppLink";
+import { Reveal, Stagger, StaggerChipItem } from "@/components/landing/motion";
 import { listSubjectsForTermForSeo, subjectToPathSegment } from "@/lib/seo/queries";
 
 const TOP_N = 18;
@@ -15,16 +16,20 @@ export async function TopSubjects({
         aria-labelledby="top-subjects-heading"
       >
         <div className="mx-auto max-w-6xl lg:max-w-[90rem]">
-          <h2
-            id="top-subjects-heading"
-            className="font-heading text-2xl font-medium text-foreground"
-          >
-            Popular subjects
-          </h2>
-          <p className="mt-3 text-sm text-muted-foreground">
-            No term data yet. After ingest, the busiest subjects for the latest
-            term will appear here.
-          </p>
+          <Reveal>
+            <h2
+              id="top-subjects-heading"
+              className="font-heading text-2xl font-medium text-foreground"
+            >
+              Popular Wyoming courses by subject
+            </h2>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <p className="mt-3 text-sm text-muted-foreground">
+              No term data yet. After ingest, the busiest subjects for the latest
+              term will appear here.
+            </p>
+          </Reveal>
         </div>
       </section>
     );
@@ -45,27 +50,31 @@ export async function TopSubjects({
       aria-labelledby="top-subjects-heading"
     >
       <div className="mx-auto max-w-6xl lg:max-w-[90rem]">
-        <h2
-          id="top-subjects-heading"
-          className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
-        >
-          Popular subjects this term
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-          By section count in{" "}
-          <span className="text-foreground">{latestTerm.description}</span>.{" "}
-          <AppLink
-            href="/planner"
-            prefetch
-            className="font-medium text-primary underline-offset-4 hover:underline"
+        <Reveal>
+          <h2
+            id="top-subjects-heading"
+            className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl"
           >
-            Open the planner
-          </AppLink>{" "}
-          to build your week.
-        </p>
-        <ul className="mt-8 flex flex-wrap gap-2">
+            Popular Wyoming courses this term
+          </h2>
+        </Reveal>
+        <Reveal delay={0.08}>
+          <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+            By section count in{" "}
+            <span className="text-foreground">{latestTerm.description}</span>.{" "}
+            <AppLink
+              href="/planner"
+              prefetch
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Open the planner
+            </AppLink>{" "}
+            to build your UW schedule.
+          </p>
+        </Reveal>
+        <Stagger as="ul" className="mt-8 flex flex-wrap gap-2" stagger={0.04}>
           {ranked.map((s) => (
-            <li key={s.subject}>
+            <StaggerChipItem key={s.subject}>
               <AppLink
                 href={`/courses/${encodeURIComponent(subjectToPathSegment(s.subject))}`}
                 className="inline-flex items-center rounded-md border border-border bg-card px-3 py-2 text-sm font-mono font-medium text-primary shadow-sm transition hover:bg-muted/40"
@@ -75,9 +84,9 @@ export async function TopSubjects({
                   {s.sectionCount}
                 </span>
               </AppLink>
-            </li>
+            </StaggerChipItem>
           ))}
-        </ul>
+        </Stagger>
       </div>
     </section>
   );

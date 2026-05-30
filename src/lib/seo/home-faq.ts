@@ -50,4 +50,14 @@ export const HOME_FAQ_ITEMS: { question: string; answer: string }[] = [
     answer:
       "No. uwyoschedule is an independent planner built for UW students. Always double-check critical details (CRN, prerequisites, linked labs) in the UW course catalog before you register.",
   },
+  {
+    question: "Can I browse the University of Wyoming catalog on uwyoschedule?",
+    answer:
+      "Yes. Browse Wyoming courses by subject or open a term to see the full University of Wyoming catalog for that semester. Each course page lists sections, meeting times, instructors, and seat counts synced from the UW catalog. When you are ready to plan, open the planner to build a conflict-free UW schedule.",
+  },
+  {
+    question: "How do I find a UW schedule for my classes?",
+    answer:
+      "Add your Wyoming courses to the planner for a term, set any busy times or instructor preferences, and the planner generates conflict-free week views. Page through alternates, pin sections you want to keep, and compare schedules side by side before you register in official UW systems.",
+  },
 ];

@@ -10,6 +10,8 @@ import {
   Undo2,
   ZoomIn,
 } from "lucide-react";
+import { useInView, useReducedMotion } from "motion/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { WeekCalendarGrid } from "@/components/planner/week-calendar/WeekCalendarGrid";
 import { WeekCalendarShell } from "@/components/planner/week-calendar/WeekCalendarShell";
@@ -28,6 +30,8 @@ import {
   LANDING_PREVIEW_PLANNER_ITEM_COUNT,
 } from "@/lib/planner/landing-preview-blocks";
 import { cn } from "@/lib/utils";
+
+const BLOCK_REVEAL_MS = 120;
 
 function StaticCreditHoursPill({ total }: { total: number }) {
   const isFullTime = total >= 12;
@@ -53,9 +57,39 @@ function StaticCreditHoursPill({ total }: { total: number }) {
 
 export function LandingWeekCalendarPreview() {
   const hourCount = LANDING_PREVIEW_HOUR_AXIS.length;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isInView = useInView(containerRef, { once: true, margin: "-10% 0px" });
+  const reducedMotion = useReducedMotion();
+  const [revealedCount, setRevealedCount] = useState(0);
+
+  useEffect(() => {
+    if (reducedMotion || !isInView) {
+      return;
+    }
+
+    let count = 0;
+    const timer = window.setInterval(() => {
+      count += 1;
+      setRevealedCount(count);
+      if (count >= LANDING_PREVIEW_BLOCKS.length) {
+        window.clearInterval(timer);
+      }
+    }, BLOCK_REVEAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [isInView, reducedMotion]);
+
+  const blockCount = reducedMotion
+    ? LANDING_PREVIEW_BLOCKS.length
+    : revealedCount;
+
+  const visibleBlocks = useMemo(
+    () => LANDING_PREVIEW_BLOCKS.slice(0, blockCount),
+    [blockCount],
+  );
 
   return (
-    <div className="pointer-events-none">
+    <div ref={containerRef} className="pointer-events-none">
       <WeekCalendarShell
         sectionId="landing-week-calendar-preview"
         isDragging={false}
@@ -162,7 +196,7 @@ export function LandingWeekCalendarPreview() {
         }
       >
         <WeekCalendarGrid
-          blocks={LANDING_PREVIEW_BLOCKS}
+          blocks={visibleBlocks}
           visibleDayIndices={PLANNER_WEEKDAY_DAY_INDICES}
           rowPx={initialPlannerHourRowPx(hourCount)}
           hourAxis={LANDING_PREVIEW_HOUR_AXIS}

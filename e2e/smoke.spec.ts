@@ -11,7 +11,12 @@ test("landing and planner pages load", async ({ page }) => {
     page.getByRole("link", { name: /^Open the planner$/i }).first(),
   ).toHaveAttribute("href", "/planner");
   await expect(
-    page.getByRole("heading", { name: /Ready to plan your week\?/i }),
+    page.getByRole("heading", { name: /Ready to plan your UW schedule\?/i }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: /Browse the University of Wyoming catalog/i,
+    }),
   ).toBeVisible();
 
   await page.goto("/planner");

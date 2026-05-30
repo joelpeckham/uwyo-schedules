@@ -23,3 +23,15 @@ export const SITE_DESCRIPTION =
 /** Short form for Twitter cards, the web manifest, and other tight slots. */
 export const SITE_DESCRIPTION_SHORT =
   "UW class schedule planner: conflict-free week, busy times, instructor preferences, pins and swaps, compare alternates, share a link. Not official UW; planning only.";
+
+/** Landing page title — targets catalog + schedule search intent. */
+export const LANDING_TITLE =
+  "UW Schedule & University of Wyoming Catalog · uwyoschedule";
+
+/** Landing page meta description — catalog, schedule, and Wyoming courses keywords. */
+export const LANDING_DESCRIPTION =
+  "Browse the University of Wyoming course catalog and build your UW schedule. Search Wyoming courses by subject, add sections to the planner, and get a conflict-free week view. Independent tool; not official UW.";
+
+/** Short landing description for Open Graph. */
+export const LANDING_DESCRIPTION_SHORT =
+  "University of Wyoming catalog + UW schedule planner: browse Wyoming courses, plan a conflict-free week. Not official UW.";
