@@ -61,6 +61,10 @@ import {
 } from "./week-calendar/group-by-day";
 import { useViewportHourSizing } from "./week-calendar/use-viewport-hour-sizing";
 import { useWeekViewportGestures } from "./week-calendar/use-week-viewport-gestures";
+import {
+  clearTextSelection,
+  usePreventTextSelectionWhileDragging,
+} from "./week-calendar/use-prevent-text-selection";
 import { PLANNER_WEEK_VIEWPORT_HEIGHT } from "./week-calendar/constants";
 import { visibleDayIndicesMerged } from "./week-calendar/visible-days";
 import {
@@ -145,6 +149,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   const [swapError, setSwapError] = useState<string | null>(null);
   const [courseDragSession, setCourseDragSession] =
     useState<CourseDragSession | null>(null);
+  const [isCourseDragging, setIsCourseDragging] = useState(false);
   const [, startSwapTransition] = useTransition();
   const dayStripRef = useRef<HTMLDivElement | null>(null);
   const courseDragGenRef = useRef(0);
@@ -228,7 +233,10 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       dragRafRef.current = null;
     }
     setCourseDragSession(null);
+    setIsCourseDragging(false);
   }, []);
+
+  usePreventTextSelectionWhileDragging(isCourseDragging);
 
   const finalizeCourseDragSession = useCallback(
     (s: Omit<CourseDragSession, "floatStyle">): CourseDragSession => ({
@@ -701,6 +709,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         e.preventDefault();
         courseDragActiveRef.current = true;
         courseDragGenRef.current += 1;
+        setIsCourseDragging(true);
+        clearTextSelection();
         const b = down.block;
         const item = effectivePlannerItems.find((r) => r.id === b.plannerItemId);
         if (!item) {
@@ -990,7 +1000,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
 
   return (
     <WeekCalendarShell
-      isDragging={courseDragSession != null}
+      isDragging={isCourseDragging}
       syncError={syncError}
       onClearSyncError={clearSyncError}
       scheduleFeasibilityError={scheduleFeasibilityError}

@@ -199,7 +199,7 @@ function WeekCalendarViewInner({
 
       <div
         ref={viewportRef}
-        className="relative min-h-0 touch-none overflow-y-auto overscroll-y-contain"
+        className="relative min-h-0 touch-none select-none overflow-y-auto overscroll-y-contain"
         style={viewportStyle}
       >
         <div
@@ -400,7 +400,7 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
                           b.likelyExam &&
                             "border-dashed border-muted-foreground/50 bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.04)_5px,rgba(0,0,0,0.04)_6px)]",
                           isInteractive &&
-                            "touch-none cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            "touch-none select-none cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           extraClass,
                         )}
                         style={{
