@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
   // Playwright uses 127.0.0.1; optional DEV_LAN_ORIGIN for phone-on-LAN HMR.
   allowedDevOrigins: [
     "127.0.0.1",
+    "192.168.4.92",
     ...(process.env.DEV_LAN_ORIGIN?.trim()
       ? [process.env.DEV_LAN_ORIGIN.trim()]
       : []),

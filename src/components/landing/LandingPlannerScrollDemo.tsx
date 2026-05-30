@@ -1,12 +1,7 @@
 "use client";
 
 import { MousePointer2 } from "lucide-react";
-import {
-  motion,
-  useMotionValue,
-  useMotionValueEvent,
-  useScroll,
-} from "motion/react";
+import { motion, useMotionValue } from "motion/react";
 import {
   useCallback,
   useLayoutEffect,
@@ -24,6 +19,7 @@ import {
   LANDING_DEMO_VIEWPORT_HEIGHT,
   useLandingDemoRowPx,
 } from "@/components/landing/landing-demo-layout";
+import { computeTargetScrollProgress } from "@/components/landing/landing-demo-scroll-progress";
 import { LandingWeekCalendarPreview } from "@/components/landing/LandingWeekCalendarPreview";
 import {
   useHasMounted,
@@ -119,14 +115,22 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
   const hourCount = LANDING_PREVIEW_HOUR_AXIS.length;
   const rowPx = useLandingDemoRowPx(viewportRef, hourCount);
 
-  const { scrollYProgress } = useScroll({
-    target: sceneRef,
-    offset: ["start start", "end end"],
-  });
+  const readSceneProgress = useCallback(() => {
+    const scene = sceneRef.current;
+    if (!scene) return 0;
+    const rect = scene.getBoundingClientRect();
+    return computeTargetScrollProgress(
+      rect.height,
+      rect.top,
+      window.innerHeight,
+    );
+  }, []);
 
   // Fraction of the scene scrolled before the calendar pins (heading height on
   // mobile, ~0 on desktop). Animation progress is remapped to start at the pin.
   const pinFractionRef = useRef(0);
+  /** Set once from layout; offsetTop is wrong after sticky / at raw≈0 or 1. */
+  const pinFractionLockedRef = useRef<number | null>(null);
   const remapProgress = useCallback((raw: number) => {
     const p = pinFractionRef.current;
     if (p >= 1) return 0;
@@ -192,35 +196,55 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
     [remapProgress, syncMotionFromProgress],
   );
 
-  useMotionValueEvent(scrollYProgress, "change", applyProgress);
-
   useLayoutEffect(() => {
     geometryRef.current = geometry;
-    syncMotionFromProgress(remapProgress(scrollYProgress.get()));
-  }, [geometry, remapProgress, scrollYProgress, syncMotionFromProgress]);
+    syncMotionFromProgress(remapProgress(readSceneProgress()));
+  }, [geometry, readSceneProgress, remapProgress, syncMotionFromProgress]);
 
   useLayoutEffect(() => {
     const scene = sceneRef.current;
     const calendarWrapper = calendarWrapperRef.current;
     if (!scene || !calendarWrapper) return;
 
-    const sync = () => {
+    // Pin offset is layout-only. Lock after first measure — offsetTop is wrong
+    // once sticky engages or when the scene is scrolled to either end.
+    const syncPinFraction = () => {
+      if (pinFractionLockedRef.current !== null) {
+        pinFractionRef.current = pinFractionLockedRef.current;
+        return;
+      }
+
       const scrollable = scene.offsetHeight - window.innerHeight;
       const fraction =
         scrollable > 0 ? calendarWrapper.offsetTop / scrollable : 0;
-      pinFractionRef.current = Math.min(1, Math.max(0, fraction));
-      applyProgress(scrollYProgress.get());
+      const pin = Math.min(1, Math.max(0, fraction));
+      pinFractionLockedRef.current = pin;
+      pinFractionRef.current = pin;
     };
 
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(scene);
-    window.addEventListener("resize", sync);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", sync);
+    const syncProgress = () => {
+      applyProgress(readSceneProgress());
     };
-  }, [applyProgress, scrollYProgress]);
+
+    let raf = 0;
+    const scheduleProgress = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(syncProgress);
+    };
+
+    syncPinFraction();
+    syncProgress();
+    window.addEventListener("scroll", scheduleProgress, { passive: true });
+    const ro = new ResizeObserver(scheduleProgress);
+    ro.observe(scene);
+    window.addEventListener("resize", scheduleProgress);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener("scroll", scheduleProgress);
+      window.removeEventListener("resize", scheduleProgress);
+    };
+  }, [applyProgress, readSceneProgress]);
 
   const dragging = isDemoDragging(scrollProgress);
   const dropping = isDemoDropping(scrollProgress);
