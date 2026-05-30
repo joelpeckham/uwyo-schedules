@@ -3,8 +3,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -67,12 +65,17 @@
   --color-cream-100: var(--cream-100);
   --color-cream-200: var(--cream-200);
   --color-sandstone-500: var(--sandstone-500);
+  --color-sandstone-600: var(--sandstone-600);
   --color-sandstone-800: var(--sandstone-800);
   --color-sandstone-900: var(--sandstone-900);
   --color-rust-400: var(--rust-400);
   --color-rust-500: var(--rust-500);
+  --color-rust-600: var(--rust-600);
+  --color-rust-700: var(--rust-700);
   --color-sage-400: var(--sage-400);
   --color-sage-100: var(--sage-100);
+  --color-on-highlight: var(--on-highlight);
+  --color-on-highlight-muted: var(--on-highlight-muted);
 }
 
 /* shadcn semantic names → design tokens (--primary, --ring, --border, etc. stay from tokens.css) */
@@ -109,12 +112,6 @@
   --radius: 0.625rem;
 }
 
-.dark {
-  /* Cooler secondaries on warm dark UI */
-  --secondary: var(--sage-500);
-  --secondary-foreground: var(--cream-50);
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -124,6 +121,63 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  /* Theme-independent neutral light tiles (calendar blocks, bento, drag preview) */
+  .on-highlight-surface {
+    background-color: var(--highlight-base);
+    border-color: var(--highlight-border);
+    color: var(--on-highlight);
+  }
+
+  .on-highlight-surface-bento {
+    background-color: var(--highlight-base-subtle);
+    border-color: var(--highlight-border);
+    color: var(--on-highlight);
+  }
+
+  .highlight-surface-exam-stripes {
+    background-image: repeating-linear-gradient(
+      -52deg,
+      transparent,
+      transparent 5px,
+      rgba(27, 22, 16, 0.05) 5px,
+      rgba(27, 22, 16, 0.05) 6px
+    );
+  }
+
+  .highlight-surface-exam-footer {
+    background-color: var(--highlight-base-subtle);
+    border-top-color: var(--highlight-border);
+    color: var(--on-highlight);
+  }
+}
+
+/* Utilities layer so these beat Tailwind text-* on highlight tiles */
+@layer utilities {
+  .on-highlight-surface .text-foreground,
+  .on-highlight-surface-bento .text-foreground,
+  .on-highlight-surface .text-on-highlight,
+  .on-highlight-surface-bento .text-on-highlight,
+  .on-highlight-surface .text-sandstone-900,
+  .on-highlight-surface-bento .text-sandstone-900 {
+    color: var(--on-highlight);
+  }
+
+  .on-highlight-surface .text-muted-foreground,
+  .on-highlight-surface-bento .text-muted-foreground,
+  .on-highlight-surface .text-on-highlight-muted,
+  .on-highlight-surface-bento .text-on-highlight-muted,
+  .on-highlight-surface .text-sandstone-600,
+  .on-highlight-surface-bento .text-sandstone-600 {
+    color: var(--on-highlight-muted);
+  }
+
+  .on-highlight-surface .text-primary,
+  .on-highlight-surface-bento .text-primary {
+    color: var(--rust-600);
   }
 }
 

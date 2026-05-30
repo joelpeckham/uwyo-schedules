@@ -16,7 +16,7 @@ user-invocable: true
 | Resource | Path |
 |----------|------|
 | Brand, voice, foundations | `design-system/README.md` |
-| Design tokens (CSS variables, light + dark) | `design-system/tokens.css` (and `colors_and_type.css` for static element defaults) |
+| Design tokens (CSS variables; dark block for static previews only) | `design-system/tokens.css` (and `colors_and_type.css` for static element defaults) |
 | Logos, topo divider (source) | `design-system/assets/` |
 | Same assets for Next.js URLs | `public/brand/*.svg` (e.g. `/brand/favicon.svg`) |
 | HTML token/component previews | `design-system/preview/` |
@@ -24,7 +24,7 @@ user-invocable: true
 
 ## For agents
 
-1. **Production Next.js:** `src/app/globals.css` imports `design-system/tokens.css` and maps shadcn variables; use `design-system/tokens.css` and `README.md` as the source of truth, not a separate oklch template. Icons: the app uses `lucide-react` (not the Lucide CDN script from the static previews).
+1. **Production Next.js:** Light-only UI — no theme toggle, no `dark:` Tailwind variants, no `html.dark`. `src/app/globals.css` imports `design-system/tokens.css` and maps shadcn variables; use `design-system/tokens.css` and `README.md` as the source of truth, not a separate oklch template. Icons: the app uses `lucide-react` (not the Lucide CDN script from the static previews).
 2. **Static HTML or throwaway mocks:** Link `design-system/colors_and_type.css` and follow the patterns in `design-system/preview/`.
 3. **Copy and tone:** Sentence case, no emoji in product UI, no exclamation points in microcopy, Wyoming-aware but not corny. Full rules in `design-system/README.md` (CONTENT FUNDAMENTALS, VISUAL FOUNDATIONS).
 

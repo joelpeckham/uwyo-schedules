@@ -11,7 +11,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Brand assets in the app:** `public/brand/*.svg` (e.g. `/brand/logo-wordmark.svg`, `/brand/favicon.svg`); full tree also under `design-system/assets/`.
 - **Prototypes:** `design-system/preview/` (HTML), `design-system/ui_kits/web/` (JSX + styles tied to the same tokens).
 
-- **The running app’s theme** is `src/app/globals.css` (imports `design-system/tokens.css` and maps shadcn/radix variables). Do not add a second parallel palette in oklch without updating the design tokens.
+- **The running app’s theme** is `src/app/globals.css` (imports `design-system/tokens.css` and maps shadcn/radix variables). Production is **light-only** (no `html.dark`, no theme toggle). Dark tokens in `design-system/tokens.css` are for static previews only. Do not add a second parallel palette in oklch without updating the design tokens.
 
 For production, align Tailwind and `src/app/globals.css` with the token file rather than only linking the standalone `colors_and_type.css` sheet in isolation.
 

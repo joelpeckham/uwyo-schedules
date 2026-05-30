@@ -7,7 +7,7 @@ export function LaramieCallout() {
       aria-labelledby="laramie-heading"
     >
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.12] dark:opacity-[0.18]"
+        className="pointer-events-none absolute inset-0 opacity-[0.12]"
         aria-hidden
         style={{
           backgroundImage: "url(/brand/topo-divider.svg)",

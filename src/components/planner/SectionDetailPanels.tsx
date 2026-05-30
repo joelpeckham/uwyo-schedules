@@ -521,7 +521,7 @@ export function SectionDetailPanels({ root }: Props) {
             headline={
               <div className="flex flex-wrap gap-2">
                 {booleanField(status, "sectionOpen") === true ? (
-                  <span className="rounded-full bg-[#4a6b55]/15 px-2.5 py-0.5 font-mono text-xs font-medium text-[#2d4a3d] dark:text-[#a3c4ad]">
+                  <span className="rounded-full bg-[#4a6b55]/15 px-2.5 py-0.5 font-mono text-xs font-medium text-[#2d4a3d]">
                     Open
                   </span>
                 ) : booleanField(status, "sectionOpen") === false ? (

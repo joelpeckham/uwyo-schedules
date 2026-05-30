@@ -13,8 +13,6 @@ import { Menu } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppLink } from "@/components/seo/AppLink";
 import { type ReactNode, useState } from "react";
-import { ThemeToggle } from "./ThemeToggle";
-
 const nav = [
   { href: "/", label: "Home", match: (p: string) => p === "/" },
   {
@@ -129,8 +127,6 @@ export function HeaderNav({ actions }: { actions?: ReactNode }) {
             </nav>
           </DialogContent>
         </Dialog>
-
-        <ThemeToggle />
 
         {actions ? (
           <div className="flex flex-wrap items-center gap-2 sm:border-l sm:border-border sm:pl-6">

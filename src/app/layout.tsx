@@ -76,20 +76,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#FBF7F0" },
-    { media: "(prefers-color-scheme: dark)", color: "#1F1A14" },
-  ],
+  themeColor: "#FBF7F0",
 };
-
-/**
- * Inline script that runs before paint, applies the stored theme preference
- * to <html>, and prevents the brief light-to-dark (or vice versa) flash that
- * happens when a useEffect-based theme toggle hydrates.
- *
- * Mirrors the storage key and "system" semantics in `ThemeToggle`.
- */
-const NO_THEME_FLASH_SCRIPT = `(()=>{try{var k='uwyoschedule-theme';var v=localStorage.getItem(k);var d=v==='dark'||(v!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
 
 export default function RootLayout({
   children,
@@ -99,12 +87,8 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      suppressHydrationWarning
       className={`${inter.variable} ${sourceSerif4.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: NO_THEME_FLASH_SCRIPT }} />
-      </head>
       <body
         className={`${inter.className} min-h-full flex flex-col font-sans`}
       >

@@ -398,7 +398,7 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
                           "flex min-h-0 flex-col justify-start gap-0.5 border-l-[4px]",
                           b.likelyExam && "relative",
                           b.likelyExam &&
-                            "border-dashed border-muted-foreground/50 bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.04)_5px,rgba(0,0,0,0.04)_6px)] dark:bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(255,255,255,0.05)_5px,rgba(255,255,255,0.05)_6px)]",
+                            "border-dashed border-muted-foreground/50 bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.04)_5px,rgba(0,0,0,0.04)_6px)]",
                           isInteractive &&
                             "touch-none cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           extraClass,

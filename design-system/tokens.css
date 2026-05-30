@@ -89,6 +89,13 @@
   --info: var(--sky-500);
   --info-soft: var(--sky-100);
 
+  /* Highlight surfaces (calendar blocks, bento cards — light paper tiles) */
+  --highlight-base: #fefcf8;
+  --highlight-base-subtle: var(--cream-50);
+  --highlight-border: var(--sandstone-200);
+  --on-highlight: var(--sandstone-900);
+  --on-highlight-muted: var(--sandstone-600);
+
   /* Typography (fallbacks; app uses next/font via --font-app-*) */
   --font-serif: "Source Serif 4", "Tiempos Headline", "Iowan Old Style", Georgia, serif;
   --font-sans: "Inter", "Styrene B", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -184,6 +191,12 @@
   --primary-press: var(--rust-100);
   --primary-fg: var(--sandstone-900);
   --primary-soft: rgba(196, 115, 63, 0.18);
+
+  --highlight-base: var(--cream-100);
+  --highlight-base-subtle: var(--cream-200);
+  --highlight-border: var(--sandstone-300);
+  --on-highlight: #000000;
+  --on-highlight-muted: #000000;
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
