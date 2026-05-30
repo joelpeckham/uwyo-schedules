@@ -21,6 +21,9 @@ type Props = {
   busyCount: number;
   blackouts: PlannerBlackoutsDocV1;
   plannerItems: PlannerItemRow[];
+  canUndo: boolean;
+  undo: () => void;
+  lastActionWasBusyAddOrUpdate: boolean;
   setRequireOpenSections: (v: boolean) => void;
   setExcludeTba: (v: boolean) => void;
   setExcludeOnlineAsync: (v: boolean) => void;
@@ -43,6 +46,9 @@ export function NoSchedulesHelpContent({
   busyCount,
   blackouts,
   plannerItems,
+  canUndo,
+  undo,
+  lastActionWasBusyAddOrUpdate,
   setRequireOpenSections,
   setExcludeTba,
   setExcludeOnlineAsync,
@@ -52,6 +58,7 @@ export function NoSchedulesHelpContent({
   clearAllInstructorPrefs,
   clearAllSectionPins,
 }: Props) {
+  const showUndoBusy = lastActionWasBusyAddOrUpdate && canUndo;
   const visibleSolver = hints.filter((h) => h.kind !== "generic");
   const visibleSolverKinds = new Set(visibleSolver.map((h) => h.kind));
   const pinCount = countPlannerSectionPins(plannerItems);
@@ -94,7 +101,7 @@ export function NoSchedulesHelpContent({
       void recalculateSolutions({ excludeOnlineAsync: false });
       scrollToIdAndFocus("planner-filters", "#exclude-online-async-toggle");
     },
-    scrollToBusyToolbar: () => scrollToId("planner-week-calendar-toolbar"),
+    undoBusy: () => undo(),
     clearAllBusy: () => {
       track("planner_blackouts_cleared", {
         count: blackouts.items.length,
@@ -140,6 +147,7 @@ export function NoSchedulesHelpContent({
               key={`${h.kind}:${h.message}`}
               hint={h}
               busyCount={busyCount}
+              showUndoBusy={showUndoBusy}
               plannerItems={plannerItems}
               actions={actions}
             />
@@ -166,6 +174,7 @@ export function NoSchedulesHelpContent({
               kind={kind}
               requireOpenSections={requireOpenSections}
               busyCount={busyCount}
+              showUndoBusy={showUndoBusy}
               pinCount={pinCount}
               actions={actions}
             />
@@ -181,7 +190,7 @@ type HintActions = {
   turnOnExcludeFull: () => void;
   turnOffExcludeTba: () => void;
   turnOffExcludeOnlineAsync: () => void;
-  scrollToBusyToolbar: () => void;
+  undoBusy: () => void;
   clearAllBusy: () => void;
   clearAllInstructorPrefs: () => void;
   clearAllSectionPins: () => void;
@@ -193,11 +202,18 @@ type HintActions = {
 type SolverRowProps = {
   hint: InfeasibilityHint;
   busyCount: number;
+  showUndoBusy: boolean;
   plannerItems: PlannerItemRow[];
   actions: HintActions;
 };
 
-function SolverHintRow({ hint, busyCount, plannerItems, actions }: SolverRowProps) {
+function SolverHintRow({
+  hint,
+  busyCount,
+  showUndoBusy,
+  plannerItems,
+  actions,
+}: SolverRowProps) {
   const courseLabel = hint.plannerItemId
     ? (() => {
         const item = plannerItems.find((i) => i.id === hint.plannerItemId);
@@ -209,16 +225,18 @@ function SolverHintRow({ hint, busyCount, plannerItems, actions }: SolverRowProp
     case "relax_busy":
       return (
         <li>
-          <HintActionButton onClick={actions.scrollToBusyToolbar}>
-            Edit busy times
-          </HintActionButton>
-          {busyCount > 0 ? (
+          {showUndoBusy ? (
             <>
-              {" · "}
-              <HintActionButton onClick={actions.clearAllBusy}>
-                Clear all busy times
+              <HintActionButton onClick={actions.undoBusy}>
+                Undo busy time
               </HintActionButton>
+              {busyCount > 0 ? " · " : null}
             </>
+          ) : null}
+          {busyCount > 0 ? (
+            <HintActionButton onClick={actions.clearAllBusy}>
+              Clear all busy times
+            </HintActionButton>
           ) : null}
           <span className="text-muted-foreground">
             {" "}
@@ -268,12 +286,7 @@ function SolverHintRow({ hint, busyCount, plannerItems, actions }: SolverRowProp
         <li>
           {hint.plannerItemId && courseLabel ? (
             <>
-              <HintActionButton
-                onClick={() => actions.scrollToCourse(hint.plannerItemId!)}
-              >
-                Go to {courseLabel}
-              </HintActionButton>
-              {" · "}
+                Go to {courseLabel}. {" "}
             </>
           ) : null}
           {hint.blackoutId ? (
@@ -281,7 +294,7 @@ function SolverHintRow({ hint, busyCount, plannerItems, actions }: SolverRowProp
               <HintActionButton
                 onClick={() => actions.onEditBlackout(hint.blackoutId!)}
               >
-                Clear busy block
+                Edit busy time
               </HintActionButton>
               {" · "}
             </>
@@ -316,6 +329,7 @@ type StaticRowProps = {
   kind: StaticNoScheduleHintKind;
   requireOpenSections: boolean;
   busyCount: number;
+  showUndoBusy: boolean;
   pinCount: number;
   actions: HintActions;
 };
@@ -324,6 +338,7 @@ function StaticHintRow({
   kind,
   requireOpenSections,
   busyCount,
+  showUndoBusy,
   pinCount,
   actions,
 }: StaticRowProps) {
@@ -353,17 +368,21 @@ function StaticHintRow({
     case "edit_busy":
       return (
         <li>
-          <HintActionButton onClick={actions.scrollToBusyToolbar}>
-            Edit or remove busy times
+          {showUndoBusy ? (
+            <>
+              <HintActionButton onClick={actions.undoBusy}>
+                Undo busy time
+              </HintActionButton>
+              {" · "}
+            </>
+          ) : null}
+          <HintActionButton onClick={actions.clearAllBusy}>
+            Clear all busy times
           </HintActionButton>
           <span className="text-muted-foreground">
             {" "}
             ({busyCount} on your calendar)
           </span>
-          {" · "}
-          <HintActionButton onClick={actions.clearAllBusy}>
-            Clear all busy times
-          </HintActionButton>
         </li>
       );
     case "relax_instructor":

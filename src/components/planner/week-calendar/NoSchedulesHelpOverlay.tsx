@@ -32,7 +32,7 @@ export function NoSchedulesHelpOverlay({ show, children }: Props) {
           key="no-schedules-overlay"
           role="region"
           aria-labelledby="planner-no-schedules-heading"
-          className="absolute inset-0 z-10 flex items-center justify-center overflow-y-auto p-3 sm:p-4"
+          className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto p-3 sm:p-4"
           style={{ background: OVERLAY_GRADIENT }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

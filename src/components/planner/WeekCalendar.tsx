@@ -125,7 +125,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     excludeOnlineAsync,
     setExcludeOnlineAsync,
   } = usePlannerUi();
-  const { canUndo, canRedo, undo, redo } = usePlannerHistory();
+  const { canUndo, canRedo, undo, redo, lastActionWasBusyAddOrUpdate } =
+    usePlannerHistory();
 
   usePlannerUndoRedoShortcuts({ undo, redo, canUndo, canRedo });
 
@@ -455,8 +456,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         dayIndex: body.dayIndex,
         minutes: body.end - body.start,
       });
+      setMarkBusyMode(false);
     },
-    [gridHeightPx, setBlackouts, startMin, totalMin],
+    [gridHeightPx, setBlackouts, startMin, totalMin, setMarkBusyMode],
   );
 
   const onDayColumnPointerDown = useCallback(
@@ -1168,6 +1170,9 @@ type CoursePointerLike = Pick<
             busyCount={busyCount}
             blackouts={blackouts}
             plannerItems={effectivePlannerItems}
+            canUndo={canUndo}
+            undo={undo}
+            lastActionWasBusyAddOrUpdate={lastActionWasBusyAddOrUpdate}
             setRequireOpenSections={setRequireOpenSections}
             setExcludeTba={setExcludeTba}
             setExcludeOnlineAsync={setExcludeOnlineAsync}

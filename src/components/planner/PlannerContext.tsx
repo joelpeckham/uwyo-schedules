@@ -164,6 +164,7 @@ type PlannerHistoryContextValue = {
   undo: () => void;
   redo: () => void;
   recordHistorySnapshot: () => void;
+  lastActionWasBusyAddOrUpdate: boolean;
 };
 
 const PlannerDataContext = createContext<PlannerDataContextValue | null>(null);
@@ -172,6 +173,26 @@ const PlannerUiContext = createContext<PlannerUiContextValue | null>(null);
 const PlannerHistoryContext = createContext<PlannerHistoryContextValue | null>(
   null,
 );
+
+function blackoutsChangeWasAddOrUpdate(
+  prev: PlannerBlackoutsDocV1,
+  next: PlannerBlackoutsDocV1,
+): boolean {
+  const prevById = new Map(prev.items.map((item) => [item.id, item]));
+  for (const item of next.items) {
+    const before = prevById.get(item.id);
+    if (!before) return true;
+    if (
+      before.dayIndex !== item.dayIndex ||
+      before.start !== item.start ||
+      before.end !== item.end ||
+      (before.label ?? "") !== (item.label ?? "")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 type ProviderProps = {
   termCode: string;
@@ -202,6 +223,8 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   );
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [lastActionWasBusyAddOrUpdate, setLastActionWasBusyAddOrUpdate] =
+    useState(false);
   const [solvePacks, setSolvePacks] = useState<Record<string, CourseSolvePack>>(
     {},
   );
@@ -489,6 +512,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
 
   const recordHistorySnapshot = useCallback(() => {
     if (isApplyingHistoryRef.current) return;
+    setLastActionWasBusyAddOrUpdate(false);
     const state = historyApiRef.current.record(
       historyStacksRef.current,
       captureCurrentHistorySnapshot(),
@@ -572,6 +596,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       captureCurrentHistorySnapshot(),
     );
     if (!result.snapshot) return;
+    setLastActionWasBusyAddOrUpdate(false);
     syncHistoryStacks(result.stacks);
     applyHistorySnapshot(result.snapshot);
   }, [
@@ -586,6 +611,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       captureCurrentHistorySnapshot(),
     );
     if (!result.snapshot) return;
+    setLastActionWasBusyAddOrUpdate(false);
     syncHistoryStacks(result.stacks);
     applyHistorySnapshot(result.snapshot);
   }, [
@@ -849,10 +875,15 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
         | PlannerBlackoutsDocV1
         | ((prev: PlannerBlackoutsDocV1) => PlannerBlackoutsDocV1),
     ) => {
+      const prev = blackoutsRef.current;
+      const doc = typeof next === "function" ? next(prev) : next;
+      const wasAddOrUpdate = blackoutsChangeWasAddOrUpdate(prev, doc);
       recordHistorySnapshot();
+      if (wasAddOrUpdate) {
+        setLastActionWasBusyAddOrUpdate(true);
+      }
       blackoutsUserGenRef.current += 1;
-      setBlackoutsState((prev) => {
-        const doc = typeof next === "function" ? next(prev) : next;
+      setBlackoutsState(() => {
         blackoutsRef.current = doc;
         return doc;
       });
@@ -1053,8 +1084,16 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       undo,
       redo,
       recordHistorySnapshot,
+      lastActionWasBusyAddOrUpdate,
     }),
-    [canUndo, canRedo, undo, redo, recordHistorySnapshot],
+    [
+      canUndo,
+      canRedo,
+      undo,
+      redo,
+      recordHistorySnapshot,
+      lastActionWasBusyAddOrUpdate,
+    ],
   );
 
   return (
