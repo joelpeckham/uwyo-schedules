@@ -10,6 +10,14 @@ export function calendarBlockPaddingPx(heightPx: number): number {
   return Math.min(6, Math.max(1, Math.round(heightPx * 0.06)));
 }
 
+/**
+ * Equal inset from the block's top and right edges for corner badges (pin).
+ * One value for both axes; block text may still use asymmetric paddingRight.
+ */
+export function calendarBlockCornerInsetPx(heightPx: number): number {
+  return calendarBlockPaddingPx(heightPx);
+}
+
 export function calendarTitleFontPx(heightPx: number): number {
   return Math.min(11, Math.max(8, Math.round(heightPx * 0.2)));
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PlannerItemRow } from "./data";
+import type { ResolvedPlannerSelection } from "./resolve-display-crns-shared";
 import {
   courseSolvePackCourseKey,
   eligibleForStandaloneSingleCrn,
@@ -215,6 +216,231 @@ describe("solveSchedulesFromPacks", () => {
     expect(r.solutions).toHaveLength(1);
     expect(r.solutions[0]!.selections[1]!.anchorCrn).toBe("A1");
     expect(r.solutions[0]!.selections[2]!.anchorCrn).toBe("B1");
+  });
+
+  it("keeps other courses on previous sections when only one course must move", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A1",
+            linkedBundleId: null,
+            crns: ["A1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "A2",
+            linkedBundleId: null,
+            crns: ["A2"],
+          },
+        ],
+        meetingsByCrn: {
+          A1: [{ dayIndex: 0, start: 600, end: 660 }],
+          A2: [{ dayIndex: 1, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: { A1: "lecture", A2: "lecture" },
+        seatsByCrn: {
+          A1: { seatsAvailable: 1, openSection: true },
+          A2: { seatsAvailable: 1, openSection: true },
+        },
+      }),
+      [courseSolvePackCourseKey("MATH", "2000")]: basePack("MATH", "2000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "M1",
+            linkedBundleId: null,
+            crns: ["M1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "M2",
+            linkedBundleId: null,
+            crns: ["M2"],
+          },
+        ],
+        meetingsByCrn: {
+          M1: [{ dayIndex: 2, start: 600, end: 660 }],
+          M2: [{ dayIndex: 3, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: { M1: "lecture", M2: "lecture" },
+        seatsByCrn: {
+          M1: { seatsAvailable: 1, openSection: true },
+          M2: { seatsAvailable: 1, openSection: true },
+        },
+      }),
+    };
+    const items = [
+      itemStub({
+        id: 1,
+        subject: "CS",
+        courseNumber: "1000",
+        sectionPins: { v: 1, byType: { lecture: "A2" } },
+      }),
+      itemStub({ id: 2, subject: "MATH", courseNumber: "2000" }),
+    ];
+    const previousSelections: Record<number, ResolvedPlannerSelection> = {
+      1: {
+        selectionKind: "single_crn",
+        anchorCrn: "A1",
+        linkedBundleId: null,
+      },
+      2: {
+        selectionKind: "single_crn",
+        anchorCrn: "M1",
+        linkedBundleId: null,
+      },
+    };
+    const r = solveSchedulesFromPacks(items, packs, {
+      ...relaxedFilters,
+      previousSelections,
+    });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0]!.selections[1]!.anchorCrn).toBe("A2");
+    expect(r.solutions[0]!.selections[2]!.anchorCrn).toBe("M1");
+    // A1 is not in the pinned domain, so the drag is unavoidable and not counted.
+    expect(r.solutions[0]!.score).toBe(0);
+  });
+
+  it("picks the fewest course changes when keeping a prior section forces extra moves", () => {
+    const packs: Record<string, CourseSolvePack> = {
+      [courseSolvePackCourseKey("CS", "1000")]: basePack("CS", "1000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "NEW",
+            linkedBundleId: null,
+            crns: ["NEW"],
+          },
+        ],
+        meetingsByCrn: {
+          NEW: [{ dayIndex: 0, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: { NEW: "lecture" },
+        seatsByCrn: {
+          NEW: { seatsAvailable: 1, openSection: true },
+        },
+      }),
+      [courseSolvePackCourseKey("MATH", "2000")]: basePack("MATH", "2000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "B1",
+            linkedBundleId: null,
+            crns: ["B1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "B2",
+            linkedBundleId: null,
+            crns: ["B2"],
+          },
+        ],
+        meetingsByCrn: {
+          B1: [{ dayIndex: 0, start: 600, end: 660 }],
+          B2: [{ dayIndex: 1, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: { B1: "lecture", B2: "lecture" },
+        seatsByCrn: {
+          B1: { seatsAvailable: 1, openSection: true },
+          B2: { seatsAvailable: 1, openSection: true },
+        },
+      }),
+      [courseSolvePackCourseKey("CHEM", "3000")]: basePack("CHEM", "3000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "C1",
+            linkedBundleId: null,
+            crns: ["C1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "C2",
+            linkedBundleId: null,
+            crns: ["C2"],
+          },
+        ],
+        meetingsByCrn: {
+          C1: [{ dayIndex: 1, start: 600, end: 660 }],
+          C2: [{ dayIndex: 2, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: { C1: "lecture", C2: "lecture" },
+        seatsByCrn: {
+          C1: { seatsAvailable: 1, openSection: true },
+          C2: { seatsAvailable: 1, openSection: true },
+        },
+      }),
+      [courseSolvePackCourseKey("PHYS", "4000")]: basePack("PHYS", "4000", {
+        candidates: [
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "D1",
+            linkedBundleId: null,
+            crns: ["D1"],
+          },
+          {
+            selectionKind: "single_crn",
+            anchorCrn: "D2",
+            linkedBundleId: null,
+            crns: ["D2"],
+          },
+        ],
+        meetingsByCrn: {
+          D1: [{ dayIndex: 3, start: 600, end: 660 }],
+          D2: [{ dayIndex: 4, start: 600, end: 660 }],
+        },
+        facultyByCrn: {},
+        scheduleTypeByCrn: { D1: "lecture", D2: "lecture" },
+        seatsByCrn: {
+          D1: { seatsAvailable: 1, openSection: true },
+          D2: { seatsAvailable: 1, openSection: true },
+        },
+      }),
+    };
+    const items = [
+      itemStub({ id: 1, subject: "CS", courseNumber: "1000" }),
+      itemStub({ id: 2, subject: "MATH", courseNumber: "2000" }),
+      itemStub({ id: 3, subject: "CHEM", courseNumber: "3000" }),
+      itemStub({ id: 4, subject: "PHYS", courseNumber: "4000" }),
+    ];
+    const previousSelections: Record<number, ResolvedPlannerSelection> = {
+      1: {
+        selectionKind: "single_crn",
+        anchorCrn: "OLD",
+        linkedBundleId: null,
+      },
+      2: {
+        selectionKind: "single_crn",
+        anchorCrn: "B1",
+        linkedBundleId: null,
+      },
+      3: {
+        selectionKind: "single_crn",
+        anchorCrn: "C2",
+        linkedBundleId: null,
+      },
+      4: {
+        selectionKind: "single_crn",
+        anchorCrn: "D1",
+        linkedBundleId: null,
+      },
+    };
+    const r = solveSchedulesFromPacks(items, packs, {
+      ...relaxedFilters,
+      previousSelections,
+    });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0]!.selections[2]!.anchorCrn).toBe("B2");
+    expect(r.solutions[0]!.selections[3]!.anchorCrn).toBe("C2");
+    expect(r.solutions[0]!.selections[4]!.anchorCrn).toBe("D1");
+    expect(r.solutions[0]!.score).toBe(1);
   });
 
   it("orders multiple solutions deterministically by anchor CRNs", () => {

@@ -42,6 +42,7 @@ import {
   Loader2,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   memo,
@@ -156,6 +157,7 @@ export function CourseManager({ termCode }: Props) {
     solvePacks,
     mergeSolvePack,
     toggleSectionPin,
+    clearSectionPins,
   } = usePlannerData();
   const { recalculateSolutions } = usePlannerSolve();
   const { recordHistorySnapshot } = usePlannerHistory();
@@ -653,8 +655,19 @@ export function CourseManager({ termCode }: Props) {
                       {instructorPill}
                     </span>
                     {pinnedCount > 0 ? (
-                      <span className="rounded-md border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                      <span className="inline-flex items-center gap-0.5 rounded-md border border-primary/40 bg-primary/10 pl-1.5 pr-0.5 py-0.5 text-[10px] font-medium text-primary">
                         {pinnedCount} pinned
+                        <button
+                          type="button"
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-primary hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Clear all pinned sections for ${item.subject} ${item.courseNumber}`}
+                          disabled={
+                            pending || item.selectionKind !== "unresolved"
+                          }
+                          onClick={() => clearSectionPins(item.id)}
+                        >
+                          <X className="size-3" aria-hidden />
+                        </button>
                       </span>
                     ) : null}
                     {item.selectionKind !== "unresolved" ? (

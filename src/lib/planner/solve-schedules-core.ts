@@ -97,6 +97,8 @@ const DEFAULT_TIMEOUT_MS = 2000;
 /** Worker / full recalc budget — search is fast enough to allow deep exploration. */
 export const WORKER_SOLVE_TIMEOUT_MS = 5000;
 const TIMEOUT_CHECK_INTERVAL = 2048;
+/** After the first feasible schedule, spend at most this long seeking fewer course changes. */
+const REFINE_AFTER_FIRST_MS = 200;
 
 export function courseSolvePackCourseKey(
   subject: string,
@@ -519,6 +521,10 @@ function staticFilterCandidate(
   return true;
 }
 
+type PreparedScheduleCandidate = PreparedCandidate<ScheduleCandidate> & {
+  keepsPrevious: boolean;
+};
+
 /** Shared DFS + scoring (no DB). Used by server solve and `solveSchedulesFromPacks`. */
 export function runSolveSearch(params: {
   items: PlannerItemRow[];
@@ -535,6 +541,13 @@ export function runSolveSearch(params: {
   blackoutIntervals?: TimeInterval[];
   maxSolutions?: number;
   timeoutMs?: number;
+  /** Prior per-item selections; used with `minimizeChanges` to count course moves. */
+  previousSelections?: Record<number, ResolvedPlannerSelection> | null;
+  /**
+   * Branch-and-bound: return the feasible schedule with the fewest course changes
+   * vs `previousSelections` (200ms refine window after the first solution).
+   */
+  minimizeChanges?: boolean;
 }): SolveSchedulesResult {
   const {
     items,
@@ -553,6 +566,8 @@ export function runSolveSearch(params: {
   const blackoutIntervals = blackoutIntervalsRaw.slice().sort(intervalSortCmp);
   const maxSolutions = params.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const minimizeChanges = params.minimizeChanges === true;
+  const previousSelections = params.previousSelections;
   const started = Date.now();
   const itemOrder = items.map((it) => it.id);
 
@@ -561,6 +576,7 @@ export function runSolveSearch(params: {
   }
 
   const prefsByItemIndex = items.map((it) => parseInstructorPrefs(it.instructorPrefs));
+  const prevSelByIndex = items.map((it) => previousSelections?.[it.id] ?? null);
   const staticParams = {
     requireOpenSections,
     deliveryFilters,
@@ -574,15 +590,20 @@ export function runSolveSearch(params: {
 
   // 1a. One-pass static domain prefilter.
   const allCandidatesFlat: ScheduleCandidate[] = [];
-  const domains: PreparedCandidate<ScheduleCandidate>[][] = [];
+  const domains: PreparedScheduleCandidate[][] = [];
+  const prevAvailable = new Array<boolean>(items.length).fill(false);
   for (let i = 0; i < items.length; i++) {
-    const prepared: PreparedCandidate<ScheduleCandidate>[] = [];
+    const prepared: PreparedScheduleCandidate[] = [];
+    const prev = prevSelByIndex[i];
     for (const cand of candidateLists[i]!) {
       if (!staticFilterCandidate(cand, prefsByItemIndex[i]!, staticParams)) {
         continue;
       }
       allCandidatesFlat.push(cand);
-      prepared.push({ cand, mask: new Uint32Array(0) });
+      const keepsPrevious =
+        prev != null && candidateMatchesResolvedSelection(cand, prev);
+      if (keepsPrevious) prevAvailable[i] = true;
+      prepared.push({ cand, mask: new Uint32Array(0), keepsPrevious });
     }
     if (prepared.length === 0) {
       return { solutions: [], capped: false, timedOut: false, itemOrder };
@@ -613,6 +634,10 @@ export function runSolveSearch(params: {
   let capped = false;
   let timedOut = false;
   let visitCount = 0;
+  let bestSolution: ScheduleSolution | null = null;
+  let bestChange = Infinity;
+  let firstSolutionAt: number | null = null;
+  let changeCount = 0;
 
   const assigned = new Array<boolean>(items.length).fill(false);
   const chosen: (ScheduleCandidate | null)[] = items.map(() => null);
@@ -621,7 +646,15 @@ export function runSolveSearch(params: {
   function checkTimeout(): boolean {
     visitCount++;
     if (visitCount % TIMEOUT_CHECK_INTERVAL !== 0) return false;
-    if (Date.now() - started > timeoutMs) {
+    const now = Date.now();
+    if (firstSolutionAt == null) {
+      if (now - started > timeoutMs) {
+        timedOut = true;
+        return true;
+      }
+      return false;
+    }
+    if (now - firstSolutionAt > REFINE_AFTER_FIRST_MS) {
       timedOut = true;
       return true;
     }
@@ -662,44 +695,68 @@ export function runSolveSearch(params: {
     return best;
   }
 
+  function recordSolution(): void {
+    const selections: Record<number, ResolvedPlannerSelection> = {};
+    for (let i = 0; i < items.length; i++) {
+      selections[items[i]!.id] = selectionFromCandidate(chosen[i]!);
+    }
+    if (minimizeChanges) {
+      if (changeCount < bestChange) {
+        bestChange = changeCount;
+        bestSolution = { score: changeCount, selections };
+        if (firstSolutionAt == null) firstSolutionAt = Date.now();
+      }
+      return;
+    }
+    solutions.push({ score: 0, selections });
+  }
+
   function dfs(): void {
-    if (solutions.length >= maxSolutions) {
+    if (!minimizeChanges && solutions.length >= maxSolutions) {
       capped = true;
       return;
     }
+    if (minimizeChanges && bestChange === 0) return;
     if (checkTimeout()) return;
 
     const itemIndex = pickNextItem();
     if (itemIndex < 0) {
-      const selections: Record<number, ResolvedPlannerSelection> = {};
-      for (let i = 0; i < items.length; i++) {
-        selections[items[i]!.id] = selectionFromCandidate(chosen[i]!);
-      }
-      solutions.push({ score: 0, selections });
+      recordSolution();
       return;
     }
 
     if (liveCount(itemIndex) === 0) return;
 
-    for (const { cand, mask } of domains[itemIndex]!) {
+    for (const { cand, mask, keepsPrevious } of domains[itemIndex]!) {
       if (checkTimeout()) return;
       if (masksConflict(accMask, mask)) continue;
 
+      const delta =
+        minimizeChanges && prevAvailable[itemIndex] && !keepsPrevious ? 1 : 0;
+      if (minimizeChanges && changeCount + delta >= bestChange) continue;
+
       assigned[itemIndex] = true;
       chosen[itemIndex] = cand;
+      changeCount += delta;
       maskOrInto(accMask, mask);
 
       if (forwardCheck()) dfs();
 
       maskXorInto(accMask, mask);
+      changeCount -= delta;
       chosen[itemIndex] = null;
       assigned[itemIndex] = false;
 
       if (capped || timedOut) return;
+      if (minimizeChanges && bestChange === 0) return;
     }
   }
 
   dfs();
+
+  if (minimizeChanges) {
+    if (bestSolution) solutions.push(bestSolution);
+  }
 
   solutions.sort((a, b) =>
     solutionSortKey(a).localeCompare(solutionSortKey(b)),
@@ -958,6 +1015,8 @@ export function solveSchedulesFromPacks(
     opts.previousSelections,
   );
 
+  const maxSolutions = opts.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
+
   return runSolveSearch({
     items,
     candidateLists,
@@ -970,8 +1029,11 @@ export function solveSchedulesFromPacks(
     excludeTba: opts.excludeTba,
     excludeOnlineAsync: opts.excludeOnlineAsync,
     blackoutIntervals: opts.blackoutIntervals,
-    maxSolutions: opts.maxSolutions,
+    maxSolutions,
     timeoutMs: opts.timeoutMs,
+    previousSelections: opts.previousSelections,
+    minimizeChanges:
+      opts.previousSelections != null && maxSolutions === 1,
   });
 }
 

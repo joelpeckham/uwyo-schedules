@@ -10,6 +10,7 @@ import {
 } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import {
+  calendarBlockCornerInsetPx,
   calendarBlockPaddingPx,
   calendarSecondaryTier,
   calendarTitleFontPx,
@@ -344,6 +345,7 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
       heightPx,
     };
     const pad = calendarBlockPaddingPx(heightPx);
+    const cornerInset = calendarBlockCornerInsetPx(heightPx);
     const titlePx = calendarTitleFontPx(heightPx);
     const secondaryPx = Math.max(7, titlePx - 1);
     const tier = calendarSecondaryTier(heightPx);
@@ -434,6 +436,7 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
           paddingBottom: pad + examFooterPad,
           paddingLeft: Math.min(10, pad + 4),
           paddingRight: Math.min(8, pad + 2),
+          ["--calendar-block-corner-inset" as string]: `${cornerInset}px`,
         }}
         {...(blockHandlerProps ?? {})}
       >

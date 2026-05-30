@@ -35,7 +35,7 @@ import {
   useTransition,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Ban, Minus, Pin, Redo2, Undo2, ZoomIn } from "lucide-react";
+import { Ban, Minus, Redo2, Undo2, ZoomIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   usePlannerData,
@@ -44,6 +44,7 @@ import {
   usePlannerUi,
 } from "./PlannerContext";
 import { usePlannerUndoRedoShortcuts } from "./usePlannerUndoRedoShortcuts";
+import { CalendarBlockPinControl } from "./week-calendar/CalendarBlockPinBadge";
 import { BusyTimeDialog } from "./week-calendar/BusyTimeDialog";
 import {
   buildFloatStyle,
@@ -1030,43 +1031,27 @@ type CoursePointerLike = Pick<
       const isPinnedThisBlock =
         pinsDoc.byType[b.sectionScheduleTypeKey] === b.sectionCrn;
       return (
-        <span
-          className="pointer-events-auto absolute right-0.5 top-0.5 z-30"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            className="size-6 touch-manipulation shadow-sm"
-            aria-label={
-              isPinnedThisBlock
-                ? `Unpin this ${b.subject} ${b.courseNumber} meeting`
-                : `Pin this ${b.subject} ${b.courseNumber} meeting`
-            }
-            title={
-              isPinnedThisBlock
-                ? "Unpin (same button)"
-                : "Pin this meeting type"
-            }
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleSectionPin(
-                b.plannerItemId,
-                b.sectionScheduleTypeKey,
-                b.sectionCrn,
-              );
-            }}
-          >
-            <Pin
-              className={cn(
-                "size-3.5",
-                isPinnedThisBlock && "fill-primary text-primary",
-              )}
-              aria-hidden
-            />
-          </Button>
-        </span>
+        <CalendarBlockPinControl
+          pinned={isPinnedThisBlock}
+          aria-label={
+            isPinnedThisBlock
+              ? `Unpin this ${b.subject} ${b.courseNumber} meeting`
+              : `Pin this ${b.subject} ${b.courseNumber} meeting`
+          }
+          title={
+            isPinnedThisBlock
+              ? "Unpin (same button)"
+              : "Pin this meeting type"
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleSectionPin(
+              b.plannerItemId,
+              b.sectionScheduleTypeKey,
+              b.sectionCrn,
+            );
+          }}
+        />
       );
     },
     [plannerItemsById, toggleSectionPin],

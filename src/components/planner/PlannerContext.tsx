@@ -100,6 +100,7 @@ type PlannerDataContextValue = {
   removePlannerItem: (id: number) => void;
   updatePlannerItem: (id: number, patch: Partial<PlannerItemRow>) => void;
   toggleSectionPin: (itemId: number, scheduleTypeKey: string, sectionCrn: string) => void;
+  clearSectionPins: (itemId: number) => void;
   setSectionPinFromDrag: (
     itemId: number,
     scheduleTypeKey: string,
@@ -726,6 +727,30 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot],
   );
 
+  const clearSectionPins = useCallback(
+    (itemId: number) => {
+      const prev = itemsRef.current;
+      const row = prev.find((r) => r.id === itemId);
+      if (!row || row.selectionKind !== "unresolved") return;
+      const pins = parseSectionPinsJson(row.sectionPins);
+      if (Object.keys(pins.byType).length === 0) return;
+      const next = prev.map((r) =>
+        r.id === itemId && r.selectionKind === "unresolved"
+          ? { ...r, sectionPins: EMPTY_SECTION_PINS }
+          : r,
+      );
+      setScheduleFeasibilityError(null);
+      recordHistorySnapshot();
+      setPlannerItems(() => {
+        itemsRef.current = next;
+        return next;
+      });
+      persistTerm();
+      scheduleRecalculateSolutions();
+    },
+    [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot],
+  );
+
   const setSectionPinFromDrag = useCallback(
     (itemId: number, scheduleTypeKey: string, sectionCrn: string) => {
       const prev = itemsRef.current;
@@ -885,6 +910,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       removePlannerItem,
       updatePlannerItem,
       toggleSectionPin,
+      clearSectionPins,
       setSectionPinFromDrag,
       applyPlannerItemSelection,
       solvePacks,
@@ -901,6 +927,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       removePlannerItem,
       updatePlannerItem,
       toggleSectionPin,
+      clearSectionPins,
       setSectionPinFromDrag,
       applyPlannerItemSelection,
       solvePacks,
