@@ -1,4 +1,5 @@
 import type { InferInsertModel } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import type {
   sectionAttributes,
   sectionFaculty,
@@ -174,6 +175,108 @@ export function mapSectionRowToGraph(
   }
 
   return { section, meetings, faculty, attributes };
+}
+
+/** Seat / availability fields refreshed on every hot scrape — excluded from content hash. */
+const SEAT_GROUP_KEYS = [
+  "enrollment",
+  "maximumEnrollment",
+  "seatsAvailable",
+  "waitCapacity",
+  "waitCount",
+  "waitAvailable",
+  "openSection",
+  "crossListCapacity",
+  "crossListCount",
+  "crossListAvailable",
+] as const;
+
+export type SectionSeatSnapshot = Pick<
+  NewSection,
+  (typeof SEAT_GROUP_KEYS)[number]
+> & { rawJson: NewSection["rawJson"] };
+
+/** Extract seat-group columns (+ rawJson) for diffing hot-path updates. */
+export function extractSectionSeatSnapshot(section: NewSection): SectionSeatSnapshot {
+  return {
+    enrollment: section.enrollment,
+    maximumEnrollment: section.maximumEnrollment,
+    seatsAvailable: section.seatsAvailable,
+    waitCapacity: section.waitCapacity,
+    waitCount: section.waitCount,
+    waitAvailable: section.waitAvailable,
+    openSection: section.openSection,
+    crossListCapacity: section.crossListCapacity,
+    crossListCount: section.crossListCount,
+    crossListAvailable: section.crossListAvailable,
+    rawJson: section.rawJson,
+  };
+}
+
+function stableSectionPayload(section: NewSection): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(section)) {
+    if (
+      key === "rawJson" ||
+      key === "contentHash" ||
+      key === "courseDescription" ||
+      key === "sectionInformationText" ||
+      key === "descriptionsFetchedAt" ||
+      key === "updatedAt" ||
+      (SEAT_GROUP_KEYS as readonly string[]).includes(key)
+    ) {
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+function stableMeetingPayload(m: NewMeeting): Record<string, unknown> {
+  const { rawJson: _omitRaw, ...rest } = m;
+  void _omitRaw;
+  return rest;
+}
+
+function stableFacultyPayload(f: NewFaculty): Record<string, unknown> {
+  const { rawJson: _omitRaw, ...rest } = f;
+  void _omitRaw;
+  return rest;
+}
+
+function stableAttributePayload(a: NewAttribute): Record<string, unknown> {
+  const { rawJson: _omitRaw, ...rest } = a;
+  void _omitRaw;
+  return rest;
+}
+
+/** SHA-1 over catalog-stable section data (excludes seats, descriptions, rawJson). */
+export function computeSectionContentHash(graph: SectionGraph): string {
+  const payload = {
+    section: stableSectionPayload(graph.section),
+    meetings: [...graph.meetings]
+      .map(stableMeetingPayload)
+      .sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number)),
+    faculty: [...graph.faculty]
+      .map(stableFacultyPayload)
+      .sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number)),
+    attributes: [...graph.attributes]
+      .map(stableAttributePayload)
+      .sort((a, b) =>
+        String(a.code).localeCompare(String(b.code)),
+      ),
+  };
+  return createHash("sha1").update(JSON.stringify(payload)).digest("hex");
+}
+
+export function sectionSeatsEqual(
+  existing: SectionSeatSnapshot,
+  incoming: SectionSeatSnapshot,
+): boolean {
+  for (const key of SEAT_GROUP_KEYS) {
+    if (existing[key] !== incoming[key]) return false;
+  }
+  return JSON.stringify(existing.rawJson) === JSON.stringify(incoming.rawJson);
 }
 
 export function courseKey(subject: string, courseNumber: string): string {

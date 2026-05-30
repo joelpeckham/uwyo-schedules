@@ -1,8 +1,19 @@
 import { createDb } from "@/db";
 import * as schema from "@/db/schema";
-import { ensureSectionDescriptions } from "@/lib/planner/ensure-section-descriptions";
+import {
+  DESCRIPTION_STALE_HARD_DAYS,
+  DESCRIPTION_STALE_SOFT_DAYS,
+  DESCRIPTION_STALE_SOFT_SAMPLE_RATE,
+  ensureSectionDescriptions,
+} from "@/lib/planner/ensure-section-descriptions";
+import {
+  emptyIngestStepStats,
+  logIngestWorkflowSummary,
+  mergeIngestStepStats,
+  type IngestStepStats,
+} from "@/lib/ingest/stats";
 import { seoCrnTag } from "@/lib/seo/cache-tags";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { revalidateTag } from "next/cache";
 
 /** CRNs per workflow step — keeps each step under Vercel duration limits. */
@@ -20,32 +31,41 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-async function listMissingCrnsStep(termCode: string): Promise<string[]> {
+async function listStaleCrnsStep(termCode: string): Promise<{
+  crns: string[];
+  stats: IngestStepStats;
+}> {
   "use step";
   const db = createDb();
+  const stats = emptyIngestStepStats();
+  stats.db.selects += 1;
   const rows = await db
     .select({ crn: schema.sections.crn })
     .from(schema.sections)
     .where(
       and(
         eq(schema.sections.termCode, termCode),
-        isNull(schema.sections.descriptionsFetchedAt),
+        or(
+          isNull(schema.sections.descriptionsFetchedAt),
+          sql`${schema.sections.descriptionsFetchedAt} < now() - make_interval(days => ${DESCRIPTION_STALE_HARD_DAYS})`,
+          sql`(
+            ${schema.sections.descriptionsFetchedAt} < now() - make_interval(days => ${DESCRIPTION_STALE_SOFT_DAYS})
+            AND random() < ${DESCRIPTION_STALE_SOFT_SAMPLE_RATE}
+          )`,
+        ),
       ),
     );
   const crns = rows.map((r) => r.crn);
-  console.log(
-    `[descriptions-ingest] term ${termCode}: ${crns.length} CRNs missing descriptions`,
-  );
-  return crns;
+  return { crns, stats };
 }
 
 async function fetchDescriptionBatchStep(args: {
   termCode: string;
   crns: string[];
-}): Promise<{ fetched: number }> {
+}): Promise<{ fetched: number; stats: IngestStepStats }> {
   "use step";
   if (args.crns.length === 0) {
-    return { fetched: 0 };
+    return { fetched: 0, stats: emptyIngestStepStats() };
   }
   if (process.env.DEBUG_INGEST === "1") {
     console.log(
@@ -55,11 +75,11 @@ async function fetchDescriptionBatchStep(args: {
     );
   }
   const db = createDb();
-  await ensureSectionDescriptions(db, args.termCode, args.crns);
+  const stats = await ensureSectionDescriptions(db, args.termCode, args.crns);
   for (const crn of args.crns) {
     revalidateTag(seoCrnTag(args.termCode, crn), "max");
   }
-  return { fetched: args.crns.length };
+  return { fetched: args.crns.length, stats };
 }
 
 export async function descriptionsIngestWorkflow(
@@ -67,27 +87,45 @@ export async function descriptionsIngestWorkflow(
 ) {
   "use workflow";
   const { termCode } = input;
-  const missing = await listMissingCrnsStep(termCode);
-  if (missing.length === 0) {
+  const { crns: stale, stats: listStats } = await listStaleCrnsStep(termCode);
+  if (stale.length === 0) {
+    logIngestWorkflowSummary("descriptions-ingest", listStats, {
+      termCode,
+      batches: 0,
+      crns: 0,
+    });
     return {
       ok: true as const,
       termCode,
       batches: 0,
       crns: 0,
+      stats: listStats,
     };
   }
 
-  const batches = chunk(missing, BATCH_SIZE);
+  const batches = chunk(stale, BATCH_SIZE);
   let totalFetched = 0;
+  let stats = listStats;
   for (const crns of batches) {
-    const { fetched } = await fetchDescriptionBatchStep({ termCode, crns });
+    const { fetched, stats: batchStats } = await fetchDescriptionBatchStep({
+      termCode,
+      crns,
+    });
     totalFetched += fetched;
+    stats = mergeIngestStepStats(stats, batchStats);
   }
+
+  logIngestWorkflowSummary("descriptions-ingest", stats, {
+    termCode,
+    batches: batches.length,
+    crns: totalFetched,
+  });
 
   return {
     ok: true as const,
     termCode,
     batches: batches.length,
     crns: totalFetched,
+    stats,
   };
 }

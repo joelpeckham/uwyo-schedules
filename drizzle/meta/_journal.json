@@ -92,6 +92,13 @@
       "when": 1778100000000,
       "tag": "0012_drop_planner_time_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1778200000000,
+      "tag": "0013_section_content_hash",
+      "breakpoints": true
     }
   ]
 }

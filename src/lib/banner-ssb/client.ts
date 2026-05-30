@@ -6,6 +6,11 @@ import {
   SUBJECT_PAGE_SIZE,
   TERMS_MAX,
 } from "./constants";
+import {
+  emptyBannerStats,
+  recordBannerRequest,
+  type BannerCallStats,
+} from "@/lib/ingest/stats";
 
 /**
  * Per-request timeout for Banner HTTP calls. Banner SSB occasionally hangs
@@ -32,6 +37,7 @@ function delay(ms: number) {
 export class BannerSsbClient {
   private readonly ssbBase: string;
   private readonly cookieJar = new Map<string, string>();
+  private readonly bannerStats: BannerCallStats = emptyBannerStats();
   synchronizerToken: string | null = null;
   /** Final URL after redirects — Referer for XHR and POSTs */
   termSelectionReferer: string | null = null;
@@ -40,6 +46,14 @@ export class BannerSsbClient {
   constructor(origin: string) {
     const trimmed = origin.replace(/\/+$/, "");
     this.ssbBase = `${trimmed}/StudentRegistrationSsb/ssb`;
+  }
+
+  getBannerStats(): BannerCallStats {
+    return {
+      total: this.bannerStats.total,
+      retries: this.bannerStats.retries,
+      byEndpoint: { ...this.bannerStats.byEndpoint },
+    };
   }
 
   private cookieHeader(): string {
@@ -75,6 +89,7 @@ export class BannerSsbClient {
           ])
         : AbortSignal.timeout(BANNER_REQUEST_TIMEOUT_MS);
       try {
+        recordBannerRequest(this.bannerStats, url, this.ssbBase);
         const res = await fetch(url, {
           ...init,
           headers,
@@ -90,6 +105,7 @@ export class BannerSsbClient {
           this.mergeSetCookie(list);
         }
         if (res.status >= 500 && attempt < RETRY_ATTEMPTS) {
+          this.bannerStats.retries += 1;
           await delay(RETRY_BASE_MS * attempt);
           continue;
         }
@@ -100,6 +116,7 @@ export class BannerSsbClient {
         const isTimeout =
           err instanceof DOMException && err.name === "TimeoutError";
         if ((isAbort || isTimeout) && attempt < RETRY_ATTEMPTS) {
+          this.bannerStats.retries += 1;
           await delay(RETRY_BASE_MS * attempt);
           continue;
         }

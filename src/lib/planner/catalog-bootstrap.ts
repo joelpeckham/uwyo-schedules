@@ -541,7 +541,9 @@ export async function loadPlannerCatalogExamEnrichment(
 
   const crnList = await resolvePlannerCatalogAllCrns(db, termCode, plannerItems);
   try {
-    await ensureSectionDescriptions(db, termCode, crnList);
+    await ensureSectionDescriptions(db, termCode, crnList, {
+      onlyUncached: true,
+    });
   } catch (err) {
     console.error(
       "loadPlannerCatalogExamEnrichment: section descriptions fetch failed",

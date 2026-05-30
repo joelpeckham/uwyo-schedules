@@ -8,36 +8,29 @@ import {
   seoTermSubjectTag,
   seoTermTag,
 } from "@/lib/seo/cache-tags";
-import type { ParsedLinkedBundle } from "./mappers";
-import type { SectionGraph } from "./mappers";
+import {
+  computeSectionContentHash,
+  extractSectionSeatSnapshot,
+  sectionSeatsEqual,
+  type ParsedLinkedBundle,
+  type SectionGraph,
+  type SectionSeatSnapshot,
+} from "./mappers";
+import {
+  emptyDbStats,
+  type DbCallStats,
+  type SectionSyncStats,
+} from "@/lib/ingest/stats";
 
 const BATCH = 250;
 
-/** Cached Banner description fields keyed by CRN for re-ingest preservation. */
-type PreservedSectionDescription = {
-  courseDescription: string | null;
-  sectionInformationText: string | null;
-  descriptionsFetchedAt: Date | null;
+type ExistingSectionRow = {
+  crn: string;
+  contentHash: string | null;
+  seats: SectionSeatSnapshot;
 };
 
-/** Re-attach cached descriptions when a CRN survives a full term replace. */
-export function applyPreservedSectionDescriptions<
-  T extends {
-    crn: string;
-    courseDescription?: string | null;
-    sectionInformationText?: string | null;
-    descriptionsFetchedAt?: Date | null;
-  },
->(section: T, preservedByCrn: Map<string, PreservedSectionDescription>): T {
-  const prior = preservedByCrn.get(section.crn);
-  if (!prior) return section;
-  return {
-    ...section,
-    courseDescription: prior.courseDescription,
-    sectionInformationText: prior.sectionInformationText,
-    descriptionsFetchedAt: prior.descriptionsFetchedAt,
-  };
-}
+type DbTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -47,10 +40,210 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+async function deleteSectionChildrenForCrns(
+  tx: DbTransaction,
+  termCode: string,
+  crns: string[],
+  dbStats: DbCallStats,
+): Promise<void> {
+  if (crns.length === 0) return;
+  for (const part of chunk(crns, BATCH)) {
+    dbStats.deletes += 1;
+    await tx
+      .delete(schema.sectionAttributes)
+      .where(
+        and(
+          eq(schema.sectionAttributes.termCode, termCode),
+          inArray(schema.sectionAttributes.sectionCrn, part),
+        ),
+      );
+    dbStats.deletes += 1;
+    await tx
+      .delete(schema.sectionFaculty)
+      .where(
+        and(
+          eq(schema.sectionFaculty.termCode, termCode),
+          inArray(schema.sectionFaculty.sectionCrn, part),
+        ),
+      );
+    dbStats.deletes += 1;
+    await tx
+      .delete(schema.sectionMeetings)
+      .where(
+        and(
+          eq(schema.sectionMeetings.termCode, termCode),
+          inArray(schema.sectionMeetings.sectionCrn, part),
+        ),
+      );
+  }
+}
+
+async function deleteSectionsForCrns(
+  tx: DbTransaction,
+  termCode: string,
+  crns: string[],
+  dbStats: DbCallStats,
+): Promise<void> {
+  if (crns.length === 0) return;
+  for (const part of chunk(crns, BATCH)) {
+    dbStats.deletes += 1;
+    await tx
+      .delete(schema.sections)
+      .where(
+        and(
+          eq(schema.sections.termCode, termCode),
+          inArray(schema.sections.crn, part),
+        ),
+      );
+  }
+}
+
+async function insertSectionChildren(
+  tx: DbTransaction,
+  graphs: SectionGraph[],
+  dbStats: DbCallStats,
+): Promise<void> {
+  const meetings = graphs.flatMap((g) => g.meetings);
+  for (const part of chunk(meetings, BATCH)) {
+    if (part.length) {
+      dbStats.inserts += 1;
+      await tx.insert(schema.sectionMeetings).values(part);
+    }
+  }
+
+  const faculty = graphs.flatMap((g) => g.faculty);
+  for (const part of chunk(faculty, BATCH)) {
+    if (part.length) {
+      dbStats.inserts += 1;
+      await tx.insert(schema.sectionFaculty).values(part);
+    }
+  }
+
+  const attrs = graphs.flatMap((g) => g.attributes);
+  for (const part of chunk(attrs, BATCH)) {
+    if (part.length) {
+      dbStats.inserts += 1;
+      await tx.insert(schema.sectionAttributes).values(part);
+    }
+  }
+}
+
+async function insertSectionGraphs(
+  tx: DbTransaction,
+  graphs: SectionGraph[],
+  dbStats: DbCallStats,
+): Promise<void> {
+  for (const part of chunk(graphs, BATCH)) {
+    if (!part.length) continue;
+    dbStats.inserts += 1;
+    await tx
+      .insert(schema.sections)
+      .values(part.map((g) => g.section));
+    await insertSectionChildren(tx, part, dbStats);
+  }
+}
+
+function sectionContentUpdateValues(
+  graph: SectionGraph,
+): Omit<
+  typeof schema.sections.$inferInsert,
+  "courseDescription" | "sectionInformationText" | "descriptionsFetchedAt"
+> {
+  const { section } = graph;
+  return {
+    termCode: section.termCode,
+    crn: section.crn,
+    subject: section.subject,
+    courseNumber: section.courseNumber,
+    sequenceNumber: section.sequenceNumber,
+    subjectDescription: section.subjectDescription,
+    courseTitle: section.courseTitle,
+    subjectCourse: section.subjectCourse,
+    scheduleTypeDescription: section.scheduleTypeDescription,
+    partOfTerm: section.partOfTerm,
+    campusDescription: section.campusDescription,
+    instructionalMethod: section.instructionalMethod,
+    instructionalMethodDescription: section.instructionalMethodDescription,
+    creditHours: section.creditHours,
+    creditHourHigh: section.creditHourHigh,
+    creditHourLow: section.creditHourLow,
+    creditHourIndicator: section.creditHourIndicator,
+    enrollment: section.enrollment,
+    maximumEnrollment: section.maximumEnrollment,
+    seatsAvailable: section.seatsAvailable,
+    waitCapacity: section.waitCapacity,
+    waitCount: section.waitCount,
+    waitAvailable: section.waitAvailable,
+    openSection: section.openSection,
+    crossList: section.crossList,
+    crossListCapacity: section.crossListCapacity,
+    crossListCount: section.crossListCount,
+    crossListAvailable: section.crossListAvailable,
+    linkIdentifier: section.linkIdentifier,
+    isSectionLinked: section.isSectionLinked,
+    bannerRowId: section.bannerRowId,
+    contentHash: section.contentHash,
+    rawJson: section.rawJson,
+    updatedAt: new Date(),
+  };
+}
+
+type SyncTermPartition = {
+  insert: SectionGraph[];
+  seatOnly: SectionGraph[];
+  contentChanged: SectionGraph[];
+  removeCrns: string[];
+};
+
+/** Partition scraped graphs against existing DB rows for diff-based sync. */
+export function partitionTermGraphs(
+  graphs: SectionGraph[],
+  existingByCrn: Map<string, ExistingSectionRow>,
+): SyncTermPartition {
+  const insert: SectionGraph[] = [];
+  const seatOnly: SectionGraph[] = [];
+  const contentChanged: SectionGraph[] = [];
+  const scrapedCrns = new Set<string>();
+
+  for (const graph of graphs) {
+    const hash = computeSectionContentHash(graph);
+    graph.section.contentHash = hash;
+    scrapedCrns.add(graph.section.crn);
+
+    const existing = existingByCrn.get(graph.section.crn);
+    if (!existing) {
+      insert.push(graph);
+      continue;
+    }
+
+    const incomingSeats = extractSectionSeatSnapshot(graph.section);
+    if (
+      existing.contentHash === hash &&
+      sectionSeatsEqual(existing.seats, incomingSeats)
+    ) {
+      continue;
+    }
+
+    if (existing.contentHash === hash) {
+      seatOnly.push(graph);
+    } else {
+      contentChanged.push(graph);
+    }
+  }
+
+  const removeCrns: string[] = [];
+  for (const crn of existingByCrn.keys()) {
+    if (!scrapedCrns.has(crn)) removeCrns.push(crn);
+  }
+
+  return { insert, seatOnly, contentChanged, removeCrns };
+}
+
 /**
- * Replace all catalog rows for a term (full re-ingest). Caller supplies merged section graphs + linked bundles.
+ * Diff-based catalog sync for a term. Updates only changed sections instead of
+ * full delete-and-reinsert. Caller supplies merged section graphs + linked bundles.
  */
-export async function replaceTermData(
+export async function syncTermData(
   db: Database,
   params: {
     termCode: string;
@@ -59,7 +252,7 @@ export async function replaceTermData(
     linkedBundles: ParsedLinkedBundle[];
     hotRun: boolean;
   },
-): Promise<void> {
+): Promise<{ changed: boolean; sectionSync: SectionSyncStats; db: DbCallStats }> {
   const { termCode, termDescription, graphs, linkedBundles, hotRun } = params;
 
   const courseRows = new Map<
@@ -78,38 +271,72 @@ export async function replaceTermData(
     }
   }
 
+  let changed = false;
+  const dbStats = emptyDbStats();
+  dbStats.transactions = 1;
+  let partition: SyncTermPartition = {
+    insert: [],
+    seatOnly: [],
+    contentChanged: [],
+    removeCrns: [],
+  };
+
   await db.transaction(async (tx) => {
-    const priorDescriptions = await tx
+    dbStats.selects += 1;
+    const existingRows = await tx
       .select({
         crn: schema.sections.crn,
-        courseDescription: schema.sections.courseDescription,
-        sectionInformationText: schema.sections.sectionInformationText,
-        descriptionsFetchedAt: schema.sections.descriptionsFetchedAt,
+        contentHash: schema.sections.contentHash,
+        enrollment: schema.sections.enrollment,
+        maximumEnrollment: schema.sections.maximumEnrollment,
+        seatsAvailable: schema.sections.seatsAvailable,
+        waitCapacity: schema.sections.waitCapacity,
+        waitCount: schema.sections.waitCount,
+        waitAvailable: schema.sections.waitAvailable,
+        openSection: schema.sections.openSection,
+        crossListCapacity: schema.sections.crossListCapacity,
+        crossListCount: schema.sections.crossListCount,
+        crossListAvailable: schema.sections.crossListAvailable,
+        rawJson: schema.sections.rawJson,
       })
       .from(schema.sections)
       .where(eq(schema.sections.termCode, termCode));
 
-    const preservedByCrn = new Map<string, PreservedSectionDescription>();
-    for (const row of priorDescriptions) {
-      preservedByCrn.set(row.crn, {
-        courseDescription: row.courseDescription,
-        sectionInformationText: row.sectionInformationText,
-        descriptionsFetchedAt: row.descriptionsFetchedAt,
+    const existingByCrn = new Map<string, ExistingSectionRow>();
+    for (const row of existingRows) {
+      existingByCrn.set(row.crn, {
+        crn: row.crn,
+        contentHash: row.contentHash,
+        seats: {
+          enrollment: row.enrollment,
+          maximumEnrollment: row.maximumEnrollment,
+          seatsAvailable: row.seatsAvailable,
+          waitCapacity: row.waitCapacity,
+          waitCount: row.waitCount,
+          waitAvailable: row.waitAvailable,
+          openSection: row.openSection,
+          crossListCapacity: row.crossListCapacity,
+          crossListCount: row.crossListCount,
+          crossListAvailable: row.crossListAvailable,
+          rawJson: row.rawJson,
+        },
       });
     }
 
-    await tx
-      .delete(schema.sectionAttributes)
-      .where(eq(schema.sectionAttributes.termCode, termCode));
-    await tx
-      .delete(schema.sectionFaculty)
-      .where(eq(schema.sectionFaculty.termCode, termCode));
-    await tx
-      .delete(schema.sectionMeetings)
-      .where(eq(schema.sectionMeetings.termCode, termCode));
-    await tx.delete(schema.sections).where(eq(schema.sections.termCode, termCode));
-    await tx.delete(schema.courses).where(eq(schema.courses.termCode, termCode));
+    const partitioned = partitionTermGraphs(graphs, existingByCrn);
+    partition = partitioned;
+    const { insert, seatOnly, contentChanged, removeCrns } = partitioned;
 
+    if (
+      insert.length > 0 ||
+      seatOnly.length > 0 ||
+      contentChanged.length > 0 ||
+      removeCrns.length > 0
+    ) {
+      changed = true;
+    }
+
+    dbStats.inserts += 1;
     await tx
       .insert(schema.terms)
       .values({
@@ -132,48 +359,91 @@ export async function replaceTermData(
       });
 
     const coursesList = [...courseRows.values()];
-    for (const part of chunk(coursesList, BATCH)) {
-      if (part.length) await tx.insert(schema.courses).values(part);
+    if (coursesList.length > 0) {
+      for (const part of chunk(coursesList, BATCH)) {
+        dbStats.inserts += 1;
+        await tx
+          .insert(schema.courses)
+          .values(part)
+          .onConflictDoNothing();
+      }
     }
 
-    for (const part of chunk(graphs, BATCH)) {
-      if (!part.length) continue;
+    if (removeCrns.length > 0) {
+      await deleteSectionChildrenForCrns(tx, termCode, removeCrns, dbStats);
+      await deleteSectionsForCrns(tx, termCode, removeCrns, dbStats);
+    }
+
+    if (insert.length > 0) {
+      await insertSectionGraphs(tx, insert, dbStats);
+    }
+
+    for (const graph of seatOnly) {
+      const seats = extractSectionSeatSnapshot(graph.section);
+      dbStats.updates += 1;
       await tx
-        .insert(schema.sections)
-        .values(
-          part.map((g) =>
-            applyPreservedSectionDescriptions(g.section, preservedByCrn),
+        .update(schema.sections)
+        .set({
+          ...seats,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.sections.termCode, termCode),
+            eq(schema.sections.crn, graph.section.crn),
           ),
         );
     }
 
-    const meetings = graphs.flatMap((g) => g.meetings);
-    for (const part of chunk(meetings, BATCH)) {
-      if (part.length) await tx.insert(schema.sectionMeetings).values(part);
+    if (contentChanged.length > 0) {
+      const contentCrns = contentChanged.map((g) => g.section.crn);
+      await deleteSectionChildrenForCrns(tx, termCode, contentCrns, dbStats);
+
+      for (const graph of contentChanged) {
+        dbStats.updates += 1;
+        await tx
+          .update(schema.sections)
+          .set(sectionContentUpdateValues(graph))
+          .where(
+            and(
+              eq(schema.sections.termCode, termCode),
+              eq(schema.sections.crn, graph.section.crn),
+            ),
+          );
+      }
+
+      await insertSectionChildren(tx, contentChanged, dbStats);
     }
 
-    const faculty = graphs.flatMap((g) => g.faculty);
-    for (const part of chunk(faculty, BATCH)) {
-      if (part.length) await tx.insert(schema.sectionFaculty).values(part);
+    const activeCourseKeys = new Set(courseRows.keys());
+    dbStats.selects += 1;
+    const existingCourses = await tx
+      .select({
+        subject: schema.courses.subject,
+        courseNumber: schema.courses.courseNumber,
+      })
+      .from(schema.courses)
+      .where(eq(schema.courses.termCode, termCode));
+    const orphanCourses = existingCourses.filter(
+      (c) => !activeCourseKeys.has(`${c.subject}\0${c.courseNumber}`),
+    );
+    if (orphanCourses.length > 0) {
+      changed = true;
+      for (const c of orphanCourses) {
+        dbStats.deletes += 1;
+        await tx
+          .delete(schema.courses)
+          .where(
+            and(
+              eq(schema.courses.termCode, termCode),
+              eq(schema.courses.subject, c.subject),
+              eq(schema.courses.courseNumber, c.courseNumber),
+            ),
+          );
+      }
     }
 
-    const attrs = graphs.flatMap((g) => g.attributes);
-    for (const part of chunk(attrs, BATCH)) {
-      if (part.length) await tx.insert(schema.sectionAttributes).values(part);
-    }
-
-    /**
-     * Linked-bundle reconciliation in O(1) round-trips per category instead
-     * of one select-then-mutate cycle per bundle. We:
-     *   1. Bulk-select all existing bundles for the term.
-     *   2. Bulk-delete members for retained bundles in one statement.
-     *   3. Bulk-insert any new bundles, returning their ids.
-     *   4. Bulk-insert all members across every retained + new bundle.
-     *   5. Bulk-delete stale bundles (those not seen this ingest).
-     *
-     * Preserves `linked_bundles.id` across ingests so existing
-     * `planner_items.linked_bundle_id` references stay valid.
-     */
+    dbStats.selects += 1;
     const existingBundles = await tx
       .select({
         id: schema.linkedBundles.id,
@@ -202,10 +472,13 @@ export async function replaceTermData(
       }
     }
 
-    // Wipe member rows for every retained bundle in one statement instead of
-    // one delete per bundle.
+    if (newBundlesToInsert.length > 0) {
+      changed = true;
+    }
+
     if (retainedBundleIds.length > 0) {
       for (const part of chunk(retainedBundleIds, BATCH)) {
+        dbStats.deletes += 1;
         await tx
           .delete(schema.linkedBundleMembers)
           .where(inArray(schema.linkedBundleMembers.bundleId, part));
@@ -215,6 +488,7 @@ export async function replaceTermData(
     const newBundleIdByKey = new Map<string, number>();
     if (newBundlesToInsert.length > 0) {
       for (const part of chunk(newBundlesToInsert, BATCH)) {
+        dbStats.inserts += 1;
         const inserted = await tx
           .insert(schema.linkedBundles)
           .values(
@@ -241,7 +515,8 @@ export async function replaceTermData(
       }
     }
 
-    const allMemberRows: { bundleId: number; crn: string; position: number }[] = [];
+    const allMemberRows: { bundleId: number; crn: string; position: number }[] =
+      [];
     for (const { id, bundle } of reusedBundles) {
       bundle.memberCrns.forEach((crn, position) => {
         allMemberRows.push({ bundleId: id, crn, position });
@@ -259,14 +534,20 @@ export async function replaceTermData(
       });
     }
     for (const part of chunk(allMemberRows, BATCH)) {
-      if (part.length) await tx.insert(schema.linkedBundleMembers).values(part);
+      if (part.length) {
+        dbStats.inserts += 1;
+        await tx.insert(schema.linkedBundleMembers).values(part);
+      }
     }
 
     if (retainedBundleIds.length === 0) {
+      if (existingBundles.length > 0) changed = true;
+      dbStats.deletes += 1;
       await tx
         .delete(schema.linkedBundles)
         .where(eq(schema.linkedBundles.termCode, termCode));
     } else {
+      dbStats.deletes += 1;
       await tx
         .delete(schema.linkedBundles)
         .where(
@@ -278,15 +559,25 @@ export async function replaceTermData(
     }
   });
 
-  // After the transaction commits, invalidate the cached SEO surfaces tied
-  // to this term so the next request re-queries Postgres. We use the broad
-  // term tag plus per-(subject, courseNumber) tags so tightly-scoped course
-  // pages don't have to wait for the next `revalidate` window.
+  const sectionSync: SectionSyncStats = {
+    scraped: graphs.length,
+    unchanged:
+      graphs.length -
+      partition.insert.length -
+      partition.seatOnly.length -
+      partition.contentChanged.length,
+    inserted: partition.insert.length,
+    seatOnlyUpdates: partition.seatOnly.length,
+    contentChanged: partition.contentChanged.length,
+    removed: partition.removeCrns.length,
+    catalogChanged: changed,
+  };
+
+  if (!changed) {
+    return { changed: false, sectionSync, db: dbStats };
+  }
+
   const subjectsTouched = new Set<string>();
-  // Use a Map keyed by an internal string id to dedupe (subject, courseNumber)
-  // tuples without resorting to a delimiter-encoded key. Storing the tuple
-  // directly avoids subtle bugs if a subject or course number ever contained
-  // the previous `\0` delimiter (and makes the type explicit).
   const coursesTouched = new Map<
     string,
     { subject: string; courseNumber: string }
@@ -300,9 +591,6 @@ export async function replaceTermData(
       coursesTouched.set(id, { subject, courseNumber });
     }
   }
-  // `"max"` keeps stale-while-revalidate semantics — readers see the previous
-  // catalog snapshot until the new query lands instead of blocking on a cold
-  // re-fetch the moment the scrape finishes.
   revalidateTag(seoTermTag(termCode), "max");
   revalidateTag(SEO_SITEMAP_TAG, "max");
   for (const subject of subjectsTouched) {
@@ -311,4 +599,6 @@ export async function replaceTermData(
   for (const { subject, courseNumber } of coursesTouched.values()) {
     revalidateTag(seoCourseTag(subject, courseNumber), "max");
   }
+
+  return { changed: true, sectionSync, db: dbStats };
 }

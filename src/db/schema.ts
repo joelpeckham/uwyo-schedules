@@ -80,6 +80,8 @@ export const sections = pgTable(
     linkIdentifier: text("link_identifier"),
     isSectionLinked: boolean("is_section_linked"),
     bannerRowId: integer("banner_row_id"),
+    /** Stable hash of catalog fields (excludes seat counts and descriptions). */
+    contentHash: text("content_hash"),
     courseDescription: text("course_description"),
     sectionInformationText: text("section_information_text"),
     descriptionsFetchedAt: timestamp("descriptions_fetched_at", {
