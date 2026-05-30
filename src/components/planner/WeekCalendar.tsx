@@ -75,6 +75,10 @@ import {
 import { WeekCalendarDayGhosts } from "./week-calendar/WeekCalendarDayGhosts";
 import { WeekCalendarGrid } from "./week-calendar/WeekCalendarGrid";
 import { WeekCalendarShell } from "./week-calendar/WeekCalendarShell";
+import {
+  useHasMounted,
+  usePrefersReducedMotion,
+} from "@/components/landing/motion/usePrefersReducedMotion";
 import { ExportMenu } from "./ExportMenu";
 
 type Props = {
@@ -149,6 +153,12 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   const [swapError, setSwapError] = useState<string | null>(null);
   const [courseDragSession, setCourseDragSession] =
     useState<CourseDragSession | null>(null);
+  const hasMounted = useHasMounted();
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const enableMagicMove = hasMounted && !prefersReducedMotion;
+  const suspendMagicMoveLayout = courseDragSession != null;
+  const [instantBlockUpdate, setInstantBlockUpdate] = useState(false);
+  const blocksWhenInstantSetRef = useRef<readonly CalendarBlock[]>(blocks);
   const [isCourseDragging, setIsCourseDragging] = useState(false);
   const [, startSwapTransition] = useTransition();
   const dayStripRef = useRef<HTMLDivElement | null>(null);
@@ -171,6 +181,12 @@ export function WeekCalendar({ onBlockActivate }: Props) {
   useEffect(() => {
     courseDragSessionRef.current = courseDragSession;
   }, [courseDragSession]);
+
+  useEffect(() => {
+    if (!instantBlockUpdate) return;
+    if (blocksWhenInstantSetRef.current === blocks) return;
+    setInstantBlockUpdate(false);
+  }, [blocks, instantBlockUpdate]);
 
   const visibleDayIndices = useMemo(
     () => visibleDayIndicesMerged(blocks, blackouts.items),
@@ -657,45 +673,15 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     ],
   );
 
-  const onCourseBlockPointerDown = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>, block: CalendarBlock) => {
-      if (e.button !== 0) return;
-      setSwapError(null);
-      clearScheduleFeasibilityError();
-      const el = e.currentTarget;
-      const br = el.getBoundingClientRect();
-      courseGrabOffsetRef.current = {
-        dx: e.clientX - br.left,
-        dy: e.clientY - br.top,
-      };
-      coursePointerDownRef.current = {
-        block,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        pointerId: e.pointerId,
-      };
-      // Pointer capture is best-effort; if the browser rejects it we still
-      // fall back to global pointer events. Surfacing the error helps debug
-      // unusual hardware/browser interactions instead of silently swallowing
-      // the drag start.
-      try {
-        el.setPointerCapture(e.pointerId);
-        capturedCourseBlockElRef.current = el;
-      } catch (err) {
-        if (process.env.NODE_ENV === "development") {
-          console.warn(
-            "[planner] setPointerCapture failed; falling back to bubbled pointer events",
-            err,
-          );
-        }
-        capturedCourseBlockElRef.current = null;
-      }
-    },
-    [clearScheduleFeasibilityError],
-  );
+type CoursePointerLike = Pick<
+  PointerEvent,
+  "pointerId" | "clientX" | "clientY"
+> & {
+  preventDefault?: () => void;
+};
 
-  const onCourseBlockPointerMove = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
+  const processCoursePointerMove = useCallback(
+    (e: CoursePointerLike) => {
       const down = coursePointerDownRef.current;
       if (!down || e.pointerId !== down.pointerId) return;
 
@@ -706,7 +692,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       const dist = Math.hypot(dx, dy);
 
       if (!courseDragActiveRef.current && dist >= DRAG_THRESHOLD_PX) {
-        e.preventDefault();
+        e.preventDefault?.();
         courseDragActiveRef.current = true;
         courseDragGenRef.current += 1;
         setIsCourseDragging(true);
@@ -775,7 +761,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       }
 
       if (courseDragActiveRef.current && e.pointerId === down.pointerId) {
-        e.preventDefault();
+        e.preventDefault?.();
         const sess = courseDragSessionRef.current;
         if (!sess) return;
         const snapped = pickCourseSnap(
@@ -816,8 +802,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     ],
   );
 
-  const onCourseBlockPointerUp = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
+  const processCoursePointerUp = useCallback(
+    (e: CoursePointerLike) => {
       const down = coursePointerDownRef.current;
       if (!down || e.pointerId !== down.pointerId) return;
 
@@ -825,10 +811,13 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       const dy = e.clientY - down.clientY;
       const dist = Math.hypot(dx, dy);
 
-      try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
+      const cap = capturedCourseBlockElRef.current;
+      if (cap) {
+        try {
+          cap.releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
       }
 
       const session = courseDragSessionRef.current;
@@ -840,6 +829,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       if (wasDrag && session && e.pointerId === session.pointerId) {
         const { snapped, block } = session;
         if (snapped && snapped.crn !== block.sectionCrn) {
+          blocksWhenInstantSetRef.current = blocks;
+          setInstantBlockUpdate(true);
           endCourseDrag();
           const baseItem = plannerItemsById.get(block.plannerItemId);
           const item = effectivePlannerItems.find(
@@ -888,11 +879,102 @@ export function WeekCalendar({ onBlockActivate }: Props) {
       setSectionPinFromDrag,
       endCourseDrag,
       onBlockActivate,
+      blocks,
     ],
+  );
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!courseDragActiveRef.current) return;
+      const down = coursePointerDownRef.current;
+      if (!down || e.pointerId !== down.pointerId) return;
+      processCoursePointerMove(e);
+    };
+    const onUp = (e: PointerEvent) => {
+      const down = coursePointerDownRef.current;
+      if (!down || e.pointerId !== down.pointerId) return;
+      processCoursePointerUp(e);
+    };
+    const onCancel = (e: PointerEvent) => {
+      const down = coursePointerDownRef.current;
+      if (!down || e.pointerId !== down.pointerId) return;
+      const cap = capturedCourseBlockElRef.current;
+      if (cap) {
+        try {
+          cap.releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+      endCourseDrag();
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [endCourseDrag, processCoursePointerMove, processCoursePointerUp]);
+
+  const onCourseBlockPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>, block: CalendarBlock) => {
+      if (e.button !== 0) return;
+      setSwapError(null);
+      clearScheduleFeasibilityError();
+      const el = e.currentTarget;
+      const br = el.getBoundingClientRect();
+      courseGrabOffsetRef.current = {
+        dx: e.clientX - br.left,
+        dy: e.clientY - br.top,
+      };
+      coursePointerDownRef.current = {
+        block,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        pointerId: e.pointerId,
+      };
+      // Pointer capture is best-effort; if the browser rejects it we still
+      // fall back to global pointer events. Surfacing the error helps debug
+      // unusual hardware/browser interactions instead of silently swallowing
+      // the drag start.
+      try {
+        el.setPointerCapture(e.pointerId);
+        capturedCourseBlockElRef.current = el;
+      } catch (err) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn(
+            "[planner] setPointerCapture failed; falling back to bubbled pointer events",
+            err,
+          );
+        }
+        capturedCourseBlockElRef.current = null;
+      }
+    },
+    [clearScheduleFeasibilityError],
+  );
+
+  const onCourseBlockPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (courseDragActiveRef.current) return;
+      processCoursePointerMove(e);
+    },
+    [processCoursePointerMove],
+  );
+
+  const onCourseBlockPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (courseDragActiveRef.current) return;
+      processCoursePointerUp(e);
+    },
+    [processCoursePointerUp],
   );
 
   const onCourseBlockPointerCancel = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (courseDragActiveRef.current) return;
       if (coursePointerDownRef.current?.pointerId !== e.pointerId) return;
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
@@ -1222,6 +1304,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         blockHandlers={blockHandlers}
         blockClassName={blockClassName}
         renderBlockOverlay={renderBlockOverlay}
+        enableMagicMove={enableMagicMove}
+        suspendMagicMoveLayout={suspendMagicMoveLayout}
+        instantBlockUpdate={instantBlockUpdate}
       />
 
       <BusyTimeDialog

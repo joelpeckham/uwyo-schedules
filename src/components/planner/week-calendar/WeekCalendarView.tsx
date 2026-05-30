@@ -2,11 +2,13 @@
 
 import {
   memo,
+  useMemo,
   type CSSProperties,
   type ComponentProps,
   type ReactNode,
   type Ref,
 } from "react";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import {
   calendarBlockPaddingPx,
   calendarSecondaryTier,
@@ -19,6 +21,7 @@ import {
   DAY_LABELS,
 } from "./axis-constants";
 import { groupBlocksByDay } from "./group-by-day";
+import { buildMagicMoveIdMap } from "./magic-move";
 import type { CalendarBlock } from "@/lib/planner/data";
 import {
   LIKELY_EXAM_DISCLOSURE,
@@ -87,6 +90,12 @@ export type WeekCalendarViewProps = {
   gridMinWidthRem?: number;
   /** When true, the day column is visually de-emphasized (empty weekend). */
   isDayMuted?: (dayIndex: number) => boolean;
+  /** Keynote-style shared-layout animation when the solve changes. */
+  enableMagicMove?: boolean;
+  /** When true, keep magic-move wrappers but skip layout morph (e.g. during block drag). */
+  suspendMagicMoveLayout?: boolean;
+  /** When true, apply block updates instantly (e.g. after drag-drop commit). */
+  instantBlockUpdate?: boolean;
 };
 
 type BackToBackChip = {
@@ -97,6 +106,13 @@ type BackToBackChip = {
 };
 
 const BACK_TO_BACK_GAP_THRESHOLD_MIN = 15;
+
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+
+const MAGIC_MOVE_TRANSITION = {
+  layout: { duration: 0.2, ease: EASE_OUT },
+  opacity: { duration: 0.15 },
+} as const;
 
 function computeBackToBackChips(
   blocksByDay: Map<number, CalendarBlock[]>,
@@ -156,6 +172,9 @@ function WeekCalendarViewInner({
   viewportFloatingOverlay,
   gridMinWidthRem,
   isDayMuted,
+  enableMagicMove = false,
+  suspendMagicMoveLayout = false,
+  instantBlockUpdate = false,
 }: WeekCalendarViewProps) {
   const startHour = hourAxis[0] ?? 0;
   const startMin = startHour * 60;
@@ -173,6 +192,43 @@ function WeekCalendarViewInner({
   const layout: WeekCalendarLayout = { startMin, totalMin, gridHeightPx };
 
   const backToBackChipsByDay = computeBackToBackChips(blocksByDay);
+
+  const magicIdMap = useMemo(
+    () => (enableMagicMove ? buildMagicMoveIdMap(blocks) : null),
+    [blocks, enableMagicMove],
+  );
+
+  const dayStrip = (
+    <div ref={dayStripRef} className="flex min-w-0 flex-1">
+      {visibleDayIndices.map((dayIndex) => (
+        <WeekCalendarDayColumn
+          key={dayIndex}
+          dayIndex={dayIndex}
+          dayBlocks={blocksByDay.get(dayIndex) ?? []}
+          backToBackChips={backToBackChipsByDay.get(dayIndex) ?? []}
+          rowPx={rowPx}
+          hourAxis={hourAxis}
+          layout={layout}
+          gridHeightPx={gridHeightPx}
+          isMuted={isDayMuted?.(dayIndex) ?? false}
+          dayColumnClassName={dayColumnClassName}
+          dayColumnHandlers={dayColumnHandlers?.(dayIndex)}
+          renderDayOverlay={renderDayOverlay}
+          blockHandlers={blockHandlers}
+          renderBlockOverlay={renderBlockOverlay}
+          blockClassName={blockClassName}
+          enableMagicMove={enableMagicMove}
+          suspendMagicMoveLayout={suspendMagicMoveLayout}
+          instantBlockUpdate={instantBlockUpdate}
+          magicIdForBlock={
+            magicIdMap
+              ? (block) => magicIdMap.get(block.key) ?? block.key
+              : undefined
+          }
+        />
+      ))}
+    </div>
+  );
 
   return (
     <div
@@ -218,27 +274,11 @@ function WeekCalendarViewInner({
             ))}
           </div>
 
-          <div ref={dayStripRef} className="flex min-w-0 flex-1">
-            {visibleDayIndices.map((dayIndex) => (
-              <WeekCalendarDayColumn
-                key={dayIndex}
-                dayIndex={dayIndex}
-                dayBlocks={blocksByDay.get(dayIndex) ?? []}
-                backToBackChips={backToBackChipsByDay.get(dayIndex) ?? []}
-                rowPx={rowPx}
-                hourAxis={hourAxis}
-                layout={layout}
-                gridHeightPx={gridHeightPx}
-                isMuted={isDayMuted?.(dayIndex) ?? false}
-                dayColumnClassName={dayColumnClassName}
-                dayColumnHandlers={dayColumnHandlers?.(dayIndex)}
-                renderDayOverlay={renderDayOverlay}
-                blockHandlers={blockHandlers}
-                renderBlockOverlay={renderBlockOverlay}
-                blockClassName={blockClassName}
-              />
-            ))}
-          </div>
+          {enableMagicMove ? (
+            <LayoutGroup>{dayStrip}</LayoutGroup>
+          ) : (
+            dayStrip
+          )}
         </div>
         {viewportFloatingOverlay}
       </div>
@@ -263,6 +303,10 @@ type WeekCalendarDayColumnProps = {
   blockHandlers?: WeekCalendarViewProps["blockHandlers"];
   renderBlockOverlay?: WeekCalendarViewProps["renderBlockOverlay"];
   blockClassName?: WeekCalendarViewProps["blockClassName"];
+  enableMagicMove?: boolean;
+  suspendMagicMoveLayout?: boolean;
+  instantBlockUpdate?: boolean;
+  magicIdForBlock?: (block: CalendarBlock) => string;
 };
 
 const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
@@ -280,8 +324,157 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
   blockHandlers,
   renderBlockOverlay,
   blockClassName,
+  enableMagicMove = false,
+  suspendMagicMoveLayout = false,
+  instantBlockUpdate = false,
+  magicIdForBlock,
 }: WeekCalendarDayColumnProps) {
   const { startMin, totalMin } = layout;
+  const BlockTag = enableMagicMove ? motion.div : "div";
+
+  const blockNodes = dayBlocks.map((b) => {
+    const topPx =
+      ((b.startMinutes - startMin) / totalMin) * gridHeightPx;
+    const rawH =
+      ((b.endMinutes - b.startMinutes) / totalMin) * gridHeightPx;
+    const heightPx = Math.max(8, rawH);
+    const blockLayout: CalendarBlockLayout = {
+      block: b,
+      topPx,
+      heightPx,
+    };
+    const pad = calendarBlockPaddingPx(heightPx);
+    const titlePx = calendarTitleFontPx(heightPx);
+    const secondaryPx = Math.max(7, titlePx - 1);
+    const tier = calendarSecondaryTier(heightPx);
+    const loc = b.sublabel.trim();
+    const instRaw = b.instructorSublabel?.trim() ?? "";
+    const seats = b.seatsAvailable;
+    const seatChip =
+      typeof seats === "number" && Number.isFinite(seats)
+        ? `${Math.max(0, seats)} seat${seats === 1 ? "" : "s"}`
+        : "";
+    const inst =
+      instRaw && seatChip
+        ? `${instRaw} · ${seatChip}`
+        : instRaw || seatChip;
+    const examNote = b.likelyExam
+      ? b.likelyExamInferenceSource === "pattern"
+        ? LIKELY_EXAM_PATTERN_DISCLOSURE
+        : LIKELY_EXAM_DISCLOSURE
+      : "";
+    const examShort =
+      b.likelyExam && b.likelyExamLabel
+        ? b.likelyExamLabel
+        : b.likelyExam
+          ? likelyExamShortLabel("exam")
+          : "";
+    const titleAttr = [b.label, inst, loc, examNote]
+      .filter(Boolean)
+      .join(" · ");
+    let showInstructor = false;
+    let showLocation = false;
+    if (!b.likelyExam) {
+      if (tier === "both") {
+        showInstructor = inst.length > 0;
+        showLocation = loc.length > 0;
+      } else if (tier === "one") {
+        if (inst.length > 0) showInstructor = true;
+        else if (loc.length > 0) showLocation = true;
+      }
+    } else if (tier !== "none") {
+      showInstructor = inst.length > 0;
+    }
+    const examFooterPad = b.likelyExam
+      ? likelyExamFooterPaddingPx(heightPx)
+      : 0;
+    const titleClampClass =
+      tier === "none" || b.likelyExam
+        ? "line-clamp-1 min-h-0 truncate"
+        : "line-clamp-2 min-h-0 break-words";
+    const blockHandlerProps = blockHandlers?.(b);
+    const isInteractive = blockHandlerProps != null;
+    const extraClass = blockClassName?.(b);
+    const magicId = magicIdForBlock?.(b) ?? b.key;
+    const instant = enableMagicMove && instantBlockUpdate;
+
+    return (
+      <BlockTag
+        key={enableMagicMove ? magicId : b.key}
+        {...(enableMagicMove
+          ? {
+              layoutId: instant ? undefined : magicId,
+              layout:
+                instant || suspendMagicMoveLayout ? false : ("position" as const),
+              initial: instant ? false : { opacity: 0 },
+              animate: { opacity: 1 },
+              ...(instant ? {} : { exit: { opacity: 0 } }),
+              transition: instant ? { duration: 0 } : MAGIC_MOVE_TRANSITION,
+            }
+          : {})}
+        role={isInteractive ? "button" : undefined}
+        tabIndex={isInteractive ? 0 : undefined}
+        title={titleAttr}
+        aria-label={isInteractive ? titleAttr : undefined}
+        className={cn(
+          "absolute left-0.5 right-0.5 z-[20] overflow-hidden rounded-md border border-border bg-card text-left shadow-sm outline-none",
+          "flex min-h-0 flex-col justify-start gap-0.5 border-l-[4px]",
+          b.likelyExam && "relative",
+          b.likelyExam &&
+            "border-dashed border-muted-foreground/50 bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.04)_5px,rgba(0,0,0,0.04)_6px)]",
+          isInteractive &&
+            "touch-none select-none cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          extraClass,
+        )}
+        style={{
+          top: topPx,
+          height: heightPx,
+          borderLeftColor: b.color,
+          paddingTop: pad,
+          paddingBottom: pad + examFooterPad,
+          paddingLeft: Math.min(10, pad + 4),
+          paddingRight: Math.min(8, pad + 2),
+        }}
+        {...(blockHandlerProps ?? {})}
+      >
+        {renderBlockOverlay?.(b, blockLayout)}
+        <span
+          className={cn(
+            "min-w-0 font-mono font-medium leading-tight text-foreground",
+            titleClampClass,
+          )}
+          style={{ fontSize: titlePx }}
+        >
+          {b.label}
+        </span>
+        {showInstructor ? (
+          <span
+            className="line-clamp-1 min-w-0 font-mono leading-tight text-muted-foreground"
+            style={{ fontSize: secondaryPx }}
+          >
+            {inst}
+          </span>
+        ) : null}
+        {showLocation ? (
+          <span
+            className="line-clamp-1 min-w-0 font-mono leading-tight text-muted-foreground"
+            style={{ fontSize: secondaryPx }}
+          >
+            {loc}
+          </span>
+        ) : null}
+        {b.likelyExam ? (
+          <span
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] truncate border-t border-primary/30 bg-card/95 px-1 py-px text-center font-mono font-medium leading-tight text-primary"
+            style={{ fontSize: Math.max(7, secondaryPx) }}
+            title={examNote}
+          >
+            {examShort}
+          </span>
+        ) : null}
+      </BlockTag>
+    );
+  });
 
   return (
     <div
@@ -322,136 +515,11 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
                       </div>
                     );
       })}
-      {dayBlocks.map((b) => {
-                    const topPx =
-                      ((b.startMinutes - startMin) / totalMin) * gridHeightPx;
-                    const rawH =
-                      ((b.endMinutes - b.startMinutes) / totalMin) *
-                      gridHeightPx;
-                    const heightPx = Math.max(8, rawH);
-                    const blockLayout: CalendarBlockLayout = {
-                      block: b,
-                      topPx,
-                      heightPx,
-                    };
-                    const pad = calendarBlockPaddingPx(heightPx);
-                    const titlePx = calendarTitleFontPx(heightPx);
-                    const secondaryPx = Math.max(7, titlePx - 1);
-                    const tier = calendarSecondaryTier(heightPx);
-                    const loc = b.sublabel.trim();
-                    const instRaw = b.instructorSublabel?.trim() ?? "";
-                    const seats = b.seatsAvailable;
-                    const seatChip =
-                      typeof seats === "number" && Number.isFinite(seats)
-                        ? `${Math.max(0, seats)} seat${seats === 1 ? "" : "s"}`
-                        : "";
-                    const inst =
-                      instRaw && seatChip
-                        ? `${instRaw} · ${seatChip}`
-                        : instRaw || seatChip;
-                    const examNote = b.likelyExam
-                      ? b.likelyExamInferenceSource === "pattern"
-                        ? LIKELY_EXAM_PATTERN_DISCLOSURE
-                        : LIKELY_EXAM_DISCLOSURE
-                      : "";
-                    const examShort =
-                      b.likelyExam && b.likelyExamLabel
-                        ? b.likelyExamLabel
-                        : b.likelyExam
-                          ? likelyExamShortLabel("exam")
-                          : "";
-                    const titleAttr = [b.label, inst, loc, examNote]
-                      .filter(Boolean)
-                      .join(" · ");
-                    let showInstructor = false;
-                    let showLocation = false;
-                    if (!b.likelyExam) {
-                      if (tier === "both") {
-                        showInstructor = inst.length > 0;
-                        showLocation = loc.length > 0;
-                      } else if (tier === "one") {
-                        if (inst.length > 0) showInstructor = true;
-                        else if (loc.length > 0) showLocation = true;
-                      }
-                    } else if (tier !== "none") {
-                      showInstructor = inst.length > 0;
-                    }
-                    const examFooterPad = b.likelyExam
-                      ? likelyExamFooterPaddingPx(heightPx)
-                      : 0;
-                    const titleClampClass =
-                      tier === "none" || b.likelyExam
-                        ? "line-clamp-1 min-h-0 truncate"
-                        : "line-clamp-2 min-h-0 break-words";
-                    const blockHandlerProps = blockHandlers?.(b);
-                    const isInteractive = blockHandlerProps != null;
-                    const extraClass = blockClassName?.(b);
-                    return (
-                      <div
-                        key={b.key}
-                        role={isInteractive ? "button" : undefined}
-                        tabIndex={isInteractive ? 0 : undefined}
-                        title={titleAttr}
-                        aria-label={isInteractive ? titleAttr : undefined}
-                        className={cn(
-                          "absolute left-0.5 right-0.5 z-[20] overflow-hidden rounded-md border border-border bg-card text-left shadow-sm outline-none",
-                          "flex min-h-0 flex-col justify-start gap-0.5 border-l-[4px]",
-                          b.likelyExam && "relative",
-                          b.likelyExam &&
-                            "border-dashed border-muted-foreground/50 bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.04)_5px,rgba(0,0,0,0.04)_6px)]",
-                          isInteractive &&
-                            "touch-none select-none cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                          extraClass,
-                        )}
-                        style={{
-                          top: topPx,
-                          height: heightPx,
-                          borderLeftColor: b.color,
-                          paddingTop: pad,
-                          paddingBottom: pad + examFooterPad,
-                          paddingLeft: Math.min(10, pad + 4),
-                          paddingRight: Math.min(8, pad + 2),
-                        }}
-                        {...(blockHandlerProps ?? {})}
-                      >
-                        {renderBlockOverlay?.(b, blockLayout)}
-                        <span
-                          className={cn(
-                            "min-w-0 font-mono font-medium leading-tight text-foreground",
-                            titleClampClass,
-                          )}
-                          style={{ fontSize: titlePx }}
-                        >
-                          {b.label}
-                        </span>
-                        {showInstructor ? (
-                          <span
-                            className="line-clamp-1 min-w-0 font-mono leading-tight text-muted-foreground"
-                            style={{ fontSize: secondaryPx }}
-                          >
-                            {inst}
-                          </span>
-                        ) : null}
-                        {showLocation ? (
-                          <span
-                            className="line-clamp-1 min-w-0 font-mono leading-tight text-muted-foreground"
-                            style={{ fontSize: secondaryPx }}
-                          >
-                            {loc}
-                          </span>
-                        ) : null}
-                        {b.likelyExam ? (
-                          <span
-                            className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] truncate border-t border-primary/30 bg-card/95 px-1 py-px text-center font-mono font-medium leading-tight text-primary"
-                            style={{ fontSize: Math.max(7, secondaryPx) }}
-                            title={examNote}
-                          >
-                            {examShort}
-                          </span>
-                        ) : null}
-                      </div>
-        );
-      })}
+      {enableMagicMove ? (
+        <AnimatePresence mode="popLayout">{blockNodes}</AnimatePresence>
+      ) : (
+        blockNodes
+      )}
     </div>
   );
 });
