@@ -2,10 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   demoCandidateOpacity,
-  demoConflictTargetOpacity,
   demoHeldOpacity,
+  demoSnapTargetOpacity,
   isDemoDragging,
-  isDemoDropping,
   isDemoResolved,
   lerpKeyframes,
 } from "@/components/landing/use-landing-demo-geometry";
@@ -33,12 +32,12 @@ describe("landing-preview-demo", () => {
     expect(mathWed?.startMinutes).toBe(10 * 60);
   });
 
-  it("flags one conflicting candidate slot on Wednesday morning", () => {
-    const conflictSlots = LANDING_DEMO_CANDIDATE_SLOTS.filter(
-      (slot) => slot.conflict,
+  it("flags one snap-target candidate slot on Wednesday morning", () => {
+    const snapSlots = LANDING_DEMO_CANDIDATE_SLOTS.filter(
+      (slot) => slot.isSnapTarget,
     );
-    expect(conflictSlots).toHaveLength(1);
-    expect(conflictSlots[0]).toMatchObject(LANDING_DEMO_TARGET);
+    expect(snapSlots).toHaveLength(1);
+    expect(snapSlots[0]).toMatchObject(LANDING_DEMO_TARGET);
   });
 
   it("moves ENGL to Wednesday and shifts MATH to the afternoon when resolved", () => {
@@ -71,12 +70,10 @@ describe("landing demo scroll helpers", () => {
     expect(lerpKeyframes(1, [0, 1], [10, 20])).toBe(20);
   });
 
-  it("tracks drag, drop, and resolve phases", () => {
+  it("tracks drag and resolve phases", () => {
     expect(isDemoDragging(0.1)).toBe(false);
     expect(isDemoDragging(0.4)).toBe(true);
     expect(isDemoDragging(0.63)).toBe(false);
-    expect(isDemoDropping(0.54)).toBe(false);
-    expect(isDemoDropping(0.58)).toBe(true);
     expect(isDemoResolved(0.61)).toBe(false);
     expect(isDemoResolved(0.62)).toBe(true);
   });
@@ -84,9 +81,10 @@ describe("landing demo scroll helpers", () => {
   it("fades held card and candidate overlays during drag window", () => {
     expect(demoHeldOpacity(0.1)).toBe(0);
     expect(demoHeldOpacity(0.4)).toBe(1);
+    expect(demoHeldOpacity(0.62)).toBe(0);
     expect(demoCandidateOpacity(0.1)).toBe(0);
     expect(demoCandidateOpacity(0.4)).toBeGreaterThan(0);
-    expect(demoConflictTargetOpacity(0.5)).toBeGreaterThan(
+    expect(demoSnapTargetOpacity(0.5)).toBeGreaterThan(
       demoCandidateOpacity(0.5),
     );
   });

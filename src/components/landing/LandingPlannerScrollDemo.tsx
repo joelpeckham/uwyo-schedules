@@ -27,13 +27,12 @@ import {
 } from "@/components/landing/motion/usePrefersReducedMotion";
 import {
   demoCandidateOpacity,
-  demoConflictTargetOpacity,
   demoCursorPath,
   demoCursorScale,
   demoHeldCardPath,
   demoHeldOpacity,
+  demoSnapTargetOpacity,
   isDemoDragging,
-  isDemoDropping,
   isDemoResolved,
   useLandingDemoGeometry,
 } from "@/components/landing/use-landing-demo-geometry";
@@ -46,13 +45,11 @@ import {
 } from "@/components/planner/week-calendar/constants";
 import {
   LANDING_DEMO_CANDIDATE_SLOTS,
-  LANDING_DEMO_CONFLICT_BLOCK_KEY,
   LANDING_DEMO_DRAGGABLE_BLOCK,
   LANDING_DEMO_DRAGGABLE_KEY,
   LANDING_DEMO_RESOLVED_BLOCKS,
   LANDING_DEMO_SOURCE,
   LANDING_DEMO_START_BLOCKS,
-  LANDING_DEMO_TARGET,
 } from "@/lib/planner/landing-preview-demo";
 import { cn } from "@/lib/utils";
 
@@ -140,11 +137,14 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [phase, setPhase] = useState<"start" | "resolved">("start");
 
+  const demoSnapTarget = LANDING_DEMO_CANDIDATE_SLOTS.find(
+    (slot) => slot.isSnapTarget,
+  )!;
   const geometry = useLandingDemoGeometry(
     { overlayRootRef, weekHeaderRef, viewportRef, dayStripRef },
     rowPx,
     LANDING_DEMO_SOURCE,
-    LANDING_DEMO_TARGET,
+    demoSnapTarget,
   );
   const geometryRef = useRef(geometry);
 
@@ -247,12 +247,11 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
   }, [applyProgress, readSceneProgress]);
 
   const dragging = isDemoDragging(scrollProgress);
-  const dropping = isDemoDropping(scrollProgress);
   const showCandidates = dragging && phase === "start";
   const blocks =
     phase === "resolved" ? LANDING_DEMO_RESOLVED_BLOCKS : LANDING_DEMO_START_BLOCKS;
   const candidateOpacity = demoCandidateOpacity(scrollProgress);
-  const conflictTargetOpacity = demoConflictTargetOpacity(scrollProgress);
+  const snapTargetOpacity = demoSnapTargetOpacity(scrollProgress);
 
   const calendar = (
     <div className="pointer-events-none">
@@ -280,23 +279,13 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
             weekHeaderRef={weekHeaderRef}
             viewportRef={viewportRef}
             dayStripRef={dayStripRef}
-            blockClassName={(block) => {
-              if (
-                block.key === LANDING_DEMO_DRAGGABLE_KEY &&
-                dragging &&
-                phase === "start"
-              ) {
-                return "opacity-0";
-              }
-              if (
-                block.key === LANDING_DEMO_CONFLICT_BLOCK_KEY &&
-                dropping &&
-                phase === "start"
-              ) {
-                return "ring-2 ring-destructive/80 ring-offset-1 ring-offset-card";
-              }
-              return undefined;
-            }}
+            enableMagicMove
+            suspendMagicMoveLayout={dragging}
+            blockDimmed={(block) =>
+              block.key === LANDING_DEMO_DRAGGABLE_KEY &&
+              dragging &&
+              phase === "start"
+            }
             renderBlockOverlay={(block) =>
               isLandingDemoPinnedBlock(block) ? <LandingDemoPinBadge /> : null
             }
@@ -312,9 +301,9 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
                 <>
                   {daySlots.map((slot) => {
                     const { topPx, heightPx } = slotOverlayStyle(slot, layout);
-                    const isConflictTarget = slot.conflict === true;
-                    const opacity = isConflictTarget
-                      ? conflictTargetOpacity
+                    const isSnapTarget = slot.isSnapTarget === true;
+                    const opacity = isSnapTarget
+                      ? snapTargetOpacity
                       : candidateOpacity;
 
                     if (opacity <= 0) return null;
@@ -323,10 +312,10 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
                       <div
                         key={`${slot.dayIndex}-${slot.startMinutes}`}
                         className={cn(
-                          "pointer-events-none absolute inset-x-0.5 z-[15] rounded-md border-2 border-dashed",
-                          isConflictTarget
-                            ? "border-destructive/60 bg-destructive/10"
-                            : "border-primary/50 bg-primary/5",
+                          "pointer-events-none absolute inset-x-0.5 z-[30] rounded-md border border-dashed",
+                          isSnapTarget
+                            ? "border-primary/70 bg-primary/10 ring-1 ring-primary/40"
+                            : "border-muted-foreground/50 bg-muted/25",
                         )}
                         style={{
                           top: topPx,
@@ -362,10 +351,10 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
                     borderLeftColor: LANDING_DEMO_DRAGGABLE_BLOCK.color,
                   }}
                 >
-                  <span className="line-clamp-2 font-mono text-[10px] font-medium leading-tight text-foreground">
+                  <span className="line-clamp-3 font-mono text-[10px] font-medium leading-tight text-foreground">
                     {LANDING_DEMO_DRAGGABLE_BLOCK.label}
                   </span>
-                  <span className="line-clamp-1 font-mono text-[9px] text-muted-foreground">
+                  <span className="line-clamp-2 font-mono text-[9px] text-muted-foreground">
                     {LANDING_DEMO_DRAGGABLE_BLOCK.sublabel}
                   </span>
                 </div>

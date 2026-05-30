@@ -8,7 +8,8 @@ type LandingDemoCandidateSlot = {
   dayIndex: number;
   startMinutes: number;
   endMinutes: number;
-  conflict?: boolean;
+  /** Ghost slot that matches the cursor snap destination during drag. */
+  isSnapTarget?: boolean;
 };
 
 function block(
@@ -65,7 +66,7 @@ export const LANDING_DEMO_CANDIDATE_SLOTS: readonly LandingDemoCandidateSlot[] =
       dayIndex: 2,
       startMinutes: 10 * 60,
       endMinutes: 11 * 60 + 15,
-      conflict: true,
+      isSnapTarget: true,
     },
     { dayIndex: 2, startMinutes: 13 * 60, endMinutes: 14 * 60 + 15 },
     { dayIndex: 3, startMinutes: 14 * 60, endMinutes: 15 * 60 + 15 },

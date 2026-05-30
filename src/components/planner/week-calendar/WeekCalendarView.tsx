@@ -85,6 +85,8 @@ export type WeekCalendarViewProps = {
   ) => ReactNode;
   /** Per-block extra class (e.g. opacity-35 for the drag source). */
   blockClassName?: (block: CalendarBlock) => string | undefined;
+  /** When true, block renders at 35% opacity (framer-safe when magic move is on). */
+  blockDimmed?: (block: CalendarBlock) => boolean;
   /** Floating overlay rendered inside the scrollable viewport (drag float). */
   viewportFloatingOverlay?: ReactNode;
   /** Min width of the inner grid in rem; auto-derived from day count when omitted. */
@@ -170,6 +172,7 @@ function WeekCalendarViewInner({
   blockHandlers,
   renderBlockOverlay,
   blockClassName,
+  blockDimmed,
   viewportFloatingOverlay,
   gridMinWidthRem,
   isDayMuted,
@@ -218,6 +221,7 @@ function WeekCalendarViewInner({
           blockHandlers={blockHandlers}
           renderBlockOverlay={renderBlockOverlay}
           blockClassName={blockClassName}
+          blockDimmed={blockDimmed}
           enableMagicMove={enableMagicMove}
           suspendMagicMoveLayout={suspendMagicMoveLayout}
           instantBlockUpdate={instantBlockUpdate}
@@ -304,6 +308,7 @@ type WeekCalendarDayColumnProps = {
   blockHandlers?: WeekCalendarViewProps["blockHandlers"];
   renderBlockOverlay?: WeekCalendarViewProps["renderBlockOverlay"];
   blockClassName?: WeekCalendarViewProps["blockClassName"];
+  blockDimmed?: WeekCalendarViewProps["blockDimmed"];
   enableMagicMove?: boolean;
   suspendMagicMoveLayout?: boolean;
   instantBlockUpdate?: boolean;
@@ -325,6 +330,7 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
   blockHandlers,
   renderBlockOverlay,
   blockClassName,
+  blockDimmed,
   enableMagicMove = false,
   suspendMagicMoveLayout = false,
   instantBlockUpdate = false,
@@ -397,6 +403,7 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
     const blockHandlerProps = blockHandlers?.(b);
     const isInteractive = blockHandlerProps != null;
     const extraClass = blockClassName?.(b);
+    const dimmed = blockDimmed?.(b) ?? false;
     const magicId = magicIdForBlock?.(b) ?? b.key;
     const instant = enableMagicMove && instantBlockUpdate;
 
@@ -409,7 +416,7 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
               layout:
                 instant || suspendMagicMoveLayout ? false : ("position" as const),
               initial: instant ? false : { opacity: 0 },
-              animate: { opacity: 1 },
+              animate: { opacity: dimmed ? 0.35 : 1 },
               ...(instant ? {} : { exit: { opacity: 0 } }),
               transition: instant ? { duration: 0 } : MAGIC_MOVE_TRANSITION,
             }
@@ -426,6 +433,7 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
             "border-dashed border-muted-foreground/50 bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.04)_5px,rgba(0,0,0,0.04)_6px)]",
           isInteractive &&
             "touch-none select-none cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          !enableMagicMove && dimmed && "opacity-35",
           extraClass,
         )}
         style={{

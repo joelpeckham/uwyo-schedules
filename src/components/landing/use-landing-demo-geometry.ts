@@ -251,7 +251,7 @@ export function demoHeldCardPath(
 }
 
 export function demoHeldOpacity(progress: number): number {
-  return lerpKeyframes(progress, [0.18, 0.2, 0.58, 0.64], [0, 1, 1, 0]);
+  return lerpKeyframes(progress, [0.18, 0.2, 0.58, 0.62], [0, 1, 1, 0]);
 }
 
 export function demoCursorScale(progress: number): number {
@@ -262,8 +262,8 @@ export function demoCandidateOpacity(progress: number): number {
   return lerpKeyframes(progress, [0.18, 0.24, 0.54, 0.62], [0, 0.55, 0.55, 0]);
 }
 
-/** Stronger highlight on the conflicting target slot as the cursor nears. */
-export function demoConflictTargetOpacity(progress: number): number {
+/** Stronger highlight on the snapped destination slot as the cursor nears. */
+export function demoSnapTargetOpacity(progress: number): number {
   const base = demoCandidateOpacity(progress);
   if (base <= 0) return 0;
   const boost = lerpKeyframes(progress, [0.35, 0.55], [0, 0.45]);
@@ -272,10 +272,6 @@ export function demoConflictTargetOpacity(progress: number): number {
 
 export function isDemoDragging(progress: number): boolean {
   return progress > 0.2 && progress < 0.62;
-}
-
-export function isDemoDropping(progress: number): boolean {
-  return progress >= 0.55 && progress < 0.62;
 }
 
 export function isDemoResolved(progress: number): boolean {

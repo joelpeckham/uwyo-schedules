@@ -1023,15 +1023,12 @@ type CoursePointerLike = Pick<
     ],
   );
 
-  const blockClassName = useCallback(
-    (b: CalendarBlock) => {
-      const dimSource =
-        !!courseDragSession &&
-        courseDragSession.block.key === b.key &&
-        (courseDragSession.ghosts.length > 0 ||
-          courseDragSession.snapped != null);
-      return dimSource ? "opacity-35" : undefined;
-    },
+  const blockDimmed = useCallback(
+    (b: CalendarBlock) =>
+      !!courseDragSession &&
+      courseDragSession.block.key === b.key &&
+      (courseDragSession.ghosts.length > 0 ||
+        courseDragSession.snapped != null),
     [courseDragSession],
   );
 
@@ -1198,7 +1195,7 @@ type CoursePointerLike = Pick<
         dayColumnHandlers={dayColumnHandlers}
         renderDayOverlay={renderDayOverlay}
         blockHandlers={blockHandlers}
-        blockClassName={blockClassName}
+        blockDimmed={blockDimmed}
         renderBlockOverlay={renderBlockOverlay}
         enableMagicMove={enableMagicMove}
         suspendMagicMoveLayout={suspendMagicMoveLayout}
