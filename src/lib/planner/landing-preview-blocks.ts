@@ -1,6 +1,5 @@
 import type { CalendarBlock } from "@/lib/planner/data";
 
-export const LANDING_PREVIEW_PLANNER_ITEM_COUNT = 3;
 export const LANDING_PREVIEW_CREDIT_HOURS = 10;
 
 const COLOR_MATH = "#C4733F";

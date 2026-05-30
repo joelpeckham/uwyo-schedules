@@ -6,7 +6,7 @@ import { SITE_TAGLINE } from "@/lib/seo/site";
 export function HeroSection() {
   return (
     <section
-      className="relative overflow-hidden border-b border-border bg-background px-4 py-16 sm:px-6 sm:py-24 lg:py-28"
+      className="relative overflow-x-hidden border-b border-border bg-background px-4 py-16 sm:px-6 sm:py-24 lg:py-28"
       aria-labelledby="landing-hero-heading"
     >
       <div
