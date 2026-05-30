@@ -1,6 +1,8 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
+
+import { useHasMounted, usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
 type ParallaxTopoProps = {
   className?: string;
@@ -8,7 +10,8 @@ type ParallaxTopoProps = {
 };
 
 export function ParallaxTopo({ className, opacity = 0.12 }: ParallaxTopoProps) {
-  const reduced = useReducedMotion();
+  const reduced = usePrefersReducedMotion();
+  const hasMounted = useHasMounted();
 
   const style = {
     backgroundImage: "url(/brand/topo-divider.svg)",
@@ -18,14 +21,8 @@ export function ParallaxTopo({ className, opacity = 0.12 }: ParallaxTopoProps) {
     opacity,
   };
 
-  if (reduced) {
-    return (
-      <div
-        className={className}
-        aria-hidden
-        style={style}
-      />
-    );
+  if (hasMounted && reduced) {
+    return <div className={className} aria-hidden style={style} />;
   }
 
   return (

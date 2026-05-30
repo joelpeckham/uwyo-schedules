@@ -11,7 +11,7 @@ export function CatalogBrowseSection({
       className="border-b border-border bg-muted/10 px-4 py-14 sm:px-6 sm:py-16"
       aria-labelledby="catalog-browse-heading"
     >
-      <div className="mx-auto max-w-6xl lg:max-w-[90rem]">
+      <div className="mx-auto max-w-6xl lg:max-w-[84rem]">
         <Reveal>
           <h2
             id="catalog-browse-heading"

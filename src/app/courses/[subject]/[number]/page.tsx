@@ -96,7 +96,7 @@ export default async function CourseDetailPage({ params }: Props) {
   const courseLabel = `${detail.subject} ${detail.courseNumber}`;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:max-w-[90rem]">
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:max-w-[84rem]">
       <JsonLd data={courseJson} />
       <SeoBreadcrumbs
         items={[

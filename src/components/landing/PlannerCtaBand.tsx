@@ -8,7 +8,7 @@ export function PlannerCtaBand() {
       aria-labelledby="planner-cta-heading"
     >
       <ParallaxTopo className="pointer-events-none absolute inset-0" opacity={0.14} />
-      <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-8 sm:flex-row sm:items-center sm:justify-between lg:max-w-[90rem]">
+      <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-8 sm:flex-row sm:items-center sm:justify-between lg:max-w-[84rem]">
         <Reveal className="max-w-xl">
           <h2
             id="planner-cta-heading"

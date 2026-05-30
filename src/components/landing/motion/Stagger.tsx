@@ -1,7 +1,9 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
+
+import { useHasMounted, usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
@@ -28,14 +30,16 @@ export function Stagger({
   stagger = 0.1,
   as = "div",
 }: StaggerProps) {
-  const reduced = useReducedMotion();
+  const reduced = usePrefersReducedMotion();
+  const hasMounted = useHasMounted();
 
-  if (reduced) {
+  if (hasMounted && reduced) {
     const Tag = as;
     return <Tag className={className}>{children}</Tag>;
   }
 
-  const Component = as === "ol" ? motion.ol : as === "ul" ? motion.ul : motion.div;
+  const Component =
+    as === "ol" ? motion.ol : as === "ul" ? motion.ul : motion.div;
 
   return (
     <Component
@@ -64,9 +68,10 @@ export function StaggerItem({
   className,
   hoverLift = false,
 }: StaggerItemProps) {
-  const reduced = useReducedMotion();
+  const reduced = usePrefersReducedMotion();
+  const hasMounted = useHasMounted();
 
-  if (reduced) {
+  if (hasMounted && reduced) {
     return <li className={className}>{children}</li>;
   }
 
@@ -92,9 +97,10 @@ export function StaggerChipItem({
   children: ReactNode;
   className?: string;
 }) {
-  const reduced = useReducedMotion();
+  const reduced = usePrefersReducedMotion();
+  const hasMounted = useHasMounted();
 
-  if (reduced) {
+  if (hasMounted && reduced) {
     return <li className={className}>{children}</li>;
   }
 

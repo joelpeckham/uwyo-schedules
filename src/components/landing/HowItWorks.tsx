@@ -36,7 +36,7 @@ export function HowItWorks() {
       className="border-b border-border bg-muted/15 px-4 py-14 sm:px-6 sm:py-16"
       aria-labelledby="how-it-works-heading"
     >
-      <div className="mx-auto max-w-6xl lg:max-w-[90rem]">
+      <div className="mx-auto max-w-6xl lg:max-w-[84rem]">
         <Reveal>
           <h2
             id="how-it-works-heading"

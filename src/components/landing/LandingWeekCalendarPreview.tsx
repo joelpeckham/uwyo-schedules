@@ -1,12 +1,13 @@
 "use client";
 
-import { useInView, useReducedMotion } from "motion/react";
+import { useInView } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  LANDING_DEMO_VIEWPORT_HEIGHT_INTRO,
+  LANDING_DEMO_VIEWPORT_HEIGHT,
   useLandingDemoRowPx,
 } from "@/components/landing/landing-demo-layout";
+import { usePrefersReducedMotion } from "@/components/landing/motion/usePrefersReducedMotion";
 import {
   isLandingDemoPinnedBlock,
   LandingDemoPinBadge,
@@ -28,7 +29,7 @@ export function LandingWeekCalendarPreview() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const rowPx = useLandingDemoRowPx(viewportRef, hourCount);
   const isInView = useInView(containerRef, { once: true, margin: "-10% 0px" });
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = usePrefersReducedMotion();
   const [revealedCount, setRevealedCount] = useState(0);
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export function LandingWeekCalendarPreview() {
           visibleDayIndices={PLANNER_WEEKDAY_DAY_INDICES}
           rowPx={rowPx}
           hourAxis={LANDING_PREVIEW_HOUR_AXIS}
-          viewportStyle={{ height: LANDING_DEMO_VIEWPORT_HEIGHT_INTRO }}
+          viewportStyle={{ height: LANDING_DEMO_VIEWPORT_HEIGHT }}
           gridMinWidthRem={PLANNER_WEEKDAY_GRID_MIN_WIDTH_REM}
           viewportRef={viewportRef}
           renderBlockOverlay={(block) =>

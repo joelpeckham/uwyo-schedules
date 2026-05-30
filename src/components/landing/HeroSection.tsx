@@ -23,7 +23,7 @@ export function HeroSection() {
           backgroundSize: "auto 120%",
         }}
       />
-      <div className="relative mx-auto max-w-6xl lg:max-w-[90rem]">
+      <div className="relative mx-auto max-w-6xl lg:max-w-[84rem]">
         <Reveal>
           <p className="font-heading text-sm font-medium tracking-wide text-muted-foreground">
             University of Wyoming · Laramie
@@ -44,7 +44,7 @@ export function HeroSection() {
           </h2>
         </Reveal>
         <Reveal delay={0.22}>
-          <p className="mt-6 max-w-prose text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl">
+          <p className="mt-6 max-w-prose text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
             Add Wyoming courses from the live catalog, block busy times, and set
             instructor preferences. The planner keeps your calendar in sync as
             you pin sections, try same-type swaps, compare alternate weeks, and

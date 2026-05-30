@@ -5,7 +5,6 @@ import {
   motion,
   useMotionValue,
   useMotionValueEvent,
-  useReducedMotion,
   useScroll,
 } from "motion/react";
 import {
@@ -13,7 +12,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -22,14 +20,15 @@ import {
   LandingDemoPinBadge,
 } from "@/components/landing/landing-demo-pin";
 import {
-  LANDING_DEMO_MOBILE_SECTION_OFFSET_CLASS,
   LANDING_DEMO_MOBILE_STICKY_SHELL_CLASS,
   LANDING_DEMO_VIEWPORT_HEIGHT,
-  LANDING_DEMO_VIEWPORT_HEIGHT_INTRO,
-  useLandingDemoCalendarHeight,
   useLandingDemoRowPx,
 } from "@/components/landing/landing-demo-layout";
 import { LandingWeekCalendarPreview } from "@/components/landing/LandingWeekCalendarPreview";
+import {
+  useHasMounted,
+  usePrefersReducedMotion,
+} from "@/components/landing/motion/usePrefersReducedMotion";
 import {
   demoCandidateOpacity,
   demoConflictTargetOpacity,
@@ -63,57 +62,27 @@ import { cn } from "@/lib/utils";
 
 const SCENE_HEIGHT_VH = 220;
 
-function useIsClient() {
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-}
-
 function LandingPlannerDemoLayout({
   heading,
   calendar,
-  mobileStickyActive,
   className,
 }: {
   heading: ReactNode;
   calendar: ReactNode;
-  mobileStickyActive: boolean;
   className?: string;
 }) {
-  const calendarMeasureRef = useRef<HTMLDivElement>(null);
-  const layoutStyle = useLandingDemoCalendarHeight(
-    calendarMeasureRef,
-    mobileStickyActive,
-  );
-
   return (
     <div
       className={cn(
-        "relative",
-        mobileStickyActive ? "max-lg:h-full" : "max-lg:flex max-lg:flex-col",
+        "relative max-lg:flex max-lg:flex-col",
         "lg:grid lg:grid-cols-3 lg:items-start lg:gap-8",
         className,
       )}
-      style={layoutStyle}
     >
-      <aside
-        className={cn(
-          mobileStickyActive &&
-            "max-lg:absolute max-lg:inset-x-0 max-lg:bottom-[calc(50%+var(--landing-demo-cal-h)/2+1rem)]",
-          "lg:col-span-1 lg:pt-12",
-        )}
-      >
-        {heading}
-      </aside>
+      <aside className="lg:col-span-1 lg:pt-24">{heading}</aside>
       <div
-        ref={calendarMeasureRef}
         className={cn(
-          "relative z-10 lg:col-span-2",
-          mobileStickyActive &&
-            "max-lg:absolute max-lg:inset-x-0 max-lg:top-1/2 max-lg:-translate-y-1/2",
-          !mobileStickyActive && "max-lg:mt-8",
+          "relative z-10 max-lg:mt-8 lg:col-span-2",
           "[&_#landing-week-calendar-preview]:shadow-xl",
         )}
         aria-hidden
@@ -141,6 +110,7 @@ function slotOverlayStyle(
 
 function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
   const sceneRef = useRef<HTMLDivElement>(null);
+  const calendarWrapperRef = useRef<HTMLDivElement>(null);
   const overlayRootRef = useRef<HTMLDivElement>(null);
   const weekHeaderRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -153,6 +123,15 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
     target: sceneRef,
     offset: ["start start", "end end"],
   });
+
+  // Fraction of the scene scrolled before the calendar pins (heading height on
+  // mobile, ~0 on desktop). Animation progress is remapped to start at the pin.
+  const pinFractionRef = useRef(0);
+  const remapProgress = useCallback((raw: number) => {
+    const p = pinFractionRef.current;
+    if (p >= 1) return 0;
+    return Math.min(1, Math.max(0, (raw - p) / (1 - p)));
+  }, []);
 
   const [scrollProgress, setScrollProgress] = useState(0);
   const [phase, setPhase] = useState<"start" | "resolved">("start");
@@ -203,16 +182,45 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
     ],
   );
 
-  useMotionValueEvent(scrollYProgress, "change", (value) => {
-    setScrollProgress(value);
-    setPhase(isDemoResolved(value) ? "resolved" : "start");
-    syncMotionFromProgress(value);
-  });
+  const applyProgress = useCallback(
+    (raw: number) => {
+      const value = remapProgress(raw);
+      setScrollProgress(value);
+      setPhase(isDemoResolved(value) ? "resolved" : "start");
+      syncMotionFromProgress(value);
+    },
+    [remapProgress, syncMotionFromProgress],
+  );
+
+  useMotionValueEvent(scrollYProgress, "change", applyProgress);
 
   useLayoutEffect(() => {
     geometryRef.current = geometry;
-    syncMotionFromProgress(scrollYProgress.get());
-  }, [geometry, scrollYProgress, syncMotionFromProgress]);
+    syncMotionFromProgress(remapProgress(scrollYProgress.get()));
+  }, [geometry, remapProgress, scrollYProgress, syncMotionFromProgress]);
+
+  useLayoutEffect(() => {
+    const scene = sceneRef.current;
+    const calendarWrapper = calendarWrapperRef.current;
+    if (!scene || !calendarWrapper) return;
+
+    const sync = () => {
+      const scrollable = scene.offsetHeight - window.innerHeight;
+      const fraction =
+        scrollable > 0 ? calendarWrapper.offsetTop / scrollable : 0;
+      pinFractionRef.current = Math.min(1, Math.max(0, fraction));
+      applyProgress(scrollYProgress.get());
+    };
+
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(scene);
+    window.addEventListener("resize", sync);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, [applyProgress, scrollYProgress]);
 
   const dragging = isDemoDragging(scrollProgress);
   const dropping = isDemoDropping(scrollProgress);
@@ -221,10 +229,6 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
     phase === "resolved" ? LANDING_DEMO_RESOLVED_BLOCKS : LANDING_DEMO_START_BLOCKS;
   const candidateOpacity = demoCandidateOpacity(scrollProgress);
   const conflictTargetOpacity = demoConflictTargetOpacity(scrollProgress);
-  const mobileStickyActive = scrollProgress > 0;
-  const demoViewportHeight = mobileStickyActive
-    ? LANDING_DEMO_VIEWPORT_HEIGHT
-    : LANDING_DEMO_VIEWPORT_HEIGHT_INTRO;
 
   const calendar = (
     <div className="pointer-events-none">
@@ -247,7 +251,7 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
             visibleDayIndices={PLANNER_WEEKDAY_DAY_INDICES}
             rowPx={rowPx}
             hourAxis={LANDING_PREVIEW_HOUR_AXIS}
-            viewportStyle={{ height: demoViewportHeight }}
+            viewportStyle={{ height: LANDING_DEMO_VIEWPORT_HEIGHT }}
             gridMinWidthRem={PLANNER_WEEKDAY_GRID_MIN_WIDTH_REM}
             weekHeaderRef={weekHeaderRef}
             viewportRef={viewportRef}
@@ -367,39 +371,39 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
   return (
     <div
       ref={sceneRef}
-      className={cn(
-        "relative lg:-mt-28",
-        mobileStickyActive && LANDING_DEMO_MOBILE_SECTION_OFFSET_CLASS,
-      )}
+      className="relative lg:-mt-28"
       style={{ height: `${SCENE_HEIGHT_VH}vh` }}
     >
-      <div
-        className={cn(
-          "sticky lg:top-[10vh]",
-          mobileStickyActive && "max-lg:top-0",
-          mobileStickyActive && LANDING_DEMO_MOBILE_STICKY_SHELL_CLASS,
-        )}
-      >
-        <LandingPlannerDemoLayout
-          heading={heading}
-          calendar={calendar}
-          mobileStickyActive={mobileStickyActive}
-        />
+      <div className="relative h-full lg:grid lg:grid-cols-3 lg:items-start lg:gap-8">
+        <aside className="lg:col-span-1 lg:sticky lg:top-[10vh] lg:pt-24">
+          {heading}
+        </aside>
+        <div
+          ref={calendarWrapperRef}
+          className={cn(
+            "sticky top-0 z-10 lg:col-span-2 lg:top-[10vh]",
+            "max-lg:flex max-lg:items-center max-lg:mt-8",
+            LANDING_DEMO_MOBILE_STICKY_SHELL_CLASS,
+            "[&_#landing-week-calendar-preview]:shadow-xl",
+          )}
+          aria-hidden
+        >
+          <div className="max-lg:w-full">{calendar}</div>
+        </div>
       </div>
     </div>
   );
 }
 
 export function LandingPlannerScrollDemo({ heading }: { heading: ReactNode }) {
-  const reducedMotion = useReducedMotion();
-  const isClient = useIsClient();
+  const reducedMotion = usePrefersReducedMotion();
+  const hasMounted = useHasMounted();
 
-  if (!isClient || reducedMotion) {
+  if (!hasMounted || reducedMotion) {
     return (
       <LandingPlannerDemoLayout
         heading={heading}
         calendar={<LandingWeekCalendarPreview />}
-        mobileStickyActive={false}
       />
     );
   }

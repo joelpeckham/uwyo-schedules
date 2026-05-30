@@ -15,7 +15,7 @@ export async function TopSubjects({
         className="border-b border-border px-4 py-12 sm:px-6"
         aria-labelledby="top-subjects-heading"
       >
-        <div className="mx-auto max-w-6xl lg:max-w-[90rem]">
+        <div className="mx-auto max-w-6xl lg:max-w-[84rem]">
           <Reveal>
             <h2
               id="top-subjects-heading"
@@ -49,7 +49,7 @@ export async function TopSubjects({
       className="border-b border-border px-4 py-14 sm:px-6 sm:py-16"
       aria-labelledby="top-subjects-heading"
     >
-      <div className="mx-auto max-w-6xl lg:max-w-[90rem]">
+      <div className="mx-auto max-w-6xl lg:max-w-[84rem]">
         <Reveal>
           <h2
             id="top-subjects-heading"

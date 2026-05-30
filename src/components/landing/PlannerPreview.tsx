@@ -33,7 +33,7 @@ export function PlannerPreview() {
       className="relative border-b border-border bg-muted/20 px-4 py-14 sm:px-6 sm:py-16"
       aria-labelledby="preview-heading"
     >
-      <div className="mx-auto max-w-6xl lg:max-w-[90rem]">
+      <div className="mx-auto max-w-6xl lg:max-w-[84rem]">
         <p className="sr-only">
           Sample week preview: CHEM 1020 meets Monday, Wednesday, and Friday
           9 to 9:50 a.m. with a Tuesday lab and Thursday exam block. ENGL 1010

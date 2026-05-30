@@ -1,7 +1,9 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
+
+import { useHasMounted, usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
@@ -13,9 +15,10 @@ type RevealProps = {
 };
 
 export function Reveal({ children, className, delay = 0 }: RevealProps) {
-  const reduced = useReducedMotion();
+  const reduced = usePrefersReducedMotion();
+  const hasMounted = useHasMounted();
 
-  if (reduced) {
+  if (hasMounted && reduced) {
     return <div className={className}>{children}</div>;
   }
 

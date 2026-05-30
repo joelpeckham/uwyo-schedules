@@ -14,7 +14,7 @@ export function SiteChrome({
   return (
     <div className="flex min-h-screen min-w-0 flex-col bg-background">
       <header className="border-b border-border px-4 py-3 sm:px-6">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:max-w-[90rem]">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:max-w-[84rem]">
           <AppLink
             href="/"
             className="inline-flex items-center gap-2 shrink-0"
