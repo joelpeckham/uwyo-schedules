@@ -4,6 +4,10 @@ import {
   prefetchCourseSolvePackAction,
   searchCoursesAction,
 } from "@/app/planner/actions";
+import {
+  computePlannerCreditHours,
+  formatCreditHours,
+} from "@/lib/planner/credit-hours";
 import { addCourseLocal } from "@/lib/planner/add-course-local";
 import { DUPLICATE_COURSE_ERROR, plannerHasCourse } from "@/lib/planner/local-state";
 import { track } from "@/lib/analytics/track";
@@ -159,7 +163,8 @@ export function CourseManager({ termCode }: Props) {
     toggleSectionPin,
     clearSectionPins,
   } = usePlannerData();
-  const { recalculateSolutions } = usePlannerSolve();
+  const { recalculateSolutions, effectivePlannerItems, calendarBlocks } =
+    usePlannerSolve();
   const { recordHistorySnapshot } = usePlannerHistory();
 
   const [pending, startTransition] = useTransition();
@@ -436,10 +441,21 @@ export function CourseManager({ termCode }: Props) {
   );
 
   const totalCourses = plannerItems.length;
+  const totalCredits = useMemo(
+    () =>
+      computePlannerCreditHours(
+        effectivePlannerItems,
+        calendarBlocks,
+        catalog.sections,
+      ),
+    [effectivePlannerItems, calendarBlocks, catalog.sections],
+  );
   const summaryText = useMemo(() => {
     if (totalCourses === 0) return "No courses yet.";
-    return `${totalCourses} course${totalCourses === 1 ? "" : "s"}.`;
-  }, [totalCourses]);
+    const courseLabel = `${totalCourses} course${totalCourses === 1 ? "" : "s"}`;
+    if (totalCredits <= 0) return `${courseLabel}.`;
+    return `${courseLabel} (${formatCreditHours(totalCredits)})`;
+  }, [totalCourses, totalCredits]);
 
   return (
     <section
@@ -625,6 +641,7 @@ export function CourseManager({ termCode }: Props) {
           return (
             <li
               key={item.id}
+              id={`planner-course-${item.id}`}
               className="rounded-lg border border-border bg-muted/15 p-2 sm:p-3"
             >
               <div className="flex items-center gap-2">
@@ -641,10 +658,10 @@ export function CourseManager({ termCode }: Props) {
                     </p>
                     <span
                       className={cn(
-                        "rounded-md border px-1.5 py-0.5 text-[10px] font-medium",
+                        "text-[10px] font-medium",
                         primaryVal === INSTRUCTOR_SELECT_ANY
-                          ? "border-border bg-muted/40 text-muted-foreground"
-                          : "border-primary/40 bg-primary/10 text-primary",
+                          ? "rounded-md border border-border bg-muted/40 px-1.5 py-0.5 text-muted-foreground"
+                          : "inline-flex items-center gap-0.5 rounded-md border border-primary/40 bg-primary/10 pl-1.5 pr-0.5 py-0.5 text-primary",
                       )}
                       title={
                         primaryVal === INSTRUCTOR_SELECT_ANY
@@ -653,6 +670,21 @@ export function CourseManager({ termCode }: Props) {
                       }
                     >
                       {instructorPill}
+                      {primaryVal !== INSTRUCTOR_SELECT_ANY ? (
+                        <button
+                          type="button"
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-primary hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Clear instructor filter for ${item.subject} ${item.courseNumber}`}
+                          disabled={
+                            pending || item.selectionKind !== "unresolved"
+                          }
+                          onClick={() =>
+                            setPrimaryInstructor(item, INSTRUCTOR_SELECT_ANY)
+                          }
+                        >
+                          <X className="size-3" aria-hidden />
+                        </button>
+                      ) : null}
                     </span>
                     {pinnedCount > 0 ? (
                       <span className="inline-flex items-center gap-0.5 rounded-md border border-primary/40 bg-primary/10 pl-1.5 pr-0.5 py-0.5 text-[10px] font-medium text-primary">

@@ -38,6 +38,27 @@ export function parseInstructorPrefs(raw: unknown): InstructorPrefsV1 {
   return { v: 1, primary, byScheduleType };
 }
 
+export function hasInstructorPrefs(p: InstructorPrefsV1): boolean {
+  if (p.primary.some((s) => s.trim().length > 0)) return true;
+  if (p.byScheduleType) {
+    for (const arr of Object.values(p.byScheduleType)) {
+      if (arr.some((s) => s.trim().length > 0)) return true;
+    }
+  }
+  return false;
+}
+
+/** True when any unresolved planner item has a primary or linked instructor filter. */
+export function plannerHasAnyInstructorPrefs(
+  items: ReadonlyArray<{ selectionKind: string; instructorPrefs: unknown }>,
+): boolean {
+  for (const item of items) {
+    if (item.selectionKind !== "unresolved") continue;
+    if (hasInstructorPrefs(parseInstructorPrefs(item.instructorPrefs))) return true;
+  }
+  return false;
+}
+
 export function serializeInstructorPrefs(p: InstructorPrefsV1): InstructorPrefsV1 {
   return {
     v: 1,

@@ -18,6 +18,8 @@ type PlannerAnalyticsEvent =
   | { name: "planner_course_added"; props: { subject: string; courseNumber: string; courseCount: number } }
   | { name: "planner_course_removed"; props: { subject: string; courseNumber: string; courseCount: number } }
   | { name: "planner_instructor_pref_set"; props: { kind: "primary" | "linked"; choseAny: boolean } }
+  | { name: "planner_instructor_prefs_cleared"; props: { courseCount: number } }
+  | { name: "planner_section_pins_cleared"; props: { pinCount: number } }
   | { name: "planner_blackout_added"; props: { dayIndex: number; minutes: number } }
   | { name: "planner_blackout_edited"; props: { dayIndex: number; minutes: number } }
   | { name: "planner_blackout_removed"; props: Record<string, never> }

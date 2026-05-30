@@ -23,10 +23,17 @@ import {
   cancelSolveRequest,
   requestSolve,
 } from "@/lib/planner/solve-worker-client";
+import type { InfeasibilityHint } from "@/lib/planner/infeasibility-hints";
 import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
 import { DEFAULT_PLANNER_SCHEDULE_FILTERS } from "@/lib/planner/schedule-filters";
 import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
 import {
+  defaultInstructorPrefs,
+  hasInstructorPrefs,
+  parseInstructorPrefs,
+} from "@/lib/planner/instructor-prefs";
+import {
+  countPlannerSectionPins,
   EMPTY_SECTION_PINS,
   parseSectionPinsJson,
 } from "@/lib/planner/section-pins";
@@ -101,6 +108,8 @@ type PlannerDataContextValue = {
   updatePlannerItem: (id: number, patch: Partial<PlannerItemRow>) => void;
   toggleSectionPin: (itemId: number, scheduleTypeKey: string, sectionCrn: string) => void;
   clearSectionPins: (itemId: number) => void;
+  clearAllSectionPins: () => void;
+  clearAllInstructorPrefs: () => void;
   setSectionPinFromDrag: (
     itemId: number,
     scheduleTypeKey: string,
@@ -123,7 +132,7 @@ type PlannerSolveContextValue = {
   scheduleFeasibilityError: string | null;
   clearScheduleFeasibilityError: () => void;
   solutions: ScheduleSolution[];
-  infeasibilityHints: string[];
+  infeasibilityHints: InfeasibilityHint[];
   recalculateSolutions: (
     filterOverrides?: Partial<PlannerScheduleFilters>,
   ) => Promise<void>;
@@ -208,7 +217,9 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   >(undefined);
   const recalcGenRef = useRef(0);
   const solveRequestIdRef = useRef(0);
-  const [infeasibilityHints, setInfeasibilityHints] = useState<string[]>([]);
+  const [infeasibilityHints, setInfeasibilityHints] = useState<
+    InfeasibilityHint[]
+  >([]);
   const solvePacksRef = useRef(solvePacks);
   const solutionsRef = useRef(solutions);
   const itemsRef = useRef(plannerItems);
@@ -751,6 +762,47 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot],
   );
 
+  const clearAllSectionPins = useCallback(() => {
+    const prev = itemsRef.current;
+    const pinCount = countPlannerSectionPins(prev);
+    if (pinCount === 0) return;
+    const next = prev.map((r) =>
+      r.selectionKind === "unresolved" &&
+      Object.keys(parseSectionPinsJson(r.sectionPins).byType).length > 0
+        ? { ...r, sectionPins: EMPTY_SECTION_PINS }
+        : r,
+    );
+    setScheduleFeasibilityError(null);
+    recordHistorySnapshot();
+    setPlannerItems(() => {
+      itemsRef.current = next;
+      return next;
+    });
+    persistTerm();
+    scheduleRecalculateSolutions();
+  }, [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot]);
+
+  const clearAllInstructorPrefs = useCallback(() => {
+    const prev = itemsRef.current;
+    let courseCount = 0;
+    const next = prev.map((r) => {
+      if (r.selectionKind !== "unresolved") return r;
+      const prefs = parseInstructorPrefs(r.instructorPrefs);
+      if (!hasInstructorPrefs(prefs)) return r;
+      courseCount += 1;
+      return { ...r, instructorPrefs: defaultInstructorPrefs() };
+    });
+    if (courseCount === 0) return;
+    setScheduleFeasibilityError(null);
+    recordHistorySnapshot();
+    setPlannerItems(() => {
+      itemsRef.current = next;
+      return next;
+    });
+    persistTerm();
+    scheduleRecalculateSolutions();
+  }, [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot]);
+
   const setSectionPinFromDrag = useCallback(
     (itemId: number, scheduleTypeKey: string, sectionCrn: string) => {
       const prev = itemsRef.current;
@@ -911,6 +963,8 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       updatePlannerItem,
       toggleSectionPin,
       clearSectionPins,
+      clearAllSectionPins,
+      clearAllInstructorPrefs,
       setSectionPinFromDrag,
       applyPlannerItemSelection,
       solvePacks,
@@ -928,6 +982,8 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       updatePlannerItem,
       toggleSectionPin,
       clearSectionPins,
+      clearAllSectionPins,
+      clearAllInstructorPrefs,
       setSectionPinFromDrag,
       applyPlannerItemSelection,
       solvePacks,

@@ -18,6 +18,18 @@ export const EMPTY_SECTION_PINS: PlannerSectionPinsDocV1 = {
   byType: {},
 };
 
+/** Total pinned section types across unresolved planner items. */
+export function countPlannerSectionPins(
+  items: ReadonlyArray<{ selectionKind: string; sectionPins: unknown }>,
+): number {
+  let n = 0;
+  for (const item of items) {
+    if (item.selectionKind !== "unresolved") continue;
+    n += Object.keys(parseSectionPinsJson(item.sectionPins).byType).length;
+  }
+  return n;
+}
+
 export function parseSectionPinsJson(raw: unknown): PlannerSectionPinsDocV1 {
   if (raw == null) return { ...EMPTY_SECTION_PINS };
   if (typeof raw !== "object" || Array.isArray(raw)) return { ...EMPTY_SECTION_PINS };

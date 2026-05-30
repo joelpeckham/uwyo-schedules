@@ -11,6 +11,21 @@ import {
   type TimeInterval,
 } from "./solve-schedules-core";
 
+export type InfeasibilityHintKind =
+  | "relax_busy"
+  | "relax_exclude_full"
+  | "relax_exclude_tba"
+  | "relax_exclude_online_async"
+  | "course_busy_conflict"
+  | "generic";
+
+export type InfeasibilityHint = {
+  kind: InfeasibilityHintKind;
+  message: string;
+  plannerItemId?: number;
+  blackoutId?: string;
+};
+
 function intervalsCrossList(a: TimeInterval[], b: TimeInterval[]): boolean {
   for (const x of a) {
     for (const y of b) {
@@ -40,7 +55,7 @@ type InfeasibilityHintParams = PlannerScheduleFilters & {
  */
 export function computeInfeasibilityHints(
   params: InfeasibilityHintParams,
-): string[] {
+): InfeasibilityHint[] {
   const {
     items,
     packs,
@@ -69,7 +84,7 @@ export function computeInfeasibilityHints(
     if (base.solutions.length > 0) return [];
   }
 
-  const hints: string[] = [];
+  const hints: InfeasibilityHint[] = [];
 
   // Only run the relaxed-busy DFS if there are blackouts to relax — without
   // any blackouts the result would equal the base solve we already proved
@@ -81,9 +96,11 @@ export function computeInfeasibilityHints(
       maxSolutions: 1,
     });
     if (withoutBusy.solutions.length > 0) {
-      hints.push(
-        "A schedule exists if you remove or shrink busy times — try editing blocks that overlap typical class hours.",
-      );
+      hints.push({
+        kind: "relax_busy",
+        message:
+          "A schedule exists if you remove or shrink busy times — try editing blocks that overlap typical class hours.",
+      });
     }
   }
 
@@ -95,9 +112,11 @@ export function computeInfeasibilityHints(
       maxSolutions: 1,
     });
     if (withSeatsOff.solutions.length > 0) {
-      hints.push(
-        "Turn off “Exclude full” to allow full sections, then turn it on again once you see a pattern that works.",
-      );
+      hints.push({
+        kind: "relax_exclude_full",
+        message:
+          "Turn off “Exclude full” to allow full sections, then turn it on again once you see a pattern that works.",
+      });
     }
   }
 
@@ -109,9 +128,11 @@ export function computeInfeasibilityHints(
       maxSolutions: 1,
     });
     if (withTbaAllowed.solutions.length > 0) {
-      hints.push(
-        "Turn off “Exclude TBA times” to allow sections without a set meeting time.",
-      );
+      hints.push({
+        kind: "relax_exclude_tba",
+        message:
+          "Turn off “Exclude TBA times” to allow sections without a set meeting time.",
+      });
     }
   }
 
@@ -123,9 +144,11 @@ export function computeInfeasibilityHints(
       maxSolutions: 1,
     });
     if (withOnlineAsyncAllowed.solutions.length > 0) {
-      hints.push(
-        "Turn off “Exclude online · async” to allow asynchronous online sections.",
-      );
+      hints.push({
+        kind: "relax_exclude_online_async",
+        message:
+          "Turn off “Exclude online · async” to allow asynchronous online sections.",
+      });
     }
   }
 
@@ -166,13 +189,18 @@ export function computeInfeasibilityHints(
         const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         if (firstBo) {
           const day = dayNames[firstBo.dayIndex] ?? "that day";
-          hints.push(
-            `Every section pattern we see for ${label} crosses your busy time on ${day} — remove the course, clear that busy block, or relax other filters.`,
-          );
+          hints.push({
+            kind: "course_busy_conflict",
+            message: `Every section pattern we see for ${label} crosses your busy time on ${day} — remove the course, clear that busy block, or relax other filters.`,
+            plannerItemId: item.id,
+            blackoutId: firstBo.id,
+          });
         } else {
-          hints.push(
-            `Every section pattern for ${label} conflicts with a busy time — try clearing busy blocks or removing the course.`,
-          );
+          hints.push({
+            kind: "course_busy_conflict",
+            message: `Every section pattern for ${label} conflicts with a busy time — try clearing busy blocks or removing the course.`,
+            plannerItemId: item.id,
+          });
         }
         break;
       }
@@ -180,9 +208,11 @@ export function computeInfeasibilityHints(
   }
 
   if (hints.length === 0) {
-    hints.push(
-      "No combination fits yet — relax instructor picks (choose “Any”), adjust busy times, or remove one course.",
-    );
+    hints.push({
+      kind: "generic",
+      message:
+        "No combination fits yet — relax instructor picks (choose “Any”), adjust busy times, or remove one course.",
+    });
   }
 
   return hints;

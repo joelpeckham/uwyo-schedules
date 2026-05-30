@@ -64,6 +64,14 @@ export function scrollToId(id: string): void {
   });
 }
 
+export function scrollToIdAndFocus(id: string, focusSelector?: string): void {
+  scrollToId(id);
+  if (!focusSelector) return;
+  requestAnimationFrame(() => {
+    document.querySelector<HTMLElement>(focusSelector)?.focus();
+  });
+}
+
 export function buildFloatStyle(
   strip: HTMLDivElement | null,
   sess: {

@@ -3,6 +3,7 @@
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { WeekCalendarAlertSlot } from "./WeekCalendarAlertSlot";
+import { NoSchedulesHelpOverlay } from "./NoSchedulesHelpOverlay";
 
 type WeekCalendarShellProps = {
   sectionId?: string;
@@ -57,8 +58,12 @@ export function WeekCalendarShell({
         isRecalculatingSolutions={isRecalculatingSolutions}
       />
       {toolbar}
-      {noSchedulesHelp}
-      {children}
+      <div className="relative">
+        {children}
+        <NoSchedulesHelpOverlay show={noSchedulesHelp != null}>
+          {noSchedulesHelp}
+        </NoSchedulesHelpOverlay>
+      </div>
     </section>
   );
 }

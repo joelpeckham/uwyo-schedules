@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterCandidatesBySectionPins } from "./section-pins";
+import { filterCandidatesBySectionPins, countPlannerSectionPins } from "./section-pins";
 import { normalizeScheduleTypeKey } from "./swap-helpers";
 
 describe("filterCandidatesBySectionPins", () => {
@@ -50,5 +50,23 @@ describe("filterCandidatesBySectionPins", () => {
       scheduleTypeByCrn,
     );
     expect(out).toEqual([]);
+  });
+});
+
+describe("countPlannerSectionPins", () => {
+  it("counts pins only on unresolved items", () => {
+    expect(
+      countPlannerSectionPins([
+        {
+          selectionKind: "unresolved",
+          sectionPins: { v: 1, byType: { lec: "100", lab: "101" } },
+        },
+        {
+          selectionKind: "anchor",
+          sectionPins: { v: 1, byType: { lec: "200" } },
+        },
+        { selectionKind: "unresolved", sectionPins: { v: 1, byType: {} } },
+      ]),
+    ).toBe(2);
   });
 });

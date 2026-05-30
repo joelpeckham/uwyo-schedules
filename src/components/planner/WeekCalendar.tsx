@@ -51,9 +51,9 @@ import {
   clientYToMinutes,
   DRAG_THRESHOLD_PX,
   formatQuarterHourLabel,
-  scrollToId,
   SNAP_MAX_DIST_PX,
 } from "./week-calendar/interaction";
+import { NoSchedulesHelpContent } from "./week-calendar/NoSchedulesHelpContent";
 import { ScheduleHelpDialog } from "./week-calendar/schedule-help-dialog";
 import { WeekCalendarToolbar } from "./week-calendar/WeekCalendarToolbar";
 import {
@@ -99,6 +99,8 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     applyPlannerItemSelection,
     setSectionPinFromDrag,
     toggleSectionPin,
+    clearAllInstructorPrefs,
+    clearAllSectionPins,
   } = usePlannerData();
   const {
     calendarBlocks: blocks,
@@ -119,7 +121,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     requireOpenSections,
     setRequireOpenSections,
     excludeTba,
+    setExcludeTba,
     excludeOnlineAsync,
+    setExcludeOnlineAsync,
   } = usePlannerUi();
   const { canUndo, canRedo, undo, redo } = usePlannerHistory();
 
@@ -328,6 +332,14 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     setFormLabel(item.label ?? "");
     setBusyDialogOpen(true);
   }, []);
+
+  const handleEditBlackoutById = useCallback(
+    (blackoutId: string) => {
+      const item = blackouts.items.find((i) => i.id === blackoutId);
+      if (item) openEditBlackout(item);
+    },
+    [blackouts.items, openEditBlackout],
+  );
 
   // Reset transient form state on close so the next time the dialog opens
   // we don't briefly flash the previous edit's day/time/label values
@@ -1066,6 +1078,7 @@ type CoursePointerLike = Pick<
   const busyCount = blackouts.items.length;
 
   return (
+    <>
     <WeekCalendarShell
       isDragging={isCourseDragging}
       syncError={syncError}
@@ -1078,7 +1091,6 @@ type CoursePointerLike = Pick<
       toolbar={
         <WeekCalendarToolbar
           plannerItemCount={plannerItems.length}
-          meta={<CreditHoursPill />}
           exportSlot={<ExportMenu />}
           actions={
             <>
@@ -1151,126 +1163,25 @@ type CoursePointerLike = Pick<
           }
         />
       }
-      noSchedulesHelp={showNoSchedulesHelp ? (
-        <div className="border-b border-border bg-muted/20 p-3 sm:p-4">
-          {infeasibilityHints.length > 0 ? (
-            <ul className="mb-3 list-inside list-disc space-y-2 text-sm text-foreground">
-              {infeasibilityHints.map((h) => (
-                <li key={h}>{h}</li>
-              ))}
-            </ul>
-          ) : null}
-          <p className="font-medium text-foreground">No schedule fits yet.</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Try one of these to open up the week:
-          </p>
-          <ul className="mt-2 list-inside list-disc space-y-2 text-sm text-foreground">
-            {requireOpenSections ? (
-              <li>
-                <button
-                  type="button"
-                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
-                  onClick={() => {
-                    setRequireOpenSections(false);
-                    void recalculateSolutions({ requireOpenSections: false });
-                    document.getElementById("exclude-full-toggle")?.focus();
-                  }}
-                >
-                  Turn off “Exclude full”
-                </button>
-                <span className="text-muted-foreground">
-                  {" "}
-                  (then turn it on again if you need open seats only).
-                </span>
-              </li>
-            ) : (
-              <li>
-                <button
-                  type="button"
-                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
-                  onClick={() =>
-                    document.getElementById("exclude-full-toggle")?.focus()
-                  }
-                >
-                  Try “Exclude full”
-                </button>
-                <span className="text-muted-foreground">
-                  {" "}
-                  if you want only open seats.
-                </span>
-              </li>
-            )}
-            {busyCount > 0 ? (
-              <li>
-                <button
-                  type="button"
-                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
-                  onClick={() => scrollToId("planner-week-calendar-toolbar")}
-                >
-                  Edit or remove busy times
-                </button>
-                <span className="text-muted-foreground">
-                  {" "}
-                  ({busyCount} on your calendar)
-                </span>
-                {" · "}
-                <button
-                  type="button"
-                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
-                  onClick={() => {
-                    track("planner_blackouts_cleared", {
-                      count: blackouts.items.length,
-                    });
-                    setBlackouts({ v: 1, items: [] });
-                  }}
-                >
-                  Clear all busy times
-                </button>
-              </li>
-            ) : (
-              <li>
-                <button
-                  type="button"
-                  className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
-                  onClick={() => scrollToId("planner-week-calendar-toolbar")}
-                >
-                  Mark busy times
-                </button>
-                <span className="text-muted-foreground">
-                  {" "}
-                  on the week (toolbar) if something should stay free.
-                </span>
-              </li>
-            )}
-            <li>
-              <button
-                type="button"
-                className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
-                onClick={() => scrollToId("planner-courses")}
-              >
-                Relax instructor choices
-              </button>
-              <span className="text-muted-foreground">
-                {" "}
-                (pick “Any” or expand Advanced for labs/discussions).
-              </span>
-            </li>
-            <li>
-              <button
-                type="button"
-                className="text-left underline decoration-muted-foreground underline-offset-2 hover:text-foreground"
-                onClick={() => scrollToId("planner-courses")}
-              >
-                Remove a course
-              </button>
-              <span className="text-muted-foreground">
-                {" "}
-                if you added more than you need this term.
-              </span>
-            </li>
-          </ul>
-        </div>
-      ) : null}
+      noSchedulesHelp={
+        showNoSchedulesHelp ? (
+          <NoSchedulesHelpContent
+            hints={infeasibilityHints}
+            requireOpenSections={requireOpenSections}
+            busyCount={busyCount}
+            blackouts={blackouts}
+            plannerItems={effectivePlannerItems}
+            setRequireOpenSections={setRequireOpenSections}
+            setExcludeTba={setExcludeTba}
+            setExcludeOnlineAsync={setExcludeOnlineAsync}
+            recalculateSolutions={recalculateSolutions}
+            setBlackouts={setBlackouts}
+            onEditBlackout={handleEditBlackoutById}
+            clearAllInstructorPrefs={clearAllInstructorPrefs}
+            clearAllSectionPins={clearAllSectionPins}
+          />
+        ) : null
+      }
     >
       <WeekCalendarGrid
         hScrollRef={hScrollRef}
@@ -1293,84 +1204,25 @@ type CoursePointerLike = Pick<
         suspendMagicMoveLayout={suspendMagicMoveLayout}
         instantBlockUpdate={instantBlockUpdate}
       />
-
-      <BusyTimeDialog
-        open={busyDialogOpen}
-        onOpenChange={handleBusyDialogOpenChange}
-        editingId={editingBlackoutId}
-        dayIndex={formDayIndex}
-        startMin={formStartMin}
-        endMin={formEndMin}
-        label={formLabel}
-        timeOptions={timeQuarterOptions}
-        onDayChange={setFormDayIndex}
-        onStartChange={setFormStartMin}
-        onEndChange={setFormEndMin}
-        onLabelChange={setFormLabel}
-        onRemove={removeEditingBlackout}
-        onCancel={() => handleBusyDialogOpenChange(false)}
-        onSave={commitBusyForm}
-      />
     </WeekCalendarShell>
-  );
-}
-
-function CreditHoursPill() {
-  const { catalog } = usePlannerData();
-  const { effectivePlannerItems, calendarBlocks } = usePlannerSolve();
-  const total = useMemo(() => {
-    if (effectivePlannerItems.length === 0) return 0;
-    const sectionByCrn = new Map<string, number | null>();
-    for (const s of catalog.sections) sectionByCrn.set(s.crn, s.creditHours);
-    const anchorCrnByItemId = new Map<number, string>();
-    for (const item of effectivePlannerItems) {
-      if (item.anchorCrn) anchorCrnByItemId.set(item.id, item.anchorCrn);
-    }
-    // Fall back to the first calendar block's section CRN when no anchor is
-    // resolved yet — this gives users a credit estimate while the planner
-    // is still picking sections.
-    const seenItems = new Set<number>();
-    let sum = 0;
-    for (const item of effectivePlannerItems) {
-      if (seenItems.has(item.id)) continue;
-      seenItems.add(item.id);
-      const anchorCrn = anchorCrnByItemId.get(item.id);
-      if (anchorCrn) {
-        const ch = sectionByCrn.get(anchorCrn);
-        if (typeof ch === "number" && Number.isFinite(ch)) sum += ch;
-        continue;
-      }
-      const block = calendarBlocks.find((b) => b.plannerItemId === item.id);
-      if (!block) continue;
-      const ch = sectionByCrn.get(block.sectionCrn);
-      if (typeof ch === "number" && Number.isFinite(ch)) sum += ch;
-    }
-    return sum;
-  }, [effectivePlannerItems, calendarBlocks, catalog.sections]);
-
-  if (total <= 0) return null;
-  const isFullTime = total >= 12;
-  const display = Number.isInteger(total) ? `${total}` : total.toFixed(1);
-  const label = `${display} credit hour${total === 1 ? "" : "s"}`;
-  return (
-    <span
-      className={cn(
-        "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] font-medium",
-        isFullTime
-          ? "border-amber-500/40 bg-amber-100/70 text-amber-900"
-          : "border-border bg-muted/50 text-muted-foreground",
-      )}
-      title={
-        isFullTime
-          ? `${label} · full-time (UW undergrad threshold is 12)`
-          : `${label} · part-time (full-time at 12)`
-      }
-      aria-label={label}
-    >
-      <span className="font-mono tabular-nums">{display}</span>
-      <span>cr</span>
-      {isFullTime ? <span className="ml-0.5">· full-time</span> : null}
-    </span>
+    <BusyTimeDialog
+      open={busyDialogOpen}
+      onOpenChange={handleBusyDialogOpenChange}
+      editingId={editingBlackoutId}
+      dayIndex={formDayIndex}
+      startMin={formStartMin}
+      endMin={formEndMin}
+      label={formLabel}
+      timeOptions={timeQuarterOptions}
+      onDayChange={setFormDayIndex}
+      onStartChange={setFormStartMin}
+      onEndChange={setFormEndMin}
+      onLabelChange={setFormLabel}
+      onRemove={removeEditingBlackout}
+      onCancel={() => handleBusyDialogOpenChange(false)}
+      onSave={commitBusyForm}
+    />
+    </>
   );
 }
 

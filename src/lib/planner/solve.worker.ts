@@ -3,7 +3,10 @@
 import type { PlannerCatalogJson } from "./client/catalog-types";
 import type { PlannerBlackoutsDocV1 } from "./blackouts";
 import type { PlannerItemRow } from "./data";
-import { computeInfeasibilityHints } from "./infeasibility-hints";
+import {
+  computeInfeasibilityHints,
+  type InfeasibilityHint,
+} from "./infeasibility-hints";
 import type { PlannerScheduleFilters } from "./schedule-filters";
 import type { ResolvedPlannerSelection } from "./resolve-display-crns-shared";
 import {
@@ -38,7 +41,7 @@ export type SolveWorkerResponse = {
   capped: boolean;
   timedOut: boolean;
   itemOrder: number[];
-  hints: string[];
+  hints: InfeasibilityHint[];
 };
 
 self.onmessage = (ev: MessageEvent<SolveWorkerRequest>) => {
@@ -55,7 +58,7 @@ self.onmessage = (ev: MessageEvent<SolveWorkerRequest>) => {
     timeoutMs,
   });
 
-  let hints: string[] = [];
+  let hints: InfeasibilityHint[] = [];
   if (result.solutions.length === 0 && msg.items.length > 0) {
     const blackouts = msg.blackouts ?? { v: 1 as const, items: [] };
     hints = computeInfeasibilityHints({
