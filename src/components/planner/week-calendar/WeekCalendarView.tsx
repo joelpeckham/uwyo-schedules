@@ -101,6 +101,8 @@ export type WeekCalendarViewProps = {
   instantBlockUpdate?: boolean;
   /** Override magic-move layout ids (e.g. landing demo Thu→Fri morph). */
   magicIdForBlock?: (block: CalendarBlock) => string;
+  /** When false, hide short transition-time warnings between classes at different buildings. */
+  showTransitionWarnings?: boolean;
 };
 
 type BackToBackChip = {
@@ -182,6 +184,7 @@ function WeekCalendarViewInner({
   suspendMagicMoveLayout = false,
   instantBlockUpdate = false,
   magicIdForBlock: magicIdForBlockProp,
+  showTransitionWarnings = true,
 }: WeekCalendarViewProps) {
   const startHour = hourAxis[0] ?? 0;
   const startMin = startHour * 60;
@@ -198,7 +201,9 @@ function WeekCalendarViewInner({
   const blocksByDay = groupBlocksByDay(blocks);
   const layout: WeekCalendarLayout = { startMin, totalMin, gridHeightPx };
 
-  const backToBackChipsByDay = computeBackToBackChips(blocksByDay);
+  const backToBackChipsByDay = showTransitionWarnings
+    ? computeBackToBackChips(blocksByDay)
+    : new Map<number, BackToBackChip[]>();
 
   const magicIdMap = useMemo(
     () =>

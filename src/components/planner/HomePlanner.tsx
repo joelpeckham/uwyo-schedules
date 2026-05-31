@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import type { CalendarBlock } from "@/lib/planner/data";
+import { usePlannerViewSettings } from "@/lib/planner/planner-view-settings";
 
 import { CourseManager } from "./CourseManager";
 import { NotOnGridRail, useNotOnGridRailRows } from "./NotOnGridRail";
@@ -31,6 +32,8 @@ type Props = {
 export function HomePlanner({ termCode, hasData }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCrn, setModalCrn] = useState<string | null>(null);
+  const { showCourseSelector, showFilters } = usePlannerViewSettings();
+  const showLeftColumn = showCourseSelector || showFilters;
 
   const onBlockActivate = useCallback((block: CalendarBlock) => {
     setModalCrn(block.sectionCrn);
@@ -57,11 +60,21 @@ export function HomePlanner({ termCode, hasData }: Props) {
                 <ShareLinkApplier termCode={termCode} />
               </Suspense>
               <PlannerHydrationGate>
-                <div className="lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
-                  <div className="min-w-0 space-y-4">
-                    <CourseManager key={termCode} termCode={termCode} />
-                    <FiltersCard />
-                  </div>
+                <div
+                  className={
+                    showLeftColumn
+                      ? "lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6"
+                      : undefined
+                  }
+                >
+                  {showLeftColumn ? (
+                    <div className="min-w-0 space-y-4">
+                      {showCourseSelector ? (
+                        <CourseManager key={termCode} termCode={termCode} />
+                      ) : null}
+                      {showFilters ? <FiltersCard /> : null}
+                    </div>
+                  ) : null}
                   <PlannerCalendarColumn
                     termCode={termCode}
                     onBlockActivate={onBlockActivate}

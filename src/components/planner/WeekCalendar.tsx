@@ -25,6 +25,7 @@ import {
   feasibleSinglePinChoicesForDrag,
 } from "@/lib/planner/solve-schedules-core";
 import { track } from "@/lib/analytics/track";
+import { usePlannerViewSettings } from "@/lib/planner/planner-view-settings";
 import { cn } from "@/lib/utils";
 import {
   useCallback,
@@ -125,6 +126,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     excludeOnlineAsync,
     setExcludeOnlineAsync,
   } = usePlannerUi();
+  const { showTransitionWarnings } = usePlannerViewSettings();
   const { canUndo, canRedo, undo, redo, lastActionWasBusyAddOrUpdate } =
     usePlannerHistory();
 
@@ -1207,6 +1209,7 @@ type CoursePointerLike = Pick<
         enableMagicMove={enableMagicMove}
         suspendMagicMoveLayout={suspendMagicMoveLayout}
         instantBlockUpdate={instantBlockUpdate}
+        showTransitionWarnings={showTransitionWarnings}
       />
     </WeekCalendarShell>
     <BusyTimeDialog

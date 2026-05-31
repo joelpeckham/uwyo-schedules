@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { HomePlanner } from "@/components/planner/HomePlanner";
+import { PlannerSettingsMenu } from "@/components/planner/PlannerSettingsMenu";
 import { PlannerTermSelect } from "@/components/planner/PlannerTermSelect";
 import { PlannerJsonLd } from "@/components/seo/PlannerJsonLd";
 import { SiteChrome } from "@/components/seo/SiteChrome";
@@ -55,7 +56,10 @@ async function PlannerTermActions({
   const termCode = resolveTermCode(sp, terms, latest);
   const hasData = terms.length > 0 && termCode.length > 0;
   return hasData ? (
-    <PlannerTermSelect terms={terms} termCode={termCode} />
+    <div className="flex flex-wrap items-center gap-2">
+      <PlannerTermSelect terms={terms} termCode={termCode} />
+      <PlannerSettingsMenu />
+    </div>
   ) : null;
 }
 
