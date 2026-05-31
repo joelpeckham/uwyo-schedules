@@ -20,9 +20,10 @@ export function PlannerPreview() {
       </Reveal>
       <Reveal delay={0.14}>
         <p className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">
-          Scroll to watch a section get dragged onto a conflicting slot—then
-          see the planner rearrange around your pinned courses. Sample week
-          only; open the planner to build yours.
+          Scroll to watch a section change to MWF—Thursday slides to Friday,
+          Monday fades in, and the planner moves conflicting courses around
+          your pinned classes. Sample week only; open the planner to build
+          yours.
         </p>
       </Reveal>
     </>
@@ -38,9 +39,10 @@ export function PlannerPreview() {
           Sample week preview: CHEM 1020 meets Monday, Wednesday, and Friday
           9 to 9:50 a.m. with a Tuesday lab and Thursday exam block. ENGL 1010
           meets Tuesday and Thursday 11 a.m. to 12:15 p.m. MATH 1400 meets
-          Monday, Wednesday, and Friday 10 to 10:50 a.m. After rearranging,
-          ENGL moves to Wednesday morning and MATH shifts to early afternoon.
-          Three courses, no overlaps.
+          Monday, Wednesday, and Friday 10 to 10:50 a.m. After switching
+          ENGL to a Monday, Wednesday, and Friday section at 10 to 11:15
+          a.m., Thursday&apos;s meeting animates to Friday, Monday fades in,
+          and MATH shifts to early afternoon. Three courses, no overlaps.
         </p>
         <LandingPlannerScrollDemo heading={heading} />
       </div>

@@ -18,26 +18,26 @@ type OgDragGhostSlot = {
   snapped: boolean;
 };
 
-/** Static drag-in-progress scene for the OG image (ENGL 1010 Tue → Wed snap). */
+/** Static drag-in-progress scene for the OG image (ENGL 1010 Tue → MWF Wed snap). */
 export const LANDING_PREVIEW_OG_DRAG_SCENARIO = {
   sourceBlockKey: "engl-tue",
   ghosts: [
     {
       dayIndex: 0,
-      startMinutes: 11 * 60,
-      endMinutes: 12 * 60 + 15,
+      startMinutes: 10 * 60,
+      endMinutes: 11 * 60 + 15,
       snapped: false,
     },
     {
       dayIndex: 2,
-      startMinutes: 11 * 60,
-      endMinutes: 12 * 60 + 15,
+      startMinutes: 10 * 60,
+      endMinutes: 11 * 60 + 15,
       snapped: true,
     },
     {
       dayIndex: 4,
-      startMinutes: 11 * 60,
-      endMinutes: 12 * 60 + 15,
+      startMinutes: 10 * 60,
+      endMinutes: 11 * 60 + 15,
       snapped: false,
     },
   ],

@@ -38,17 +38,20 @@ function block(
   };
 }
 
-/** Tuesday ENGL 1010 lecture — dragged during the landing scroll demo. */
+/** Tuesday ENGL 1010 lecture — dragged to pick an MWF section during the scroll demo. */
 export const LANDING_DEMO_DRAGGABLE_KEY = "engl-tue";
 
-/** MATH 1400 Wednesday lecture — overlaps the drop target. */
+/** MATH 1400 Wednesday lecture — overlaps the MWF ENGL snap at 10 a.m. */
 export const LANDING_DEMO_CONFLICT_BLOCK_KEY = "math-wed";
 
-/** Wed 10–11:15 a.m. — user drops here despite overlapping MATH. */
+const ENGL_MWF_START_MIN = 10 * 60;
+const ENGL_MWF_END_MIN = 11 * 60 + 15;
+
+/** Wed 10–11:15 a.m. — MWF section snap while dragging. */
 export const LANDING_DEMO_TARGET = {
   dayIndex: 2,
-  startMinutes: 10 * 60,
-  endMinutes: 11 * 60 + 15,
+  startMinutes: ENGL_MWF_START_MIN,
+  endMinutes: ENGL_MWF_END_MIN,
 } as const;
 
 /** ENGL Tue source slot for geometry (same as start block). */
@@ -58,20 +61,55 @@ export const LANDING_DEMO_SOURCE = {
   endMinutes: 12 * 60 + 15,
 } as const;
 
+/** MWF ghost slots shown while dragging toward the new ENGL section. */
 export const LANDING_DEMO_CANDIDATE_SLOTS: readonly LandingDemoCandidateSlot[] =
   [
-    { dayIndex: 0, startMinutes: 11 * 60, endMinutes: 12 * 60 + 15 },
-    { dayIndex: 1, startMinutes: 8 * 60, endMinutes: 9 * 60 + 15 },
+    {
+      dayIndex: 0,
+      startMinutes: ENGL_MWF_START_MIN,
+      endMinutes: ENGL_MWF_END_MIN,
+    },
     {
       dayIndex: 2,
-      startMinutes: 10 * 60,
-      endMinutes: 11 * 60 + 15,
+      startMinutes: ENGL_MWF_START_MIN,
+      endMinutes: ENGL_MWF_END_MIN,
       isSnapTarget: true,
     },
-    { dayIndex: 2, startMinutes: 13 * 60, endMinutes: 14 * 60 + 15 },
-    { dayIndex: 3, startMinutes: 14 * 60, endMinutes: 15 * 60 + 15 },
-    { dayIndex: 4, startMinutes: 11 * 60, endMinutes: 12 * 60 + 15 },
+    {
+      dayIndex: 4,
+      startMinutes: ENGL_MWF_START_MIN,
+      endMinutes: ENGL_MWF_END_MIN,
+    },
   ];
+
+const LANDING_DEMO_ENGL_MAGIC_THU_TO_FRI = "landing-demo:engl:thu-to-fri";
+const LANDING_DEMO_ENGL_MAGIC_ENTER_MON = "landing-demo:engl:enter-mon";
+const LANDING_DEMO_ENGL_MAGIC_ENTER_WED = "landing-demo:engl:enter-wed";
+const LANDING_DEMO_ENGL_MAGIC_EXIT_TUE = "landing-demo:engl:exit-tue";
+
+/** Shared-layout ids for the landing scroll demo (Thu→Fri slide, Mon/Wed fade in). */
+export function landingDemoMagicIdForBlock(block: CalendarBlock): string {
+  switch (block.key) {
+    case "engl-thu":
+    case "engl-fri":
+      return LANDING_DEMO_ENGL_MAGIC_THU_TO_FRI;
+    case "engl-mon":
+      return LANDING_DEMO_ENGL_MAGIC_ENTER_MON;
+    case "engl-wed":
+      return LANDING_DEMO_ENGL_MAGIC_ENTER_WED;
+    case "engl-tue":
+      return LANDING_DEMO_ENGL_MAGIC_EXIT_TUE;
+    default:
+      return block.key;
+  }
+}
+
+export const LANDING_DEMO_ENGL_MAGIC_IDS = {
+  thuToFri: LANDING_DEMO_ENGL_MAGIC_THU_TO_FRI,
+  enterMon: LANDING_DEMO_ENGL_MAGIC_ENTER_MON,
+  enterWed: LANDING_DEMO_ENGL_MAGIC_ENTER_WED,
+  exitTue: LANDING_DEMO_ENGL_MAGIC_EXIT_TUE,
+} as const;
 
 export const LANDING_DEMO_PINNED_KEYS = [
   "chem-mon",
@@ -274,13 +312,13 @@ export const LANDING_DEMO_START_BLOCKS: CalendarBlock[] = [
 
 const ENGL_RESOLVED_BLOCKS: CalendarBlock[] = [
   block({
-    key: "engl-wed",
+    key: "engl-mon",
     plannerItemId: 2,
     sectionCrn: "20002",
     meetingId: 6,
-    dayIndex: 2,
-    startMinutes: 10 * 60,
-    endMinutes: 11 * 60 + 15,
+    dayIndex: 0,
+    startMinutes: ENGL_MWF_START_MIN,
+    endMinutes: ENGL_MWF_END_MIN,
     label: "ENGL 1010",
     color: COLOR_ENGL,
     subject: "ENGL",
@@ -290,7 +328,40 @@ const ENGL_RESOLVED_BLOCKS: CalendarBlock[] = [
     seatsAvailable: 4,
     buildingShort: "Classroom Building",
   }),
-  ENGL_START_BLOCKS[1]!,
+  block({
+    key: "engl-wed",
+    plannerItemId: 2,
+    sectionCrn: "20002",
+    meetingId: 7,
+    dayIndex: 2,
+    startMinutes: ENGL_MWF_START_MIN,
+    endMinutes: ENGL_MWF_END_MIN,
+    label: "ENGL 1010",
+    color: COLOR_ENGL,
+    subject: "ENGL",
+    courseNumber: "1010",
+    sublabel: "CR 302",
+    instructorSublabel: "Rivera, M.",
+    seatsAvailable: 4,
+    buildingShort: "Classroom Building",
+  }),
+  block({
+    key: "engl-fri",
+    plannerItemId: 2,
+    sectionCrn: "20002",
+    meetingId: 8,
+    dayIndex: 4,
+    startMinutes: ENGL_MWF_START_MIN,
+    endMinutes: ENGL_MWF_END_MIN,
+    label: "ENGL 1010",
+    color: COLOR_ENGL,
+    subject: "ENGL",
+    courseNumber: "1010",
+    sublabel: "CR 302",
+    instructorSublabel: "Rivera, M.",
+    seatsAvailable: 4,
+    buildingShort: "Classroom Building",
+  }),
 ];
 
 const MATH_RESOLVED_BLOCKS: CalendarBlock[] = [
@@ -347,7 +418,7 @@ const MATH_RESOLVED_BLOCKS: CalendarBlock[] = [
   }),
 ];
 
-/** Rearranged week after the planner resolves the conflicting drop. */
+/** Rearranged week after switching ENGL to MWF 10 a.m. and moving MATH to afternoon. */
 export const LANDING_DEMO_RESOLVED_BLOCKS: CalendarBlock[] = [
   ...CHEM_BLOCKS,
   ...ENGL_RESOLVED_BLOCKS,

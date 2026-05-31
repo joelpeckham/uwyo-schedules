@@ -99,6 +99,8 @@ export type WeekCalendarViewProps = {
   suspendMagicMoveLayout?: boolean;
   /** When true, apply block updates instantly (e.g. after drag-drop commit). */
   instantBlockUpdate?: boolean;
+  /** Override magic-move layout ids (e.g. landing demo Thu→Fri morph). */
+  magicIdForBlock?: (block: CalendarBlock) => string;
 };
 
 type BackToBackChip = {
@@ -179,6 +181,7 @@ function WeekCalendarViewInner({
   enableMagicMove = false,
   suspendMagicMoveLayout = false,
   instantBlockUpdate = false,
+  magicIdForBlock: magicIdForBlockProp,
 }: WeekCalendarViewProps) {
   const startHour = hourAxis[0] ?? 0;
   const startMin = startHour * 60;
@@ -198,9 +201,19 @@ function WeekCalendarViewInner({
   const backToBackChipsByDay = computeBackToBackChips(blocksByDay);
 
   const magicIdMap = useMemo(
-    () => (enableMagicMove ? buildMagicMoveIdMap(blocks) : null),
-    [blocks, enableMagicMove],
+    () =>
+      enableMagicMove && magicIdForBlockProp == null
+        ? buildMagicMoveIdMap(blocks)
+        : null,
+    [blocks, enableMagicMove, magicIdForBlockProp],
   );
+
+  const magicIdForBlock = useMemo(() => {
+    if (!enableMagicMove) return undefined;
+    if (magicIdForBlockProp) return magicIdForBlockProp;
+    if (!magicIdMap) return undefined;
+    return (block: CalendarBlock) => magicIdMap.get(block.key) ?? block.key;
+  }, [enableMagicMove, magicIdForBlockProp, magicIdMap]);
 
   const dayStrip = (
     <div ref={dayStripRef} className="flex min-w-0 flex-1">
@@ -225,11 +238,7 @@ function WeekCalendarViewInner({
           enableMagicMove={enableMagicMove}
           suspendMagicMoveLayout={suspendMagicMoveLayout}
           instantBlockUpdate={instantBlockUpdate}
-          magicIdForBlock={
-            magicIdMap
-              ? (block) => magicIdMap.get(block.key) ?? block.key
-              : undefined
-          }
+          magicIdForBlock={magicIdForBlock}
         />
       ))}
     </div>

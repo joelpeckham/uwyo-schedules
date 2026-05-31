@@ -12,10 +12,12 @@ import {
   LANDING_DEMO_CANDIDATE_SLOTS,
   LANDING_DEMO_CONFLICT_BLOCK_KEY,
   LANDING_DEMO_DRAGGABLE_KEY,
+  LANDING_DEMO_ENGL_MAGIC_IDS,
   LANDING_DEMO_PINNED_KEYS,
   LANDING_DEMO_RESOLVED_BLOCKS,
   LANDING_DEMO_START_BLOCKS,
   LANDING_DEMO_TARGET,
+  landingDemoMagicIdForBlock,
 } from "@/lib/planner/landing-preview-demo";
 
 describe("landing-preview-demo", () => {
@@ -32,25 +34,37 @@ describe("landing-preview-demo", () => {
     expect(mathWed?.startMinutes).toBe(10 * 60);
   });
 
-  it("flags one snap-target candidate slot on Wednesday morning", () => {
+  it("flags one snap-target candidate slot on Wednesday at 10 a.m.", () => {
     const snapSlots = LANDING_DEMO_CANDIDATE_SLOTS.filter(
       (slot) => slot.isSnapTarget,
     );
     expect(snapSlots).toHaveLength(1);
     expect(snapSlots[0]).toMatchObject(LANDING_DEMO_TARGET);
+    expect(LANDING_DEMO_CANDIDATE_SLOTS.map((s) => s.dayIndex).sort()).toEqual([
+      0, 2, 4,
+    ]);
   });
 
-  it("moves ENGL to Wednesday and shifts MATH to the afternoon when resolved", () => {
+  it("resolves ENGL to MWF at 10 a.m. and shifts MATH to the afternoon", () => {
+    const englMon = LANDING_DEMO_RESOLVED_BLOCKS.find((b) => b.key === "engl-mon");
     const englWed = LANDING_DEMO_RESOLVED_BLOCKS.find((b) => b.key === "engl-wed");
+    const englFri = LANDING_DEMO_RESOLVED_BLOCKS.find((b) => b.key === "engl-fri");
     const mathWed = LANDING_DEMO_RESOLVED_BLOCKS.find(
       (b) => b.key === LANDING_DEMO_CONFLICT_BLOCK_KEY,
     );
     const englTue = LANDING_DEMO_RESOLVED_BLOCKS.find(
       (b) => b.key === LANDING_DEMO_DRAGGABLE_KEY,
     );
+    const englThu = LANDING_DEMO_RESOLVED_BLOCKS.find((b) => b.key === "engl-thu");
 
     expect(englTue).toBeUndefined();
-    expect(englWed).toMatchObject(LANDING_DEMO_TARGET);
+    expect(englThu).toBeUndefined();
+    for (const block of [englMon, englWed, englFri]) {
+      expect(block).toMatchObject({
+        startMinutes: 10 * 60,
+        endMinutes: 11 * 60 + 15,
+      });
+    }
     expect(mathWed?.startMinutes).toBe(13 * 60);
   });
 
@@ -60,6 +74,33 @@ describe("landing-preview-demo", () => {
       const resolved = LANDING_DEMO_RESOLVED_BLOCKS.find((b) => b.key === key);
       expect(resolved).toEqual(start);
     }
+  });
+
+  it("assigns magic-move ids for Thu→Fri slide and Mon/Wed fade in", () => {
+    const thu = LANDING_DEMO_START_BLOCKS.find((b) => b.key === "engl-thu")!;
+    const fri = LANDING_DEMO_RESOLVED_BLOCKS.find((b) => b.key === "engl-fri")!;
+    const mon = LANDING_DEMO_RESOLVED_BLOCKS.find((b) => b.key === "engl-mon")!;
+    const wed = LANDING_DEMO_RESOLVED_BLOCKS.find((b) => b.key === "engl-wed")!;
+    const tue = LANDING_DEMO_START_BLOCKS.find((b) => b.key === "engl-tue")!;
+
+    expect(landingDemoMagicIdForBlock(thu)).toBe(
+      LANDING_DEMO_ENGL_MAGIC_IDS.thuToFri,
+    );
+    expect(landingDemoMagicIdForBlock(fri)).toBe(
+      LANDING_DEMO_ENGL_MAGIC_IDS.thuToFri,
+    );
+    expect(landingDemoMagicIdForBlock(mon)).toBe(
+      LANDING_DEMO_ENGL_MAGIC_IDS.enterMon,
+    );
+    expect(landingDemoMagicIdForBlock(wed)).toBe(
+      LANDING_DEMO_ENGL_MAGIC_IDS.enterWed,
+    );
+    expect(landingDemoMagicIdForBlock(tue)).toBe(
+      LANDING_DEMO_ENGL_MAGIC_IDS.exitTue,
+    );
+    expect(landingDemoMagicIdForBlock(
+      LANDING_DEMO_START_BLOCKS.find((b) => b.key === "math-mon")!,
+    )).toBe("math-mon");
   });
 });
 

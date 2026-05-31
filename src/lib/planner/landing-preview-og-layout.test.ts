@@ -8,15 +8,15 @@ import {
 } from "@/lib/planner/landing-preview-og-layout";
 
 describe("layoutMeetingRectForHourAxis", () => {
-  it("places 11 a.m. ENGL at the third hour row when axis starts at 8", () => {
+  it("places 10 a.m. ENGL at the second hour row when axis starts at 8", () => {
     const rowPx = 26;
     const rect = layoutMeetingRectForHourAxis(
-      11 * 60,
-      12 * 60 + 15,
+      10 * 60,
+      11 * 60 + 15,
       LANDING_PREVIEW_HOUR_AXIS,
       rowPx,
     );
-    expect(rect.topPx).toBe(3 * rowPx);
+    expect(rect.topPx).toBe(2 * rowPx);
     expect(rect.heightPx).toBeGreaterThan(rowPx);
   });
 });

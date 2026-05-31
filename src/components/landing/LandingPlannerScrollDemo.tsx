@@ -50,6 +50,7 @@ import {
   LANDING_DEMO_RESOLVED_BLOCKS,
   LANDING_DEMO_SOURCE,
   LANDING_DEMO_START_BLOCKS,
+  landingDemoMagicIdForBlock,
 } from "@/lib/planner/landing-preview-demo";
 import { cn } from "@/lib/utils";
 
@@ -280,6 +281,7 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
             viewportRef={viewportRef}
             dayStripRef={dayStripRef}
             enableMagicMove
+            magicIdForBlock={landingDemoMagicIdForBlock}
             suspendMagicMoveLayout={dragging}
             blockDimmed={(block) =>
               block.key === LANDING_DEMO_DRAGGABLE_KEY &&
