@@ -122,7 +122,7 @@ export function ExportMenu() {
   }, [plannerItems, termCode, blackouts, flash]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col items-start gap-1.5">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -131,10 +131,14 @@ export function ExportMenu() {
             size="lg"
             className="h-9 touch-manipulation"
             disabled={disabled}
+            aria-label="Copy or export schedule"
           >
-            <Copy className="mr-1.5 size-4" aria-hidden />
-            <span>Copy / export</span>
-            <ChevronDown className="ml-1.5 size-3.5 opacity-60" aria-hidden />
+            <Copy className="size-4 @sm/toolbar:mr-1.5" aria-hidden />
+            <span className="hidden @sm/toolbar:inline">Copy / export</span>
+            <ChevronDown
+              className="size-3.5 opacity-60 @sm/toolbar:ml-1.5"
+              aria-hidden
+            />
           </Button>
         </PopoverTrigger>
         <PopoverContent

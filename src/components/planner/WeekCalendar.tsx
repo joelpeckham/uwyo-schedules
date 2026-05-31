@@ -1104,7 +1104,7 @@ type CoursePointerLike = Pick<
                 onClick={undo}
               >
                 <Undo2 className="size-4" aria-hidden />
-                <span className="ml-1.5 hidden sm:inline">Undo</span>
+                <span className="ml-1.5 hidden @2xl/toolbar:inline">Undo</span>
               </Button>
               <Button
                 type="button"
@@ -1117,7 +1117,7 @@ type CoursePointerLike = Pick<
                 onClick={redo}
               >
                 <Redo2 className="size-4" aria-hidden />
-                <span className="ml-1.5 hidden sm:inline">Redo</span>
+                <span className="ml-1.5 hidden @2xl/toolbar:inline">Redo</span>
               </Button>
               <Button
                 type="button"
@@ -1135,7 +1135,9 @@ type CoursePointerLike = Pick<
                 }}
               >
                 <Ban className="size-4" aria-hidden />
-                <span className="ml-1.5 hidden sm:inline">Mark busy time</span>
+                <span className="ml-1.5 hidden @2xl/toolbar:inline">
+                  Mark busy time
+                </span>
               </Button>
               <Button
                 type="button"

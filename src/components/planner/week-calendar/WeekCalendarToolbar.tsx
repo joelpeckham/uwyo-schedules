@@ -14,8 +14,8 @@ type WeekCalendarToolbarProps = {
 };
 
 /**
- * Week calendar header: two rows by default, single row at xl+ when the
- * planner grid column is wide enough for title + actions side by side.
+ * Week calendar header: two rows by default, single row when the calendar
+ * column is wide enough for title + actions side by side (@3xl/toolbar).
  */
 export function WeekCalendarToolbar({
   plannerItemCount,
@@ -26,7 +26,7 @@ export function WeekCalendarToolbar({
 }: WeekCalendarToolbarProps) {
   return (
     <div
-      className="border-b border-border p-3 sm:p-4"
+      className="@container/toolbar border-b border-border p-3 sm:p-4"
       id="planner-week-calendar-toolbar"
     >
       {tourSlot !== undefined ? (
@@ -34,11 +34,11 @@ export function WeekCalendarToolbar({
       ) : (
         <FirstRunTourSlot plannerItemCount={plannerItemCount} />
       )}
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between xl:gap-4">
+      <div className="flex flex-col gap-3 @3xl/toolbar:flex-row @3xl/toolbar:items-start @3xl/toolbar:justify-between @3xl/toolbar:gap-4">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <h2
             id="planner-week-calendar-heading"
-            className="font-heading w-full min-w-0 shrink-0 text-lg font-medium text-foreground sm:w-auto"
+            className="font-heading w-full min-w-0 shrink-0 text-lg font-medium text-foreground @3xl/toolbar:w-auto"
           >
             Weekly schedule
           </h2>
@@ -46,11 +46,9 @@ export function WeekCalendarToolbar({
             <div className="flex flex-wrap items-center gap-2">{meta}</div>
           ) : null}
         </div>
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between xl:shrink-0 xl:justify-end xl:gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 @3xl/toolbar:shrink-0 @3xl/toolbar:justify-end">
           <div className="min-w-0">{exportSlot}</div>
-          <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
-            {actions}
-          </div>
+          <div className="flex flex-wrap items-center gap-1">{actions}</div>
         </div>
       </div>
     </div>
