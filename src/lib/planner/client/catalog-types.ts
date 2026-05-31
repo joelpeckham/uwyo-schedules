@@ -16,6 +16,9 @@ export type ClientCatalogSection = {
   instructionalMethodDescription: string | null;
   /** Credit hours from `sections.creditHours`. May be null for sections like labs. */
   creditHours: number | null;
+  creditHourLow: number | null;
+  creditHourHigh: number | null;
+  creditHourIndicator: string | null;
   /**
    * Open seats remaining (`sections.seatsAvailable`). `null` when Banner
    * doesn't expose the seat count for a section.

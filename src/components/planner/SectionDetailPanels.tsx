@@ -27,6 +27,7 @@ import {
   reorderMeetingsPrimaryFirst,
 } from "@/lib/sections/pick-primary-meeting";
 import { cn } from "@/lib/utils";
+import { formatCreditValue } from "@/lib/planner/credit-hours";
 import {
   bentoSpanClassName,
   bentoTileInput,
@@ -175,6 +176,12 @@ export function SectionDetailPanels({ root }: Props) {
     { label: "Credit range", value: creditRangeLabel },
     { label: "Credit indicator", value: creditInd },
   ];
+  const creditDisplay = formatCreditValue({
+    creditHours: creditHours ?? null,
+    creditHourLow: creditLow ?? null,
+    creditHourHigh: creditHigh ?? null,
+    creditHourIndicator: creditInd,
+  });
 
   const enrollment = numberField(root, "enrollment");
   const maxEnr = numberField(root, "maximumEnrollment");
@@ -458,7 +465,7 @@ export function SectionDetailPanels({ root }: Props) {
           kicker="Credits"
           headline={
             <span className="font-heading text-4xl font-semibold tabular-nums tracking-tight text-foreground sm:text-5xl">
-              {creditStr ?? "—"}
+              {creditDisplay}
             </span>
           }
           subline={

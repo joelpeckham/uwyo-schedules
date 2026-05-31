@@ -5,6 +5,7 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { SeoBreadcrumbs } from "@/components/seo/SeoBreadcrumbs";
 import { AddToPlannerCta } from "@/components/planner/AddToPlannerCta";
 import { SectionDetailPanels } from "@/components/planner/SectionDetailPanels";
+import { effectiveCreditHours } from "@/lib/planner/credit-hours";
 import {
   asRecord,
   asRecordArray,
@@ -141,6 +142,13 @@ export default async function CrnDetailPage({ params }: Props) {
 
   const root = detail.detailRoot;
   if (!root) notFound();
+
+  const effectiveCredits = effectiveCreditHours({
+    creditHours: numberField(root, "creditHours") ?? null,
+    creditHourLow: numberField(root, "creditHourLow") ?? null,
+    creditHourHigh: numberField(root, "creditHourHigh") ?? null,
+    creditHourIndicator: stringField(root, "creditHourIndicator"),
+  });
 
   const courseLabel =
     detail.subjectCourse ?? `${detail.subject} ${detail.courseNumber}`;
@@ -285,6 +293,7 @@ export default async function CrnDetailPage({ params }: Props) {
     description: `${courseLabel}${detail.courseTitle ? ` (${detail.courseTitle})` : ""} CRN ${detail.crn} at the University of Wyoming.`,
     provider: uwyoOrganization,
     url: absoluteUrl(canonicalPath),
+    ...(effectiveCredits != null ? { numberOfCredits: effectiveCredits } : {}),
     hasCourseInstance: courseInstance,
   };
 

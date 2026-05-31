@@ -35,6 +35,9 @@ type SectionRow = {
   instructionalMethod: string | null;
   instructionalMethodDescription: string | null;
   creditHours: number | null;
+  creditHourLow: number | null;
+  creditHourHigh: number | null;
+  creditHourIndicator: string | null;
   seatsAvailable: number | null;
 };
 
@@ -104,6 +107,9 @@ async function resolvePlannerCatalogAllCrns(
             instructionalMethodDescription:
               schema.sections.instructionalMethodDescription,
             creditHours: schema.sections.creditHours,
+            creditHourLow: schema.sections.creditHourLow,
+            creditHourHigh: schema.sections.creditHourHigh,
+            creditHourIndicator: schema.sections.creditHourIndicator,
             seatsAvailable: schema.sections.seatsAvailable,
           })
           .from(schema.sections)
@@ -269,6 +275,9 @@ export async function loadPlannerCatalogCore(
       instructionalMethodDescription:
         schema.sections.instructionalMethodDescription,
       creditHours: schema.sections.creditHours,
+      creditHourLow: schema.sections.creditHourLow,
+      creditHourHigh: schema.sections.creditHourHigh,
+      creditHourIndicator: schema.sections.creditHourIndicator,
       seatsAvailable: schema.sections.seatsAvailable,
     })
     .from(schema.sections)
@@ -390,6 +399,9 @@ export async function loadPlannerCatalogCore(
         instructionalMethodDescription:
           schema.sections.instructionalMethodDescription,
         creditHours: schema.sections.creditHours,
+        creditHourLow: schema.sections.creditHourLow,
+        creditHourHigh: schema.sections.creditHourHigh,
+        creditHourIndicator: schema.sections.creditHourIndicator,
         seatsAvailable: schema.sections.seatsAvailable,
       })
       .from(schema.sections)
