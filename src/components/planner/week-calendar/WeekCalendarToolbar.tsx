@@ -53,10 +53,6 @@ export function WeekCalendarToolbar({
           </div>
         </div>
       </div>
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        Copy / export gives you the week as CRNs, an .ics file, or a print
-        view. Use the CRNs to register in WyoWeb.
-      </p>
     </div>
   );
 }
