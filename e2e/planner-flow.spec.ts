@@ -9,8 +9,8 @@ test.describe("Planner interactions", () => {
       page.getByRole("heading", { name: /Your week/i }),
     ).toBeVisible();
 
-    const searchInput = page.locator("#course-search");
-    const plannerReady = await searchInput
+    const addButton = page.getByRole("button", { name: /^Add$/ });
+    const plannerReady = await addButton
       .waitFor({ state: "visible", timeout: 15_000 })
       .then(() => true)
       .catch(() => false);
@@ -20,6 +20,9 @@ test.describe("Planner interactions", () => {
       "Planner catalog UI requires term data (ingested DB + session)",
     );
 
+    await addButton.click();
+    const searchInput = page.locator("#course-search");
+    await expect(searchInput).toBeVisible();
     await searchInput.fill("ZZ");
     await expect(
       page.getByRole("listbox", { name: /Course search results/i }).or(

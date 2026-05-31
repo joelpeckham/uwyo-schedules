@@ -32,6 +32,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -42,7 +47,6 @@ import { cn } from "@/lib/utils";
 import {
   ChevronDown,
   ChevronRight,
-  HelpCircle,
   Loader2,
   Plus,
   Trash2,
@@ -178,11 +182,31 @@ export function CourseManager({ termCode }: Props) {
 
   const [sectionsOpen, setSectionsOpen] = useState<Record<number, boolean>>({});
   const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
-  const [helpOpen, setHelpOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(-1);
 
   const searchSeqRef = useRef(0);
   const autoAddAfterPrefetchRef = useRef(false);
+
+  const resetAddPopover = useCallback(() => {
+    setSearchQ("");
+    setHits([]);
+    setPicked(null);
+    setSearchActiveIndex(-1);
+    setError(null);
+    setPrefetchPackError(null);
+    autoAddAfterPrefetchRef.current = false;
+    searchSeqRef.current += 1;
+    setSearchFetching(false);
+  }, []);
+
+  const onAddOpenChange = useCallback(
+    (open: boolean) => {
+      setAddOpen(open);
+      if (!open) resetAddPopover();
+    },
+    [resetAddPopover],
+  );
 
   const runSearch = useCallback(() => {
     const q = searchQ.trim();
@@ -280,6 +304,7 @@ export function CourseManager({ termCode }: Props) {
       setHits([]);
       setSearchQ("");
       setSearchActiveIndex(-1);
+      setAddOpen(false);
     },
     [
       termCode,
@@ -289,11 +314,6 @@ export function CourseManager({ termCode }: Props) {
       recordHistorySnapshot,
     ],
   );
-
-  const submitAdd = useCallback(() => {
-    if (!picked) return;
-    startTransition(() => void runAddCourse(picked));
-  }, [picked, runAddCourse]);
 
   const onPickCourseFromSearch = useCallback(
     (h: CourseSearchRow) => {
@@ -462,163 +482,151 @@ export function CourseManager({ termCode }: Props) {
       id="planner-courses"
       className="scroll-mt-20 rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm"
     >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h2 className="font-heading text-lg font-medium text-foreground">
-            Your courses
-          </h2>
-          <p className="mt-1 text-xs text-muted-foreground">{summaryText}</p>
-        </div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-          aria-expanded={helpOpen}
-          aria-controls="planner-courses-help"
-          onClick={() => setHelpOpen((v) => !v)}
-        >
-          <HelpCircle className="size-3.5" />
-          How this works
-        </button>
-      </div>
-
-      {helpOpen ? (
-        <p
-          id="planner-courses-help"
-          className="mt-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground"
-        >
-          Add each course you want this term. The planner picks compatible
-          sections and shows a working week. Pin a section from the list (or by
-          dragging on the calendar) to lock it; instructor and lab preferences
-          are optional.
-        </p>
-      ) : null}
-
-      {error ? (
-        <div
-          className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          role="alert"
-        >
-          {error}
-        </div>
-      ) : null}
-
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="min-w-0 flex-1 sm:min-w-48">
-          <Label htmlFor="course-search" className="text-muted-foreground">
-            Search courses
-          </Label>
-          <div className="relative">
-            <Input
-              id="course-search"
-              role="combobox"
-              aria-expanded={hits.length > 0}
-              aria-controls="course-search-listbox"
-              aria-activedescendant={
-                searchActiveIndex >= 0
-                  ? `course-search-hit-${searchActiveIndex}`
-                  : undefined
-              }
-              aria-autocomplete="list"
-              value={searchQ}
-              onChange={(e) => {
-                setSearchQ(e.target.value);
-                setSearchActiveIndex(-1);
-              }}
-              onKeyDown={onSearchKeyDown}
-              placeholder="Subject or number"
-              className="mt-1 min-h-11"
-              autoComplete="off"
-            />
-            {hits.length > 0 ? (
-              <ul
-                id="course-search-listbox"
-                className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-auto rounded-md border border-border bg-popover shadow-md"
-                role="listbox"
-                aria-label="Course search results"
-              >
-                {hits.map((h, idx) => (
-                  <li key={`${h.subject}-${h.courseNumber}`} role="none">
-                    <button
-                      type="button"
-                      id={`course-search-hit-${idx}`}
-                      role="option"
-                      aria-selected={searchActiveIndex === idx}
-                      className={cn(
-                        "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/60",
-                        picked?.subject === h.subject &&
-                          picked?.courseNumber === h.courseNumber &&
-                          "bg-muted",
-                        searchActiveIndex === idx &&
-                          "bg-muted/80 ring-1 ring-ring/60",
-                      )}
-                      onClick={() => onPickCourseFromSearch(h)}
-                      onMouseEnter={() => setSearchActiveIndex(idx)}
-                    >
-                      <span className="font-mono text-foreground">
-                        {h.subjectCourse ?? `${h.subject} ${h.courseNumber}`}
-                      </span>
-                      {h.previewTitle ? (
-                        <span className="text-muted-foreground">
-                          {h.previewTitle}
-                        </span>
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+      <Popover open={addOpen} onOpenChange={onAddOpenChange}>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h2 className="font-heading text-lg font-medium text-foreground">
+              Your courses
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">{summaryText}</p>
           </div>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              className="min-h-11 shrink-0 touch-manipulation"
+            >
+              <Plus className="size-4" />
+              <span className="ml-2">Add</span>
+            </Button>
+          </PopoverTrigger>
         </div>
-        <Button
-          type="button"
-          className="min-h-11 touch-manipulation"
-          disabled={
-            !picked ||
-            pending ||
-            prefetchPackPending ||
-            Boolean(prefetchPackError) ||
-            !hasPackForPicked
-          }
-          onClick={submitAdd}
+
+        <PopoverContent
+          align="end"
+          className="w-80 max-w-[calc(100vw-2rem)] px-3 pt-3 pb-2"
         >
-          {pending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Plus className="size-4" />
-          )}
-          <span className="ml-2">Add</span>
-        </Button>
-      </div>
-      <div className="mt-1 min-h-5 text-xs" aria-live="polite">
-        {searchQueryLen > 0 && searchQueryLen < 2 ? (
-          <p className="text-muted-foreground">
-            Type at least 2 characters to search.
-          </p>
-        ) : null}
-        {searchQueryLen >= 2 && searchFetching ? (
-          <p className="text-muted-foreground" role="status">
-            Searching&hellip;
-          </p>
-        ) : null}
-        {searchQueryLen >= 2 && !searchFetching && !pending && hits.length === 0 ? (
-          <p className="text-muted-foreground" role="status">
-            No courses match that search.
-          </p>
-        ) : null}
-        {picked && prefetchPackPending ? (
-          <p className="text-muted-foreground">
-            Loading sections for this course&hellip;
-          </p>
-        ) : null}
-        {picked && !prefetchPackPending && !prefetchPackError && hasPackForPicked ? (
-          <p className="text-muted-foreground">Ready to add.</p>
-        ) : null}
-        {picked && prefetchPackError ? (
-          <p className="text-destructive" role="alert">
-            {prefetchPackError}
-          </p>
-        ) : null}
-      </div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <Label htmlFor="course-search" className="shrink-0 text-muted-foreground">
+              Search courses
+            </Label>
+            <div
+              className="flex h-4 min-w-0 flex-1 items-center justify-end overflow-hidden text-xs"
+              aria-live="polite"
+            >
+              {error ? (
+                <p className="truncate text-destructive" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              {searchQueryLen > 0 && searchQueryLen < 2 ? (
+                <p className="truncate text-muted-foreground">
+                  Type at least 2 characters to search.
+                </p>
+              ) : null}
+              {searchQueryLen >= 2 && searchFetching ? (
+                <p
+                  className="flex max-w-full items-center justify-end gap-1.5 truncate text-muted-foreground"
+                  role="status"
+                >
+                  <span className="inline-flex size-3 shrink-0 items-center justify-center">
+                    <Loader2 className="size-3 animate-spin" aria-hidden />
+                  </span>
+                  Searching&hellip;
+                </p>
+              ) : null}
+              {searchQueryLen >= 2 && !searchFetching && !pending && hits.length === 0 ? (
+                <p className="truncate text-muted-foreground" role="status">
+                  No courses match that search.
+                </p>
+              ) : null}
+              {picked && prefetchPackPending ? (
+                <p className="flex max-w-full items-center justify-end gap-1.5 truncate text-muted-foreground">
+                  <span className="inline-flex size-3 shrink-0 items-center justify-center">
+                    <Loader2 className="size-3 animate-spin" aria-hidden />
+                  </span>
+                  Loading sections for this course&hellip;
+                </p>
+              ) : null}
+              {pending ? (
+                <p
+                  className="flex max-w-full items-center justify-end gap-1.5 truncate text-muted-foreground"
+                  role="status"
+                >
+                  <span className="inline-flex size-3 shrink-0 items-center justify-center">
+                    <Loader2 className="size-3 animate-spin" aria-hidden />
+                  </span>
+                  Adding course&hellip;
+                </p>
+              ) : null}
+              {picked && prefetchPackError ? (
+                <p className="truncate text-destructive" role="alert">
+                  {prefetchPackError}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <Input
+            id="course-search"
+            role="combobox"
+            aria-expanded={hits.length > 0}
+            aria-controls="course-search-listbox"
+            aria-activedescendant={
+              searchActiveIndex >= 0
+                ? `course-search-hit-${searchActiveIndex}`
+                : undefined
+            }
+            aria-autocomplete="list"
+            value={searchQ}
+            onChange={(e) => {
+              setSearchQ(e.target.value);
+              setSearchActiveIndex(-1);
+            }}
+            onKeyDown={onSearchKeyDown}
+            placeholder="Subject or number"
+            className="min-h-11"
+            autoComplete="off"
+          />
+          {hits.length > 0 ? (
+            <ul
+              id="course-search-listbox"
+              className="mt-1 max-h-48 overflow-auto rounded-md border border-border bg-popover shadow-sm"
+              role="listbox"
+              aria-label="Course search results"
+            >
+              {hits.map((h, idx) => (
+                <li key={`${h.subject}-${h.courseNumber}`} role="none">
+                  <button
+                    type="button"
+                    id={`course-search-hit-${idx}`}
+                    role="option"
+                    aria-selected={searchActiveIndex === idx}
+                    disabled={pending || prefetchPackPending}
+                    className={cn(
+                      "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/60 disabled:pointer-events-none disabled:opacity-50",
+                      picked?.subject === h.subject &&
+                        picked?.courseNumber === h.courseNumber &&
+                        "bg-muted",
+                      searchActiveIndex === idx &&
+                        "bg-muted/80 ring-1 ring-ring/60",
+                    )}
+                    onClick={() => onPickCourseFromSearch(h)}
+                    onMouseEnter={() => setSearchActiveIndex(idx)}
+                  >
+                    <span className="font-mono text-foreground">
+                      {h.subjectCourse ?? `${h.subject} ${h.courseNumber}`}
+                    </span>
+                    {h.previewTitle ? (
+                      <span className="text-muted-foreground">
+                        {h.previewTitle}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </PopoverContent>
+      </Popover>
 
       <ul className="mt-6 space-y-2">
         {plannerItems.map((item) => {
@@ -862,7 +870,7 @@ export function CourseManager({ termCode }: Props) {
 
       {plannerItems.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          Search and add a course to get started.
+          Tap Add to search for a course.
         </p>
       ) : null}
     </section>
