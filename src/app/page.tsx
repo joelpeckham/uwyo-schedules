@@ -65,8 +65,8 @@ export default async function Page({
         <PlannerCtaBand />
         <CatalogBrowseSection latestTerm={latestTerm} />
         {/* <TopSubjects latestTerm={latestTerm} /> */}
-        <LaramieCallout />
         <LandingFaq />
+        <LaramieCallout />
       </SiteChrome>
       <LandingFooter latestTerm={latestTerm} />
     </>

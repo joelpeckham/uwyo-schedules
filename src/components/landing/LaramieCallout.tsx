@@ -4,7 +4,7 @@ import { ParallaxTopo, Reveal } from "@/components/landing/motion";
 export function LaramieCallout() {
   return (
     <section
-      className="relative overflow-hidden border-b border-border bg-muted px-4 py-14 sm:px-6 sm:py-16"
+      className="relative overflow-hidden  border-border bg-muted px-4 py-14 sm:px-6 sm:py-16"
       aria-labelledby="laramie-heading"
     >
       <ParallaxTopo className="pointer-events-none absolute inset-0" />

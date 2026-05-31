@@ -23,7 +23,7 @@ export function LandingFooter({
   latestTerm: { code: string; description: string } | null;
 }) {
   return (
-    <footer className="border-t border-border bg-muted/15 px-4 py-10 sm:px-6">
+    <footer className="border-border bg-muted px-4 py-10 sm:px-6">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 lg:max-w-[84rem]">
         <div>
           <h2 className="text-sm font-semibold tracking-wide text-muted-foreground">
