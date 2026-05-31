@@ -6,6 +6,7 @@ type PlannerViewSettings = {
   showCourseSelector: boolean;
   showFilters: boolean;
   showTransitionWarnings: boolean;
+  autoPinAfterMove: boolean;
 };
 
 const STORAGE_KEY = "uwyoschedule:planner:view:v1";
@@ -14,6 +15,7 @@ const DEFAULT_SETTINGS: PlannerViewSettings = {
   showCourseSelector: true,
   showFilters: true,
   showTransitionWarnings: true,
+  autoPinAfterMove: true,
 };
 
 const listeners = new Set<() => void>();
@@ -39,6 +41,10 @@ function parseSettings(raw: unknown): PlannerViewSettings {
       typeof raw.showTransitionWarnings === "boolean"
         ? raw.showTransitionWarnings
         : DEFAULT_SETTINGS.showTransitionWarnings,
+    autoPinAfterMove:
+      typeof raw.autoPinAfterMove === "boolean"
+        ? raw.autoPinAfterMove
+        : DEFAULT_SETTINGS.autoPinAfterMove,
   };
 }
 
@@ -136,10 +142,15 @@ export function usePlannerViewSettings() {
     [],
   );
 
+  const setAutoPinAfterMove = useCallback((autoPinAfterMove: boolean) => {
+    updateSettings({ autoPinAfterMove });
+  }, []);
+
   return {
     ...settings,
     setShowCourseSelector,
     setShowFilters,
     setShowTransitionWarnings,
+    setAutoPinAfterMove,
   };
 }

@@ -126,7 +126,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     excludeOnlineAsync,
     setExcludeOnlineAsync,
   } = usePlannerUi();
-  const { showTransitionWarnings } = usePlannerViewSettings();
+  const { showTransitionWarnings, autoPinAfterMove } = usePlannerViewSettings();
   const { canUndo, canRedo, undo, redo, lastActionWasBusyAddOrUpdate } =
     usePlannerHistory();
 
@@ -865,10 +865,16 @@ type CoursePointerLike = Pick<
               return;
             }
             if (baseItem.selectionKind === "unresolved") {
+              const pinsDoc = parseSectionPinsJson(baseItem.sectionPins);
+              const wasPinnedBefore =
+                pinsDoc.byType[block.sectionScheduleTypeKey] === block.sectionCrn;
               setSectionPinFromDrag(
                 block.plannerItemId,
                 block.sectionScheduleTypeKey,
                 snapped.crn,
+                {
+                  unpinAfterRecalc: !autoPinAfterMove && !wasPinnedBefore,
+                },
               );
             } else {
               applyPlannerItemSelection(block.plannerItemId, {
@@ -890,6 +896,7 @@ type CoursePointerLike = Pick<
     },
     [
       applyPlannerItemSelection,
+      autoPinAfterMove,
       catalog,
       effectivePlannerItems,
       plannerItemsById,

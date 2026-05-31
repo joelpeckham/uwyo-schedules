@@ -17,9 +17,11 @@ export function PlannerSettingsMenu() {
     showCourseSelector,
     showFilters,
     showTransitionWarnings,
+    autoPinAfterMove,
     setShowCourseSelector,
     setShowFilters,
     setShowTransitionWarnings,
+    setAutoPinAfterMove,
   } = usePlannerViewSettings();
 
   return (
@@ -56,12 +58,20 @@ export function PlannerSettingsMenu() {
           </div>
         </div>
         <div className="border-t border-border px-4 py-3">
-          <SettingSwitchRow
-            id="planner-show-transition-warnings"
-            label="Transition-time warnings"
-            checked={showTransitionWarnings}
-            onCheckedChange={setShowTransitionWarnings}
-          />
+          <div className="flex flex-col gap-3">
+            <SettingSwitchRow
+              id="planner-show-transition-warnings"
+              label="Transition-time warnings"
+              checked={showTransitionWarnings}
+              onCheckedChange={setShowTransitionWarnings}
+            />
+            <SettingSwitchRow
+              id="planner-auto-pin-after-move"
+              label="Auto-pin after move"
+              checked={autoPinAfterMove}
+              onCheckedChange={setAutoPinAfterMove}
+            />
+          </div>
         </div>
       </PopoverContent>
     </Popover>

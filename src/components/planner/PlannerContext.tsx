@@ -114,6 +114,7 @@ type PlannerDataContextValue = {
     itemId: number,
     scheduleTypeKey: string,
     sectionCrn: string,
+    opts?: { unpinAfterRecalc?: boolean },
   ) => void;
   applyPlannerItemSelection: (
     itemId: number,
@@ -260,6 +261,10 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const blackoutsUserGenRef = useRef(0);
   const blackoutsHandledGenRef = useRef(0);
   const initialBootstrapDoneRef = useRef(false);
+  const ephemeralUnpinAfterRecalcRef = useRef<{
+    itemId: number;
+    scheduleTypeKey: string;
+  } | null>(null);
 
   useEffect(() => {
     solvePacksRef.current = solvePacks;
@@ -430,6 +435,26 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
           setInfeasibilityHints(
             result.solutions.length > 0 ? [] : result.hints,
           );
+          const ephemeralUnpin = ephemeralUnpinAfterRecalcRef.current;
+          if (ephemeralUnpin) {
+            ephemeralUnpinAfterRecalcRef.current = null;
+            if (result.solutions.length > 0) {
+              const unpinned = itemsRef.current.map((r) => {
+                if (
+                  r.id !== ephemeralUnpin.itemId ||
+                  r.selectionKind !== "unresolved"
+                ) {
+                  return r;
+                }
+                const pins = parseSectionPinsJson(r.sectionPins);
+                const byType = { ...pins.byType };
+                delete byType[ephemeralUnpin.scheduleTypeKey];
+                return { ...r, sectionPins: { v: pins.v, byType } };
+              });
+              itemsRef.current = unpinned;
+              setPlannerItems(unpinned);
+            }
+          }
           persistTerm();
           return;
         }
@@ -830,7 +855,12 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   }, [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot]);
 
   const setSectionPinFromDrag = useCallback(
-    (itemId: number, scheduleTypeKey: string, sectionCrn: string) => {
+    (
+      itemId: number,
+      scheduleTypeKey: string,
+      sectionCrn: string,
+      opts?: { unpinAfterRecalc?: boolean },
+    ) => {
       const prev = itemsRef.current;
       const next = prev.map((r) => {
         if (r.id !== itemId || r.selectionKind !== "unresolved") return r;
@@ -864,6 +894,9 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
         return next;
       });
       persistTerm();
+      if (opts?.unpinAfterRecalc) {
+        ephemeralUnpinAfterRecalcRef.current = { itemId, scheduleTypeKey };
+      }
       scheduleRecalculateSolutions();
     },
     [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot],
