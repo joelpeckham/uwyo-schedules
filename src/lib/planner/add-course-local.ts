@@ -36,7 +36,7 @@ export function addCourseLocal(input: {
   const used = new Set(
     term.items.map((r) => r.displayColor.trim().toLowerCase()),
   );
-  const displayColor = pickUnusedCourseColor(used);
+  const displayColor = pickUnusedCourseColor(used, term.items.length);
   const id = allocateNextItemId();
   const item: PlannerItemRow = {
     id,
