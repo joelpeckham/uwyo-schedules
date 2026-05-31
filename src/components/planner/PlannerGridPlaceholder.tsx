@@ -84,14 +84,7 @@ function FiltersCardSkeleton() {
 
 function PlannerCalendarColumnPlaceholder() {
   return (
-    <div className="mt-6 flex min-w-0 flex-col gap-4 lg:mt-0">
-      <div
-        className="grid transition-[grid-template-rows] duration-200 ease-out"
-        style={{ gridTemplateRows: "0fr" }}
-        aria-hidden
-      >
-        <div className="min-h-0 overflow-hidden" />
-      </div>
+    <div className="mt-6 flex min-w-0 flex-col lg:mt-0">
       <WeekCalendarLoadingPlaceholder />
     </div>
   );

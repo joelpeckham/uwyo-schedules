@@ -8,8 +8,8 @@ import type { CalendarBlock } from "@/lib/planner/data";
 import { CourseManager } from "./CourseManager";
 import { NotOnGridRail, useNotOnGridRailRows } from "./NotOnGridRail";
 import { PlannerBootstrap } from "./PlannerBootstrap";
-import { PlannerProvider, usePlannerData } from "./PlannerContext";
-import { PlannerEmptyHero } from "./PlannerEmptyHero";
+import { PlannerProvider } from "./PlannerContext";
+import { PlannerEmptyHeroSlot } from "./PlannerEmptyHeroSlot";
 import { PlannerCollapsibleSlot } from "./PlannerCollapsibleSlot";
 import { ShareLinkApplier } from "./ShareLinkApplier";
 import { FiltersCard } from "./FiltersCard";
@@ -94,21 +94,13 @@ function PlannerCalendarColumn({
   onBlockActivate: (block: CalendarBlock) => void;
   onCrnActivate: (crn: string) => void;
 }) {
-  const { plannerItems } = usePlannerData();
   const offGridRows = useNotOnGridRailRows();
 
-  const showEmptyHero = plannerItems.length === 0;
   const showOffGridRail = offGridRows.length > 0;
 
   return (
     <div className="mt-6 flex min-w-0 flex-col lg:mt-0">
-      <PlannerCollapsibleSlot
-        show={showEmptyHero}
-        prePaintBootstrap
-        className={showEmptyHero ? "mb-4" : undefined}
-      >
-        {showEmptyHero ? <PlannerEmptyHero termCode={termCode} /> : null}
-      </PlannerCollapsibleSlot>
+      <PlannerEmptyHeroSlot termCode={termCode} />
       <WeekCalendar onBlockActivate={onBlockActivate} />
       <PlannerCollapsibleSlot show={showOffGridRail} className={showOffGridRail ? "mt-4" : undefined}>
         <NotOnGridRail onCrnActivate={onCrnActivate} />

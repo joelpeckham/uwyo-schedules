@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Loader2, Search, SlidersHorizontal, Sparkles } from "lucide-react";
+import { ArrowRight, Loader2, Plus, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -86,9 +86,9 @@ export function PlannerEmptyHero({ termCode }: Props) {
           <ol className="mt-4 grid gap-3 sm:grid-cols-2">
             <Step
               number={1}
-              icon={<Search className="size-4" />}
+              icon={<Plus className="size-4" />}
               title="Search"
-              body="Type a subject or course number on the left and press Enter."
+              body="Tap Add beside Your courses, search by subject or number, and pick a result."
             />
             <Step
               number={2}
@@ -99,14 +99,14 @@ export function PlannerEmptyHero({ termCode }: Props) {
             <Step
               number={3}
               icon={<ArrowRight className="size-4" />}
-              title="See the week"
+              title="See your week"
               body="The planner picks compatible sections and shows them on the calendar."
             />
             <Step
               number={4}
-              icon={<ArrowRight className="size-4" />}
-              title="Undo changes"
-              body="Pin a section to lock it, drag a block to try other times, or use Undo in the week toolbar."
+              icon={<Wand2 className="size-4" />}
+              title="Experiment"
+              body="Pin a section to lock it, drag a block to try other times, and explore what fits."
             />
           </ol>
 

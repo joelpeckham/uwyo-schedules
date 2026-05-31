@@ -6,11 +6,6 @@ type Props = {
   show: boolean;
   children: React.ReactNode;
   className?: string;
-  /**
-   * When true, expand/collapse is driven by html[data-planner-items] (pre-paint
-   * bootstrap) instead of inline grid rows. Use only for the empty-hero slot.
-   */
-  prePaintBootstrap?: boolean;
 };
 
 /**
@@ -20,7 +15,6 @@ export function PlannerCollapsibleSlot({
   show,
   children,
   className,
-  prePaintBootstrap = false,
 }: Props) {
   return (
     <div
@@ -28,14 +22,8 @@ export function PlannerCollapsibleSlot({
         "grid transition-[grid-template-rows] duration-200 ease-out",
         className,
       )}
-      {...(prePaintBootstrap ? { "data-planner-empty-hero": true } : {})}
-      style={
-        prePaintBootstrap
-          ? undefined
-          : { gridTemplateRows: show ? "1fr" : "0fr" }
-      }
+      style={{ gridTemplateRows: show ? "1fr" : "0fr" }}
       aria-hidden={!show}
-      {...(prePaintBootstrap ? { suppressHydrationWarning: true } : {})}
     >
       <div
         className={cn(

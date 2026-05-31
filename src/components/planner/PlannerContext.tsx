@@ -655,7 +655,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     };
   }, [termCode, loadBootstrap, scheduleRecalculateSolutions]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     syncPlannerItemsDataset(plannerItems.length);
   }, [plannerItems.length]);
 
