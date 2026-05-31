@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import {
   asRecord,
@@ -791,8 +791,13 @@ export function SectionDetailPanels({ root }: Props) {
     ...(attrsFiltered.length > 0 ? (["attributes"] as const) : []),
   ];
 
-  const tileInputs = presentTileIds.map((id) => tileCatalog[id]!.input);
-  const packed = packBento(tileInputs, 3);
+  const tileSetKey = presentTileIds.join(",");
+  const packed = useMemo(
+    () => packBento(presentTileIds.map((id) => bentoTileInput(id)), 3),
+    // presentTileIds content is fully captured by tileSetKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tileSetKey
+    [tileSetKey],
+  );
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-flow-dense sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">

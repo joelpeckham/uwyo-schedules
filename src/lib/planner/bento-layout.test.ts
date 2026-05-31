@@ -137,10 +137,10 @@ describe("BENTO_TILE_DEFAULTS", () => {
     expect(BENTO_TILE_DEFAULTS.title.priority).toBe(0);
     expect(BENTO_TILE_DEFAULTS.schedule.priority).toBe(1);
     expect(BENTO_TILE_DEFAULTS.faculty.priority).toBe(2);
-    expect(BENTO_TILE_DEFAULTS.description.priority).toBe(3);
-    expect(BENTO_TILE_DEFAULTS.sectionInfo.priority).toBe(4);
-    expect(BENTO_TILE_DEFAULTS.registration.priority).toBe(5);
-    expect(BENTO_TILE_DEFAULTS.seats.priority).toBe(6);
+    expect(BENTO_TILE_DEFAULTS.seats.priority).toBe(3);
+    expect(BENTO_TILE_DEFAULTS.description.priority).toBe(4);
+    expect(BENTO_TILE_DEFAULTS.sectionInfo.priority).toBe(5);
+    expect(BENTO_TILE_DEFAULTS.registration.priority).toBe(6);
     expect(BENTO_TILE_DEFAULTS.credits.priority).toBe(7);
     expect(BENTO_TILE_DEFAULTS.attributes.priority).toBe(8);
   });
@@ -149,7 +149,7 @@ describe("BENTO_TILE_DEFAULTS", () => {
 describe("bentoTileInput", () => {
   it("uses shared defaults for schedule and description widths", () => {
     expect(bentoTileInput("schedule").sizes).toEqual([1, 2, 3]);
-    expect(bentoTileInput("description").sizes).toEqual([1, 2, 3]);
+    expect(bentoTileInput("description").sizes).toEqual([2, 3]);
     expect(bentoTileInput("schedule").priority).toBeLessThan(
       bentoTileInput("description").priority,
     );

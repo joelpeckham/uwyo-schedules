@@ -88,6 +88,22 @@ function comparePriorityKeys(a: number[], b: number[]): number {
   return 0;
 }
 
+/** Inversions among already-placed tiles (lower bound for full order deviation). */
+function orderDevPrefix(
+  placement: PackedBentoTile[],
+  priorityById: Map<string, number>,
+): number {
+  let inversions = 0;
+  for (let i = 0; i < placement.length; i++) {
+    for (let j = i + 1; j < placement.length; j++) {
+      const earlier = priorityById.get(placement[i]!.id) ?? Number.MAX_SAFE_INTEGER;
+      const later = priorityById.get(placement[j]!.id) ?? Number.MAX_SAFE_INTEGER;
+      if (earlier > later) inversions++;
+    }
+  }
+  return inversions;
+}
+
 /** Count pairs out of preferred priority order in the packed sequence. */
 export function orderDeviation(
   placement: PackedBentoTile[],
@@ -128,6 +144,12 @@ function isBetterCandidate(
   );
 }
 
+const packBentoCache = new Map<string, PackedBentoTile[]>();
+
+function packBentoSignature(tiles: BentoTileInput[], columns: number): string {
+  return `${columns}|${tiles.map((t) => `${t.id}:${t.sizes.join(",")}:${t.priority}`).join(";")}`;
+}
+
 /**
  * Pack bento tiles into rows of `columns` width, minimizing empty cells.
  * Prefers preferred reading order, then larger tile sizes when still tied.
@@ -138,7 +160,12 @@ export function packBento(
 ): PackedBentoTile[] {
   if (tiles.length === 0) return [];
 
+  const signature = packBentoSignature(tiles, columns);
+  const cached = packBentoCache.get(signature);
+  if (cached) return cached;
+
   const hasTitle = tiles.some((t) => t.id === "title");
+  const priorityById = new Map(tiles.map((t) => [t.id, t.priority]));
   let bestPlacement: PackedBentoTile[] | null = null;
   let bestCandidate: LayoutCandidate | null = null;
 
@@ -150,6 +177,16 @@ export function packBento(
     sizeSum: number,
     isFirstRow: boolean,
   ): void {
+    if (bestCandidate && waste >= bestCandidate.waste) {
+      if (waste > bestCandidate.waste) return;
+      const rowsLowerBound = countRows(placement, columns);
+      if (rowsLowerBound > bestCandidate.rows) return;
+      if (rowsLowerBound === bestCandidate.rows) {
+        const orderLowerBound = orderDevPrefix(placement, priorityById);
+        if (orderLowerBound > bestCandidate.orderDeviation) return;
+      }
+    }
+
     if (remaining.length === 0) {
       const candidate: LayoutCandidate = {
         placement,
@@ -204,12 +241,15 @@ export function packBento(
 
   search(tiles, [], columns, 0, 0, true);
 
-  if (bestPlacement) return bestPlacement;
+  const result =
+    bestPlacement ??
+    tiles.map((t) => ({
+      id: t.id,
+      span: t.sizes[t.sizes.length - 1] ?? 1,
+    }));
 
-  return tiles.map((t) => ({
-    id: t.id,
-    span: t.sizes[t.sizes.length - 1] ?? 1,
-  }));
+  packBentoCache.set(signature, result);
+  return result;
 }
 
 /** Tailwind grid span classes for packed bento tiles. */
