@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import {
   asRecord,
@@ -27,6 +27,12 @@ import {
   reorderMeetingsPrimaryFirst,
 } from "@/lib/sections/pick-primary-meeting";
 import { cn } from "@/lib/utils";
+import {
+  bentoSpanClassName,
+  bentoTileInput,
+  packBento,
+  type BentoTileId,
+} from "@/lib/planner/bento-layout";
 
 type Props = {
   root: Record<string, unknown>;
@@ -350,49 +356,61 @@ export function SectionDetailPanels({ root }: Props) {
     subjectCourse ??
     ([subject, courseNum].filter(Boolean).join(" ") || undefined);
 
-  return (
-    <div className="flex flex-col gap-3 sm:gap-4">
-      {/* Hero */}
-      <BentoCard
-        accentClass="border-l-4 border-l-primary"
-        kicker={scheduleType ?? "Section"}
-        headline={
-          <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-            {courseTitle ?? "Untitled section"}
-          </h2>
-        }
-        subline={
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-sm text-muted-foreground">
-            {courseLine ? (
-              <span className="text-base font-medium text-foreground">
-                {courseLine}
-              </span>
-            ) : null}
-            {crn ? <span>CRN {crn}</span> : null}
-            {campus ? <span>{campus}</span> : null}
-            {deliveryPill ? (
-              <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium not-italic text-foreground">
-                {deliveryPill}
-              </span>
-            ) : instructionalMethodDescription ? (
-              <span>{instructionalMethodDescription}</span>
-            ) : null}
-          </div>
-        }
-      >
-        {overviewExtras.some(
-          (x) =>
-            x.value !== undefined &&
-            x.value !== null &&
-            !(typeof x.value === "string" && x.value.trim() === ""),
-        ) ? (
-          <ExpandDetails label="Course and term details">
-            <DefinitionList items={overviewExtras} />
-          </ExpandDetails>
-        ) : null}
-      </BentoCard>
+  type TileRender = (spanClass: string) => ReactNode;
 
-      {courseDescription ? (
+  type TileCatalogEntry = {
+    input: ReturnType<typeof bentoTileInput>;
+    render: TileRender;
+  };
+
+  const tileCatalog: Record<BentoTileId, TileCatalogEntry> = {
+    title: {
+      input: bentoTileInput("title"),
+      render: (spanClass) => (
+        <BentoCard
+          accentClass="border-l-4 border-l-primary"
+          kicker={scheduleType ?? "Section"}
+          headline={
+            <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              {courseTitle ?? "Untitled section"}
+            </h2>
+          }
+          subline={
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-sm text-muted-foreground">
+              {courseLine ? (
+                <span className="text-base font-medium text-foreground">
+                  {courseLine}
+                </span>
+              ) : null}
+              {crn ? <span>CRN {crn}</span> : null}
+              {campus ? <span>{campus}</span> : null}
+              {deliveryPill ? (
+                <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium not-italic text-foreground">
+                  {deliveryPill}
+                </span>
+              ) : instructionalMethodDescription ? (
+                <span>{instructionalMethodDescription}</span>
+              ) : null}
+            </div>
+          }
+          className={spanClass}
+        >
+          {overviewExtras.some(
+            (x) =>
+              x.value !== undefined &&
+              x.value !== null &&
+              !(typeof x.value === "string" && x.value.trim() === ""),
+          ) ? (
+            <ExpandDetails label="Course and term details">
+              <DefinitionList items={overviewExtras} />
+            </ExpandDetails>
+          ) : null}
+        </BentoCard>
+      ),
+    },
+    description: {
+      input: bentoTileInput("description"),
+      render: (spanClass) => (
         <BentoCard
           accentClass="border-l-4 border-l-muted-foreground/40"
           kicker="Course description"
@@ -401,10 +419,13 @@ export function SectionDetailPanels({ root }: Props) {
               {courseDescription}
             </p>
           }
+          className={spanClass}
         />
-      ) : null}
-
-      {sectionInformationText ? (
+      ),
+    },
+    sectionInfo: {
+      input: bentoTileInput("sectionInfo"),
+      render: (spanClass) => (
         <BentoCard
           accentClass="border-l-4 border-l-[#8b6914]"
           kicker="Section information"
@@ -425,11 +446,13 @@ export function SectionDetailPanels({ root }: Props) {
               </p>
             ) : null
           }
+          className={spanClass}
         />
-      ) : null}
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 sm:gap-4">
-        {/* Credits */}
+      ),
+    },
+    credits: {
+      input: bentoTileInput("credits"),
+      render: (spanClass) => (
         <BentoCard
           accentClass="border-l-4 border-l-[#8b6914]"
           kicker="Credits"
@@ -449,6 +472,7 @@ export function SectionDetailPanels({ root }: Props) {
               </span>
             ) : null
           }
+          className={spanClass}
         >
           {(() => {
             const rows = creditExpandItems.filter(
@@ -466,8 +490,11 @@ export function SectionDetailPanels({ root }: Props) {
             ) : null;
           })()}
         </BentoCard>
-
-        {/* Enrollment */}
+      ),
+    },
+    seats: {
+      input: bentoTileInput("seats"),
+      render: (spanClass) => (
         <BentoCard
           accentClass="border-l-4 border-l-[#4a6b55]"
           kicker="Seats"
@@ -503,6 +530,7 @@ export function SectionDetailPanels({ root }: Props) {
               </span>
             ) : null
           }
+          className={spanClass}
         >
           {enrollmentDetail.some(
             (i) => i.value !== undefined && i.value !== null,
@@ -512,237 +540,267 @@ export function SectionDetailPanels({ root }: Props) {
             </ExpandDetails>
           ) : null}
         </BentoCard>
-
-        {/* Status — compact */}
-        {hasStatus && status ? (
-          <BentoCard
-            accentClass="border-l-4 border-l-[#3d4f5f]"
-            kicker="Registration"
-            headline={
-              <div className="flex flex-wrap gap-2">
-                {booleanField(status, "sectionOpen") === true ? (
-                  <span className="rounded-full bg-[#4a6b55]/15 px-2.5 py-0.5 font-mono text-xs font-medium text-[#2d4a3d]">
-                    Open
-                  </span>
-                ) : booleanField(status, "sectionOpen") === false ? (
-                  <span className="rounded-full bg-muted px-2.5 py-0.5 font-mono text-xs font-medium">
-                    Closed
-                  </span>
-                ) : null}
-                {booleanField(status, "restricted") === true ? (
-                  <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 font-mono text-xs font-medium text-destructive">
-                    Restricted
-                  </span>
-                ) : null}
-                {booleanField(status, "timeConflict") === true ? (
-                  <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 font-mono text-xs font-medium text-destructive">
-                    Time conflict
-                  </span>
-                ) : null}
-              </div>
-            }
-          >
-            <ExpandDetails label="All status flags">
-              <DefinitionList items={statusItems} />
-            </ExpandDetails>
-          </BentoCard>
-        ) : null}
-
-        {/* Schedule — wide */}
-        {firstMeeting ? (
-          <BentoCard
-            accentClass="border-l-4 border-l-[#5c4a6b] sm:col-span-2 lg:col-span-3"
-            kicker="Schedule"
-            headline={
-              <p className="font-mono text-lg font-semibold leading-snug text-foreground sm:text-xl">
-                {firstMeeting.days ?? "Days TBD"}
-              </p>
-            }
-            subline={
-              <div className="space-y-1">
-                {firstMeeting.time ? (
-                  <p className="font-mono text-base text-foreground">
-                    {firstMeeting.time}
-                  </p>
-                ) : null}
-                {firstMeeting.place ? (
-                  <p className="text-sm text-muted-foreground">
-                    {firstMeeting.place}
-                  </p>
-                ) : null}
-                {firstMeeting.dates ? (
-                  <p className="text-xs text-muted-foreground">
-                    {firstMeeting.dates}
-                  </p>
-                ) : null}
-                {firstMeeting.examMatch ? (
-                  <p className="text-xs font-medium text-primary">
-                    {firstMeeting.examMatch.likelyExamLabel} ·{" "}
-                    {firstMeeting.examMatch.inferenceSource === "pattern"
-                      ? LIKELY_EXAM_PATTERN_DISCLOSURE
-                      : LIKELY_EXAM_DISCLOSURE}
-                  </p>
-                ) : null}
-                {moreMeetings > 0 ? (
-                  <p className="text-xs font-medium text-primary">
-                    +{moreMeetings} more meeting
-                    {moreMeetings === 1 ? "" : "s"}
-                  </p>
-                ) : null}
-              </div>
-            }
-            className="sm:col-span-2 lg:col-span-3"
-          >
-            {orderedMeetings.length > 1 ? (
-              <ExpandDetails label="Every meeting time">
-                <ul className="space-y-3">
-                  {orderedMeetings.map((m) => (
-                    <li
-                      key={m.key}
-                      className="rounded-lg border border-border/60 bg-background/60 px-3 py-2"
-                    >
-                      {m.days ? (
-                        <p className="font-mono text-sm font-medium">{m.days}</p>
-                      ) : null}
-                      {m.time ? (
-                        <p className="mt-0.5 font-mono text-sm">{m.time}</p>
-                      ) : null}
-                      {m.place ? (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {m.place}
-                        </p>
-                      ) : null}
-                      {m.dates ? (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {m.dates}
-                        </p>
-                      ) : null}
-                      {m.type || m.scheduleCode ? (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {[m.type, m.scheduleCode].filter(Boolean).join(" · ")}
-                        </p>
-                      ) : null}
-                      {m.examMatch ? (
-                        <p className="mt-1 text-xs font-medium text-primary">
-                          {m.examMatch.likelyExamLabel} ·{" "}
-                          {m.examMatch.inferenceSource === "pattern"
-                            ? LIKELY_EXAM_PATTERN_DISCLOSURE
-                            : LIKELY_EXAM_DISCLOSURE}
-                        </p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              </ExpandDetails>
-            ) : firstMeeting.type || firstMeeting.scheduleCode ? (
-              <ExpandDetails label="Meeting type">
+      ),
+    },
+    registration: {
+      input: bentoTileInput("registration"),
+      render: (spanClass) => (
+        <BentoCard
+          accentClass="border-l-4 border-l-[#3d4f5f]"
+          kicker="Registration"
+          headline={
+            <div className="flex flex-wrap gap-2">
+              {booleanField(status!, "sectionOpen") === true ? (
+                <span className="rounded-full bg-[#4a6b55]/15 px-2.5 py-0.5 font-mono text-xs font-medium text-[#2d4a3d]">
+                  Open
+                </span>
+              ) : booleanField(status!, "sectionOpen") === false ? (
+                <span className="rounded-full bg-muted px-2.5 py-0.5 font-mono text-xs font-medium">
+                  Closed
+                </span>
+              ) : null}
+              {booleanField(status!, "restricted") === true ? (
+                <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 font-mono text-xs font-medium text-destructive">
+                  Restricted
+                </span>
+              ) : null}
+              {booleanField(status!, "timeConflict") === true ? (
+                <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 font-mono text-xs font-medium text-destructive">
+                  Time conflict
+                </span>
+              ) : null}
+            </div>
+          }
+          className={spanClass}
+        >
+          <ExpandDetails label="All status flags">
+            <DefinitionList items={statusItems} />
+          </ExpandDetails>
+        </BentoCard>
+      ),
+    },
+    schedule: {
+      input: bentoTileInput("schedule"),
+      render: (spanClass) => (
+        <BentoCard
+          accentClass="border-l-4 border-l-[#5c4a6b]"
+          kicker="Schedule"
+          headline={
+            <p className="font-mono text-lg font-semibold leading-snug text-foreground sm:text-xl">
+              {firstMeeting!.days ?? "Days TBD"}
+            </p>
+          }
+          subline={
+            <div className="space-y-1">
+              {firstMeeting!.time ? (
+                <p className="font-mono text-base text-foreground">
+                  {firstMeeting!.time}
+                </p>
+              ) : null}
+              {firstMeeting!.place ? (
                 <p className="text-sm text-muted-foreground">
-                  {[firstMeeting.type, firstMeeting.scheduleCode]
-                    .filter(Boolean)
-                    .join(" · ")}
+                  {firstMeeting!.place}
                 </p>
-              </ExpandDetails>
-            ) : null}
-          </BentoCard>
-        ) : null}
-
-        {/* Faculty */}
-        {primaryFac ? (
-          <BentoCard
-            accentClass="border-l-4 border-l-[#a65d3a]"
-            kicker="Faculty"
-            headline={
-              <p className="font-heading text-lg font-semibold text-foreground">
-                {primaryFac.name}
-                {primaryFac.primary ? (
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    Primary
-                  </span>
-                ) : null}
-              </p>
-            }
-            subline={
-              primaryFac.email ? (
-                <p className="font-mono text-xs text-muted-foreground wrap-break-word">
-                  {primaryFac.email}
+              ) : null}
+              {firstMeeting!.dates ? (
+                <p className="text-xs text-muted-foreground">
+                  {firstMeeting!.dates}
                 </p>
-              ) : null
-            }
-            className="sm:col-span-2 lg:col-span-1"
-          >
-            {facultyFiltered.length > 1 ? (
-              <ExpandDetails label="All instructors">
-                <ul className="space-y-2">
-                  {facultyFiltered.map((f) => (
-                    <li
-                      key={f.key}
-                      className="rounded-md border border-border/50 px-2 py-1.5"
-                    >
-                      <p className="font-mono text-sm font-medium">
-                        {f.name ?? "—"}
-                        {f.primary ? (
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            (Primary)
-                          </span>
-                        ) : null}
+              ) : null}
+              {firstMeeting!.examMatch ? (
+                <p className="text-xs font-medium text-primary">
+                  {firstMeeting!.examMatch.likelyExamLabel} ·{" "}
+                  {firstMeeting!.examMatch.inferenceSource === "pattern"
+                    ? LIKELY_EXAM_PATTERN_DISCLOSURE
+                    : LIKELY_EXAM_DISCLOSURE}
+                </p>
+              ) : null}
+              {moreMeetings > 0 ? (
+                <p className="text-xs font-medium text-primary">
+                  +{moreMeetings} more meeting
+                  {moreMeetings === 1 ? "" : "s"}
+                </p>
+              ) : null}
+            </div>
+          }
+          className={spanClass}
+        >
+          {orderedMeetings.length > 1 ? (
+            <ExpandDetails label="Every meeting time">
+              <ul className="space-y-3">
+                {orderedMeetings.map((m) => (
+                  <li
+                    key={m.key}
+                    className="rounded-lg border border-border/60 bg-background/60 px-3 py-2"
+                  >
+                    {m.days ? (
+                      <p className="font-mono text-sm font-medium">{m.days}</p>
+                    ) : null}
+                    {m.time ? (
+                      <p className="mt-0.5 font-mono text-sm">{m.time}</p>
+                    ) : null}
+                    {m.place ? (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {m.place}
                       </p>
-                      {f.email ? (
-                        <p className="font-mono text-xs text-muted-foreground">
-                          {f.email}
-                        </p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              </ExpandDetails>
-            ) : null}
-          </BentoCard>
-        ) : null}
-
-        {/* Attributes */}
-        {attrsFiltered.length > 0 ? (
-          <BentoCard
-            accentClass="border-l-4 border-l-muted-foreground sm:col-span-2 lg:col-span-2"
-            kicker="Attributes"
-            headline={
-              <p className="font-heading text-2xl font-semibold tabular-nums text-foreground">
-                {attrsFiltered.length}
-              </p>
-            }
-            subline={
-              <p className="text-sm text-muted-foreground">
-                {attrsFiltered[0]?.code}
-                {attrsFiltered[0]?.description
-                  ? ` · ${attrsFiltered[0].description.slice(0, 80)}${attrsFiltered[0].description.length > 80 ? "…" : ""}`
-                  : null}
-              </p>
-            }
-            className="sm:col-span-2 lg:col-span-2"
-          >
-            <ExpandDetails label="Full attribute list">
-              <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
-                {attrsFiltered.map((a) => (
-                  <li key={a.key} className="px-2 py-2">
-                    <span className="font-mono text-sm font-medium">
-                      {a.code}
-                      {a.ztc ? (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          ZTC
-                        </span>
-                      ) : null}
-                    </span>
-                    {a.description ? (
-                      <p className="mt-0.5 text-sm text-muted-foreground">
-                        {a.description}
+                    ) : null}
+                    {m.dates ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {m.dates}
+                      </p>
+                    ) : null}
+                    {m.type || m.scheduleCode ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {[m.type, m.scheduleCode].filter(Boolean).join(" · ")}
+                      </p>
+                    ) : null}
+                    {m.examMatch ? (
+                      <p className="mt-1 text-xs font-medium text-primary">
+                        {m.examMatch.likelyExamLabel} ·{" "}
+                        {m.examMatch.inferenceSource === "pattern"
+                          ? LIKELY_EXAM_PATTERN_DISCLOSURE
+                          : LIKELY_EXAM_DISCLOSURE}
                       </p>
                     ) : null}
                   </li>
                 ))}
               </ul>
             </ExpandDetails>
-          </BentoCard>
-        ) : null}
-      </div>
+          ) : firstMeeting!.type || firstMeeting!.scheduleCode ? (
+            <ExpandDetails label="Meeting type">
+              <p className="text-sm text-muted-foreground">
+                {[firstMeeting!.type, firstMeeting!.scheduleCode]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </ExpandDetails>
+          ) : null}
+        </BentoCard>
+      ),
+    },
+    faculty: {
+      input: bentoTileInput("faculty"),
+      render: (spanClass) => (
+        <BentoCard
+          accentClass="border-l-4 border-l-[#a65d3a]"
+          kicker="Faculty"
+          headline={
+            <p className="font-heading text-lg font-semibold text-foreground">
+              {primaryFac!.name}
+              {primaryFac!.primary ? (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  Primary
+                </span>
+              ) : null}
+            </p>
+          }
+          subline={
+            primaryFac!.email ? (
+              <p className="font-mono text-xs text-muted-foreground wrap-break-word">
+                {primaryFac!.email}
+              </p>
+            ) : null
+          }
+          className={spanClass}
+        >
+          {facultyFiltered.length > 1 ? (
+            <ExpandDetails label="All instructors">
+              <ul className="space-y-2">
+                {facultyFiltered.map((f) => (
+                  <li
+                    key={f.key}
+                    className="rounded-md border border-border/50 px-2 py-1.5"
+                  >
+                    <p className="font-mono text-sm font-medium">
+                      {f.name ?? "—"}
+                      {f.primary ? (
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          (Primary)
+                        </span>
+                      ) : null}
+                    </p>
+                    {f.email ? (
+                      <p className="font-mono text-xs text-muted-foreground">
+                        {f.email}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </ExpandDetails>
+          ) : null}
+        </BentoCard>
+      ),
+    },
+    attributes: {
+      input: bentoTileInput("attributes"),
+      render: (spanClass) => (
+        <BentoCard
+          accentClass="border-l-4 border-l-muted-foreground"
+          kicker="Attributes"
+          headline={
+            <p className="font-heading text-2xl font-semibold tabular-nums text-foreground">
+              {attrsFiltered.length}
+            </p>
+          }
+          subline={
+            <p className="text-sm text-muted-foreground">
+              {attrsFiltered[0]?.code}
+              {attrsFiltered[0]?.description
+                ? ` · ${attrsFiltered[0].description.slice(0, 80)}${attrsFiltered[0].description.length > 80 ? "…" : ""}`
+                : null}
+            </p>
+          }
+          className={spanClass}
+        >
+          <ExpandDetails label="Full attribute list">
+            <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
+              {attrsFiltered.map((a) => (
+                <li key={a.key} className="px-2 py-2">
+                  <span className="font-mono text-sm font-medium">
+                    {a.code}
+                    {a.ztc ? (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ZTC
+                      </span>
+                    ) : null}
+                  </span>
+                  {a.description ? (
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {a.description}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </ExpandDetails>
+        </BentoCard>
+      ),
+    },
+  };
+
+  const presentTileIds: BentoTileId[] = [
+    "title",
+    ...(firstMeeting ? (["schedule"] as const) : []),
+    ...(primaryFac ? (["faculty"] as const) : []),
+    ...(courseDescription ? (["description"] as const) : []),
+    ...(sectionInformationText ? (["sectionInfo"] as const) : []),
+    ...(hasStatus && status ? (["registration"] as const) : []),
+    "seats",
+    "credits",
+    ...(attrsFiltered.length > 0 ? (["attributes"] as const) : []),
+  ];
+
+  const tileInputs = presentTileIds.map((id) => tileCatalog[id]!.input);
+  const packed = packBento(tileInputs, 3);
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-flow-dense sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+      {packed.map(({ id, span }) => (
+        <Fragment key={id}>
+          {tileCatalog[id as BentoTileId].render(bentoSpanClassName(span))}
+        </Fragment>
+      ))}
     </div>
   );
 }
