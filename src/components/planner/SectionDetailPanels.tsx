@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { ArrowUpRight, ChevronDown } from "lucide-react";
 import {
   asRecord,
   asRecordArray,
@@ -34,6 +34,7 @@ import {
   packBento,
   type BentoTileId,
 } from "@/lib/planner/bento-layout";
+import { uwCatalogCourseSearchUrl } from "@/lib/sections/uw-catalog";
 
 type Props = {
   root: Record<string, unknown>;
@@ -362,6 +363,7 @@ export function SectionDetailPanels({ root }: Props) {
   const courseLine =
     subjectCourse ??
     ([subject, courseNum].filter(Boolean).join(" ") || undefined);
+  const catalogUrl = uwCatalogCourseSearchUrl(subject, courseNum);
 
   type TileRender = (spanClass: string) => ReactNode;
 
@@ -385,9 +387,22 @@ export function SectionDetailPanels({ root }: Props) {
           subline={
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-sm text-muted-foreground">
               {courseLine ? (
-                <span className="text-base font-medium text-foreground">
-                  {courseLine}
-                </span>
+                catalogUrl ? (
+                  <a
+                    href={catalogUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`View ${courseLine} in the UW course catalog`}
+                    className="inline-flex items-center gap-1 text-base font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    {courseLine}
+                    <ArrowUpRight className="size-3.5 shrink-0" aria-hidden />
+                  </a>
+                ) : (
+                  <span className="text-base font-medium text-foreground">
+                    {courseLine}
+                  </span>
+                )
               ) : null}
               {crn ? <span>CRN {crn}</span> : null}
               {campus ? <span>{campus}</span> : null}
