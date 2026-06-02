@@ -24,7 +24,11 @@ import {
   requestSolve,
 } from "@/lib/planner/solve-worker-client";
 import type { InfeasibilityHint } from "@/lib/planner/infeasibility-hints";
-import { showPlannerError } from "@/lib/planner/planner-toast";
+import { showPlannerError, showPlannerSuccess } from "@/lib/planner/planner-toast";
+import { courseDisplayTitle } from "@/lib/planner/course-display-title";
+import {
+  auditItemsWithFullSavedSections,
+} from "@/lib/planner/seat-audit";
 import {
   parseItemScheduleFilters,
   serializeItemScheduleFilters,
@@ -54,9 +58,11 @@ import {
 import { yieldToMain } from "@/lib/planner/yield-to-main";
 import { applyPlannerBootstrap, syncPlannerItemsDataset } from "@/lib/planner/planner-bootstrap";
 import {
+  plannerCourseTitleKey,
   readTerm,
   subscribeLocalDoc,
   writeTerm,
+  writeTitles,
 } from "@/lib/planner/local-state";
 import {
   createContext,
@@ -105,9 +111,12 @@ function applySolutionToPlannerItems(
 type PlannerDataContextValue = {
   termCode: string;
   plannerItems: PlannerItemRow[];
+  /** Cached course display titles (instant render before catalog loads). */
+  courseTitles: Record<string, string>;
   catalog: PlannerCatalogJson;
   isHydrating: boolean;
   refreshCatalogFromServer: () => Promise<boolean>;
+  reloadPlannerBootstrap: () => Promise<void>;
   setPlannerItems: (items: PlannerItemRow[]) => void;
   removePlannerItem: (id: number) => void;
   updatePlannerItem: (id: number, patch: Partial<PlannerItemRow>) => void;
@@ -200,6 +209,7 @@ type ProviderProps = {
 export function PlannerProvider({ termCode, children }: ProviderProps) {
   const [isHydrating, setIsHydrating] = useState(true);
   const [plannerItems, setPlannerItems] = useState<PlannerItemRow[]>([]);
+  const [courseTitles, setCourseTitles] = useState<Record<string, string>>({});
   const [catalog, setCatalog] = useState<PlannerCatalogJson>(EMPTY_CATALOG);
 
   const [solutions, setSolutions] = useState<ScheduleSolution[]>([]);
@@ -239,6 +249,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const blackoutsUserGenRef = useRef(0);
   const blackoutsHandledGenRef = useRef(0);
   const initialBootstrapDoneRef = useRef(false);
+  const seatAuditAppliedRef = useRef(false);
   const ephemeralUnpinAfterRecalcRef = useRef<{
     itemId: number;
     scheduleTypeKey: string;
@@ -270,6 +281,66 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     });
   }, []);
 
+  const cacheTitlesFromCatalog = useCallback(
+    (items: PlannerItemRow[], catalogSlice: PlannerCatalogJson) => {
+      const term = readTerm(termRef.current);
+      const patch: Record<string, string> = {};
+      for (const item of items) {
+        const key = plannerCourseTitleKey(item.subject, item.courseNumber);
+        const title = courseDisplayTitle(
+          catalogSlice.sections,
+          item.subject,
+          item.courseNumber,
+        );
+        if (title && term.titles[key] !== title) {
+          patch[key] = title;
+        }
+      }
+      if (Object.keys(patch).length > 0) {
+        writeTitles(termRef.current, patch);
+      }
+      setCourseTitles({ ...term.titles, ...patch });
+    },
+    [],
+  );
+
+  const applySeatAuditOnLoad = useCallback(
+    (
+      items: PlannerItemRow[],
+      packs: CourseSolvePack[],
+      catalogSlice: PlannerCatalogJson,
+    ): PlannerItemRow[] => {
+      const hits = auditItemsWithFullSavedSections(items, packs, catalogSlice);
+      if (hits.length === 0) return items;
+
+      const hitIds = new Set(hits.map((h) => h.id));
+      const next = items.map((item) => {
+        if (!hitIds.has(item.id)) return item;
+        const f = parseItemScheduleFilters(item.scheduleFilters);
+        return {
+          ...item,
+          scheduleFilters: serializeItemScheduleFilters({
+            ...f,
+            requireOpenSections: false,
+          }),
+        };
+      });
+
+      const codes = hits.map((h) => `${h.subject} ${h.courseNumber}`);
+      if (codes.length === 1) {
+        showPlannerSuccess(
+          `Turned off "Exclude full" for ${codes[0]} — that saved section is now full.`,
+        );
+      } else {
+        showPlannerSuccess(
+          `Turned off "Exclude full" for ${codes.join(", ")} — saved sections are now full.`,
+        );
+      }
+      return next;
+    },
+    [],
+  );
+
   const mergeSolvePack = useCallback((pack: CourseSolvePack) => {
     solvePacksRef.current = { ...solvePacksRef.current, [pack.courseKey]: pack };
     setSolvePacks(solvePacksRef.current);
@@ -295,6 +366,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       return false;
     }
     setCatalog(res.catalog);
+    cacheTitlesFromCatalog(items, res.catalog);
     void (async () => {
       const enrichRes = await loadPlannerCatalogExamEnrichmentAction(t, items);
       if (myGen !== catalogLoadGenRef.current) return;
@@ -307,7 +379,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     })();
 
     return true;
-  }, []);
+  }, [cacheTitlesFromCatalog]);
 
   const loadBootstrap = useCallback(
     async (items: PlannerItemRow[]) => {
@@ -322,6 +394,21 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
         }
         setCatalog(res.catalog);
         mergeSolvePacks(res.packs);
+        cacheTitlesFromCatalog(itemsRef.current, res.catalog);
+
+        if (!seatAuditAppliedRef.current) {
+          seatAuditAppliedRef.current = true;
+          const audited = applySeatAuditOnLoad(
+            itemsRef.current,
+            res.packs,
+            res.catalog,
+          );
+          if (audited !== itemsRef.current) {
+            itemsRef.current = audited;
+            setPlannerItems(audited);
+            persistTerm();
+          }
+        }
 
         void (async () => {
           const enrichRes = await loadPlannerCatalogExamEnrichmentAction(t, items);
@@ -341,7 +428,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
         }
       }
     },
-    [mergeSolvePacks],
+    [mergeSolvePacks, cacheTitlesFromCatalog, applySeatAuditOnLoad, persistTerm],
   );
 
   const recalculateSolutions = useCallback(async () => {
@@ -625,17 +712,24 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     return ok;
   }, [loadCatalog, scheduleRecalculateSolutions]);
 
+  const reloadPlannerBootstrap = useCallback(async () => {
+    seatAuditAppliedRef.current = false;
+    const ok = await loadBootstrap(itemsRef.current);
+    if (ok) scheduleRecalculateSolutions();
+  }, [loadBootstrap, scheduleRecalculateSolutions]);
+
   useLayoutEffect(() => {
     initialBootstrapDoneRef.current = false;
+    seatAuditAppliedRef.current = false;
     applyPlannerBootstrap(termCode);
     const term = readTerm(termCode);
     itemsRef.current = term.items;
     blackoutsRef.current = term.blackouts;
     syncPlannerItemsDataset(term.items.length);
-    // Sync React from localStorage before paint (bootstrap script already set html dataset).
     /* eslint-disable react-hooks/set-state-in-effect -- intentional one-shot local restore */
     setPlannerItems(term.items);
     setBlackoutsState(term.blackouts);
+    setCourseTitles(term.titles);
     setIsHydrating(false);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [termCode]);
@@ -665,6 +759,7 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setPlannerItems(term.items);
       blackoutsRef.current = term.blackouts;
       setBlackoutsState(term.blackouts);
+      setCourseTitles(term.titles);
       void loadCatalog(term.items);
       scheduleRecalculateSolutions();
     });
@@ -974,9 +1069,11 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     () => ({
       termCode,
       plannerItems,
+      courseTitles,
       catalog,
       isHydrating,
       refreshCatalogFromServer,
+      reloadPlannerBootstrap,
       setPlannerItems: setPlannerItemsFromContext,
       removePlannerItem,
       updatePlannerItem,
@@ -996,9 +1093,11 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [
       termCode,
       plannerItems,
+      courseTitles,
       catalog,
       isHydrating,
       refreshCatalogFromServer,
+      reloadPlannerBootstrap,
       setPlannerItemsFromContext,
       removePlannerItem,
       updatePlannerItem,

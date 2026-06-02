@@ -13,6 +13,7 @@ import {
 } from "@/lib/planner/schedule-filters";
 import { parseSectionPinsJson } from "@/lib/planner/section-pins";
 import { courseDisplayTitle } from "@/lib/planner/course-display-title";
+import { plannerCourseTitleKey } from "@/lib/planner/local-state";
 import { plannerCourseCardInteractive } from "@/lib/planner/planner-interactive-surface";
 import { usePlannerViewSettings } from "@/lib/planner/planner-view-settings";
 import { PlannerCourseColorPicker } from "@/components/planner/PlannerCourseColorPicker";
@@ -94,6 +95,7 @@ function CarouselConstraintPill({
 export function CourseCarousel({ onOpenCourseSettings, onCrnActivate }: Props) {
   const {
     plannerItems,
+    courseTitles,
     catalog,
     removePlannerItem,
     updatePlannerItem,
@@ -207,11 +209,13 @@ export function CourseCarousel({ onOpenCourseSettings, onCrnActivate }: Props) {
               const locked = item.selectionKind !== "unresolved";
               const openSettings = () => onOpenCourseSettings(item.id);
               const courseCode = `${item.subject} ${item.courseNumber}`;
-              const courseTitle = courseDisplayTitle(
-                catalog.sections,
-                item.subject,
-                item.courseNumber,
-              );
+              const titleKey = plannerCourseTitleKey(item.subject, item.courseNumber);
+              const courseTitle =
+                courseDisplayTitle(
+                  catalog.sections,
+                  item.subject,
+                  item.courseNumber,
+                ) ?? courseTitles[titleKey] ?? null;
 
               return (
                 <CardTag

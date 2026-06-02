@@ -111,13 +111,3 @@ export function snapIntervalEndpoints(start: number, end: number): { start: numb
   if (e <= s) e = s + SNAP_MINUTES;
   return { start: s, end: e };
 }
-
-/** Max blackout rows per term (DoS / payload guard). */
-const MAX_PLANNER_BLACKOUTS = 50;
-
-/** Normalize client-submitted items array for persistence. */
-export function parseBlackoutsItemsArray(items: unknown): PlannerBlackoutsDocV1 {
-  if (!Array.isArray(items)) return { v: 1, items: [] };
-  const slice = items.slice(0, MAX_PLANNER_BLACKOUTS);
-  return parseBlackoutsJson({ v: 1, items: slice });
-}

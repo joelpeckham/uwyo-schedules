@@ -1,11 +1,12 @@
 "use server";
 
 /**
- * Planner server actions: catalog/solve/search only. Per-user planner cart,
- * blackouts live in browser localStorage (`planner:v2`).
+ * Planner server actions: catalog/solve/search and share shortlinks. Per-user
+ * planner cart and blackouts live in browser localStorage (`planner:v2`).
  */
 
 import { createDb } from "@/db/index";
+import * as schema from "@/db/schema";
 import type { CourseSolvePack } from "@/lib/planner/solve-schedules-core";
 import type { SolveSchedulesResult } from "@/lib/planner/solve-schedules";
 import {
@@ -19,6 +20,7 @@ import {
   parseBlackoutsJson,
   type PlannerBlackoutsDocV1,
 } from "@/lib/planner/blackouts";
+import { MAX_PLANNER_COURSES_PER_TERM } from "@/lib/planner/constants";
 import {
   loadPlannerCatalogCore,
   loadPlannerCatalogExamEnrichment,
@@ -28,11 +30,21 @@ import type { PlannerCatalogJson } from "@/lib/planner/client/catalog-types";
 import { catalogActionClientKey } from "@/lib/planner/catalog-action-client-key";
 import { takeCatalogActionRateLimit } from "@/lib/planner/catalog-action-rate-limit";
 import {
+  generateShareCode,
+  isValidShareCode,
+} from "@/lib/planner/share-code";
+import {
+  buildSharePayload,
+  parseSharePayload,
+  type SharePayloadV1,
+} from "@/lib/planner/share-state";
+import {
   getSectionDetail,
   searchCourses,
   type CourseSearchRow,
   type PlannerItemRow,
 } from "@/lib/planner/data";
+import { eq } from "drizzle-orm";
 
 /** Avoid surfacing raw SQL / driver errors in the planner UI. */
 function plannerActionErrorMessage(e: unknown): string {
@@ -264,5 +276,95 @@ export async function loadPlannerCatalogExamEnrichmentAction(
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong.";
     return { ok: false, error: msg };
+  }
+}
+
+export async function createShareLinkAction(input: {
+  termCode: string;
+  items: PlannerItemRow[];
+  blackouts: PlannerBlackoutsDocV1;
+}): Promise<
+  | { ok: true; code: string }
+  | { ok: false; error: string }
+> {
+  try {
+    if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
+      return { ok: false, error: "Too many requests. Try again in a moment." };
+    }
+    const termCode = input.termCode.trim();
+    if (!termCode) return { ok: false, error: "Missing term." };
+    if (input.items.length === 0) {
+      return { ok: false, error: "Add at least one course before sharing." };
+    }
+    if (input.items.length > MAX_PLANNER_COURSES_PER_TERM) {
+      return {
+        ok: false,
+        error: `At most ${MAX_PLANNER_COURSES_PER_TERM} courses for one term.`,
+      };
+    }
+
+    const payload = buildSharePayload({
+      termCode,
+      items: input.items,
+      blackouts: parseBlackoutsJson(input.blackouts),
+    });
+    const db = createDb();
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = generateShareCode();
+      try {
+        await db.insert(schema.plannerShares).values({
+          code,
+          termCode,
+          payload,
+        });
+        return { ok: true, code };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        if (msg.includes("duplicate key") || msg.includes("unique")) {
+          continue;
+        }
+        throw e;
+      }
+    }
+    return { ok: false, error: "Could not create share link. Try again." };
+  } catch (e) {
+    return { ok: false, error: plannerActionErrorMessage(e) };
+  }
+}
+
+export async function resolveShareLinkAction(
+  code: string,
+): Promise<
+  | { ok: true; payload: SharePayloadV1 }
+  | { ok: false; error: string }
+> {
+  try {
+    if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
+      return { ok: false, error: "Too many requests. Try again in a moment." };
+    }
+    const trimmed = code.trim();
+    if (!isValidShareCode(trimmed)) {
+      return { ok: false, error: "Invalid share link." };
+    }
+    const db = createDb();
+    const rows = await db
+      .select({
+        termCode: schema.plannerShares.termCode,
+        payload: schema.plannerShares.payload,
+      })
+      .from(schema.plannerShares)
+      .where(eq(schema.plannerShares.code, trimmed))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return { ok: false, error: "Share link not found." };
+
+    const payload = parseSharePayload(row.payload);
+    if (!payload || payload.termCode !== row.termCode) {
+      return { ok: false, error: "Share link is corrupted." };
+    }
+    return { ok: true, payload };
+  } catch (e) {
+    return { ok: false, error: plannerActionErrorMessage(e) };
   }
 }

@@ -1,18 +1,14 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Copy, Download, Link2, Printer, SquareArrowUp } from "lucide-react";
+import { Copy, Download, Link2, Loader2, Printer, SquareArrowUp } from "lucide-react";
 
+import { createShareLinkAction } from "@/app/planner/actions";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { collectDisplayCrnsForItems } from "@/lib/planner/client/derive";
 import { buildIcsForPlannerWeek } from "@/lib/planner/ics";
 import { encodePrintSelections } from "@/lib/planner/print-state";
-import {
-  encodeShareState,
-  shareFiltersFromItem,
-  type SharePinV1,
-} from "@/lib/planner/share-state";
 import {
   showPlannerError,
   showPlannerSuccess,
@@ -27,6 +23,7 @@ export function ExportMenu() {
   const { effectivePlannerItems } = usePlannerSolve();
   const { blackouts } = usePlannerUi();
   const [open, setOpen] = useState(false);
+  const [sharePending, setSharePending] = useState(false);
 
   const crns = collectDisplayCrnsForItems(effectivePlannerItems, catalog);
   const disabled = crns.length === 0;
@@ -91,35 +88,29 @@ export function ExportMenu() {
   }, [termCode, effectivePlannerItems]);
 
   const onShareLink = useCallback(async () => {
-    const pins: SharePinV1[] = plannerItems.map((it) => {
-      const sf = shareFiltersFromItem(it.scheduleFilters);
-      return {
-        sub: it.subject,
-        num: it.courseNumber,
-        crn:
-          it.selectionKind === "single_crn" || it.selectionKind === "linked_bundle"
-            ? it.anchorCrn ?? null
-            : null,
-        lbid:
-          it.selectionKind === "linked_bundle" ? it.linkedBundleId ?? null : null,
-        ...(sf ? { sf } : {}),
-      };
-    });
-    const code = encodeShareState({
-      termCode,
-      pins,
-      blackouts,
-    });
-    const url = `${window.location.origin}/planner?s=${code}`;
+    if (sharePending) return;
+    setSharePending(true);
     try {
+      const res = await createShareLinkAction({
+        termCode,
+        items: plannerItems,
+        blackouts,
+      });
+      if (!res.ok) {
+        showPlannerError(res.error);
+        return;
+      }
+      const url = `${window.location.origin}/planner?s=${res.code}`;
       await navigator.clipboard.writeText(url);
       track("planner_share_link_copied", { length: url.length });
       showPlannerSuccess("Share link copied to clipboard.");
+      setOpen(false);
     } catch {
       showPlannerError("Couldn't copy share link.");
+    } finally {
+      setSharePending(false);
     }
-    setOpen(false);
-  }, [plannerItems, termCode, blackouts]);
+  }, [plannerItems, termCode, blackouts, sharePending]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -171,11 +162,17 @@ export function ExportMenu() {
           disabled={disabled}
         />
         <ExportItem
-          icon={<Link2 className="size-4" />}
+          icon={
+            sharePending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Link2 className="size-4" />
+            )
+          }
           label="Copy share link"
           description="Anyone with the link sees this schedule."
           onClick={onShareLink}
-          disabled={plannerItems.length === 0}
+          disabled={plannerItems.length === 0 || sharePending}
         />
       </PopoverContent>
     </Popover>

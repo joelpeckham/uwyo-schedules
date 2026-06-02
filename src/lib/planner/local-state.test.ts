@@ -67,4 +67,12 @@ describe("local-state", () => {
     expect(readLocalDoc().v).toBe(2);
     expect(readLocalDoc().terms).toEqual({});
   });
+
+  it("persists and reads course titles", () => {
+    mockLocalStorage();
+    writeTerm("202610", {
+      titles: { "MATH\u00002200": "Calculus I" },
+    });
+    expect(readTerm("202610").titles["MATH\u00002200"]).toBe("Calculus I");
+  });
 });

@@ -345,3 +345,15 @@ export const plannerTermUiState = pgTable(
     primaryKey({ columns: [t.sessionId, t.termCode] }),
   ],
 );
+
+/** Server-backed planner share shortlinks (`/planner?s=<code>`). */
+export const plannerShares = pgTable("planner_shares", {
+  code: text("code").primaryKey(),
+  termCode: text("term_code")
+    .notNull()
+    .references(() => terms.code, { onDelete: "cascade" }),
+  payload: jsonb("payload").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

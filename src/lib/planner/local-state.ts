@@ -21,6 +21,8 @@ type PlannerTermLocalState = {
   items: PlannerItemRow[];
   blackouts: PlannerBlackoutsDocV1;
   lastSolutionIndex: number;
+  /** Cached display titles keyed by `${subject}\u0000${courseNumber}`. */
+  titles: Record<string, string>;
 };
 
 type PlannerLocalDoc = {
@@ -36,7 +38,20 @@ function emptyTermState(): PlannerTermLocalState {
     items: [],
     blackouts: EMPTY_BLACKOUTS,
     lastSolutionIndex: 0,
+    titles: {},
   };
+}
+
+function parseTitlesMap(raw: unknown): Record<string, string> {
+  if (!isRecord(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof key !== "string" || !key.trim()) continue;
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) out[key] = trimmed;
+  }
+  return out;
 }
 
 function freshDoc(): PlannerLocalDoc {
@@ -45,6 +60,14 @@ function freshDoc(): PlannerLocalDoc {
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+/** Stable key for subject + course number (duplicate detection, title cache). */
+export function plannerCourseTitleKey(
+  subject: string,
+  courseNumber: string,
+): string {
+  return `${subject}\u0000${courseNumber}`;
 }
 
 /** Ensure legacy localStorage rows have per-course schedule filters. */
@@ -89,7 +112,7 @@ function normalizePlannerItem(raw: unknown): PlannerItemRow | null {
   } as PlannerItemRow;
 }
 
-function normalizePlannerItems(items: unknown): PlannerItemRow[] {
+export function normalizePlannerItems(items: unknown): PlannerItemRow[] {
   if (!Array.isArray(items)) return [];
   const out: PlannerItemRow[] = [];
   for (const raw of items) {
@@ -118,15 +141,15 @@ function parseDoc(raw: unknown): PlannerLocalDoc | null {
           Number.isFinite(termRaw.lastSolutionIndex)
             ? Math.max(0, Math.floor(termRaw.lastSolutionIndex))
             : 0,
+        titles: parseTitlesMap(termRaw.titles),
       };
     }
   }
   return { v: 2, nextId, terms };
 }
 
-/** Stable key for subject + course number (duplicate detection). */
 function plannerCourseKey(subject: string, courseNumber: string): string {
-  return `${subject}\u0000${courseNumber}`;
+  return plannerCourseTitleKey(subject, courseNumber);
 }
 
 export function plannerHasCourse(
@@ -185,6 +208,45 @@ export function writeTerm(
     blackouts: partial.blackouts ?? prev.blackouts,
     lastSolutionIndex:
       partial.lastSolutionIndex ?? prev.lastSolutionIndex,
+    titles: partial.titles ?? prev.titles,
+  };
+  writeLocalDoc(doc);
+}
+
+/** Merge display titles into the term doc (non-empty values only). */
+export function writeTitles(
+  termCode: string,
+  patch: Record<string, string>,
+): void {
+  const doc = readLocalDoc();
+  const prev = doc.terms[termCode] ?? emptyTermState();
+  const titles = { ...prev.titles };
+  for (const [key, value] of Object.entries(patch)) {
+    const trimmed = value.trim();
+    if (trimmed) titles[key] = trimmed;
+  }
+  writeTerm(termCode, { titles });
+}
+
+/** Replace a term's planner cart from a server share payload. */
+export function replaceTermFromShare(
+  termCode: string,
+  state: {
+    items: PlannerItemRow[];
+    blackouts: PlannerBlackoutsDocV1;
+  },
+): void {
+  const doc = readLocalDoc();
+  const maxId = state.items.reduce((m, i) => Math.max(m, i.id), 0);
+  if (doc.nextId <= maxId) {
+    doc.nextId = maxId + 1;
+  }
+  const prev = doc.terms[termCode] ?? emptyTermState();
+  doc.terms[termCode] = {
+    items: state.items,
+    blackouts: state.blackouts,
+    lastSolutionIndex: 0,
+    titles: prev.titles,
   };
   writeLocalDoc(doc);
 }
