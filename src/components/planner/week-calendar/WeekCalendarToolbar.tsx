@@ -29,9 +29,11 @@ export function WeekCalendarToolbar({
       ) : (
         <FirstRunTourSlot plannerItemCount={plannerItemCount} />
       )}
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1">{leading}</div>
-        <div className="flex flex-wrap items-center justify-end gap-1">
+      <div className="flex min-w-0 flex-wrap items-center justify-start sm:justify-between gap-2">
+        <div className="contents sm:flex sm:flex-wrap sm:items-center sm:gap-1">
+          {leading}
+        </div>
+        <div className="contents sm:flex sm:flex-wrap sm:items-center sm:justify-end sm:gap-1">
           {trailing}
         </div>
       </div>

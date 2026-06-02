@@ -315,7 +315,9 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
       className="touch-manipulation h-10 min-h-10 rounded-md px-3"
     >
       <Plus className="size-4" />
-      <span className="ml-2">Add course</span>
+      <span className="ml-2">
+        Add<span className="hidden sm:inline"> course</span>
+      </span>
     </Button>
   );
 
