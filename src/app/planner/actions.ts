@@ -39,12 +39,15 @@ import {
   type SharePayloadV1,
 } from "@/lib/planner/share-state";
 import {
+  getCourseSearchIndex,
   getSectionDetail,
   searchCourses,
+  type CourseSearchDoc,
   type CourseSearchRow,
   type PlannerItemRow,
 } from "@/lib/planner/data";
 import { eq } from "drizzle-orm";
+import { cache } from "react";
 
 /** Avoid surfacing raw SQL / driver errors in the planner UI. */
 function plannerActionErrorMessage(e: unknown): string {
@@ -194,6 +197,24 @@ export async function searchCoursesAction(
   }
   const db = createDb();
   return searchCourses(db, termCode, query);
+}
+
+const loadCourseSearchIndexCached = cache(
+  async (termCode: string): Promise<CourseSearchDoc[]> => {
+    const db = createDb();
+    return getCourseSearchIndex(db, termCode);
+  },
+);
+
+/** Full-term course index for client-side fuzzy search (one fetch per term per request). */
+export async function getCourseSearchIndexAction(
+  termCode: string,
+): Promise<CourseSearchDoc[]> {
+  if (!(await takeCatalogActionRateLimit(await catalogActionClientKey()))) {
+    return [];
+  }
+  if (!termCode.trim()) return [];
+  return loadCourseSearchIndexCached(termCode.trim());
 }
 
 export async function getSectionDetailAction(

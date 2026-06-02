@@ -21,7 +21,7 @@ test.describe("Planner interactions", () => {
     );
 
     await addButton.click();
-    const searchInput = page.locator("#course-search");
+    const searchInput = page.locator("#course-search-toolbar");
     await expect(searchInput).toBeVisible();
     await searchInput.fill("ZZ");
     await expect(

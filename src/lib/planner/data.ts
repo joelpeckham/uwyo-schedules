@@ -21,6 +21,13 @@ export type CourseSearchRow = {
   previewTitle: string | null;
 };
 
+/** Per-course search index row for client-side fuzzy ranking. */
+export type CourseSearchDoc = CourseSearchRow & {
+  subjectDescription: string | null;
+  crns: string[];
+  instructors: string[];
+};
+
 export type PlannerItemRow = typeof schema.plannerItems.$inferSelect;
 
 export type CalendarBlock = {
@@ -162,6 +169,77 @@ export async function searchCourses(
     courseNumber: r.courseNumber,
     subjectCourse: decodeHtmlEntities(r.subjectCourse),
     previewTitle: decodeHtmlEntities(r.previewTitle),
+  }));
+}
+
+function dedupeNonEmptyStrings(values: (string | null | undefined)[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    const s = v?.trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+/** All courses in a term with aggregated CRNs, titles, and instructors for local search. */
+export async function getCourseSearchIndex(
+  db: Database,
+  termCode: string,
+): Promise<CourseSearchDoc[]> {
+  const rows = await db
+    .select({
+      termCode: schema.courses.termCode,
+      subject: schema.courses.subject,
+      courseNumber: schema.courses.courseNumber,
+      subjectCourse: schema.courses.subjectCourse,
+      previewTitle: canonicalAggregateCourseTitle(),
+      subjectDescription: sql<string | null>`max(${schema.sections.subjectDescription})`,
+      crns: sql<string[]>`coalesce(array_agg(distinct ${schema.sections.crn}), '{}')`,
+      instructors: sql<string[]>`coalesce(
+        array_agg(distinct ${schema.sectionFaculty.displayName})
+          filter (where ${schema.sectionFaculty.displayName} is not null),
+        '{}'
+      )`,
+    })
+    .from(schema.courses)
+    .innerJoin(
+      schema.sections,
+      and(
+        eq(schema.sections.termCode, schema.courses.termCode),
+        eq(schema.sections.subject, schema.courses.subject),
+        eq(schema.sections.courseNumber, schema.courses.courseNumber),
+      ),
+    )
+    .leftJoin(
+      schema.sectionFaculty,
+      and(
+        eq(schema.sectionFaculty.termCode, schema.sections.termCode),
+        eq(schema.sectionFaculty.sectionCrn, schema.sections.crn),
+      ),
+    )
+    .where(eq(schema.courses.termCode, termCode))
+    .groupBy(
+      schema.courses.termCode,
+      schema.courses.subject,
+      schema.courses.courseNumber,
+      schema.courses.subjectCourse,
+    )
+    .orderBy(schema.courses.subject, schema.courses.courseNumber);
+
+  return rows.map((r) => ({
+    termCode: r.termCode,
+    subject: r.subject,
+    courseNumber: r.courseNumber,
+    subjectCourse: decodeHtmlEntities(r.subjectCourse),
+    previewTitle: decodeHtmlEntities(r.previewTitle),
+    subjectDescription: decodeHtmlEntities(r.subjectDescription),
+    crns: dedupeNonEmptyStrings(r.crns ?? []),
+    instructors: dedupeNonEmptyStrings(
+      (r.instructors ?? []).map((n) => decodeHtmlEntities(n) ?? n),
+    ),
   }));
 }
 

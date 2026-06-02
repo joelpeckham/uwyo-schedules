@@ -5,9 +5,14 @@ import {
   searchCoursesAction,
 } from "@/app/planner/actions";
 import { addCourseLocal } from "@/lib/planner/add-course-local";
+import { rankCourses } from "@/lib/planner/course-search";
+import {
+  getCachedCourseSearchIndex,
+  loadCourseSearchIndex,
+} from "@/lib/planner/course-search-index";
 import { DUPLICATE_COURSE_ERROR, plannerHasCourse } from "@/lib/planner/local-state";
 import { track } from "@/lib/analytics/track";
-import type { CourseSearchRow } from "@/lib/planner/data";
+import type { CourseSearchDoc, CourseSearchRow } from "@/lib/planner/data";
 import {
   courseSolvePackCourseKey,
 } from "@/lib/planner/solve-schedules-core";
@@ -24,6 +29,7 @@ import { Loader2, Plus } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -50,20 +56,23 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
   const [pending, startTransition] = useTransition();
   const [searchQ, setSearchQ] = useState("");
   const [searchFetching, setSearchFetching] = useState(false);
-  const [hits, setHits] = useState<CourseSearchRow[]>([]);
+  const [serverHits, setServerHits] = useState<CourseSearchRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<CourseSearchRow | null>(null);
   const [prefetchPackPending, setPrefetchPackPending] = useState(false);
   const [prefetchPackError, setPrefetchPackError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [searchActiveIndex, setSearchActiveIndex] = useState(-1);
+  const [searchIndex, setSearchIndex] = useState<CourseSearchDoc[] | null>(null);
+  const [indexLoading, setIndexLoading] = useState(false);
+  const [useServerFallback, setUseServerFallback] = useState(false);
 
   const searchSeqRef = useRef(0);
   const autoAddAfterPrefetchRef = useRef(false);
 
   const resetAddPopover = useCallback(() => {
     setSearchQ("");
-    setHits([]);
+    setServerHits([]);
     setPicked(null);
     setSearchActiveIndex(-1);
     setError(null);
@@ -71,20 +80,47 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
     autoAddAfterPrefetchRef.current = false;
     searchSeqRef.current += 1;
     setSearchFetching(false);
+    setSearchIndex(null);
+    setIndexLoading(false);
+    setUseServerFallback(false);
   }, []);
+
+  const beginIndexLoad = useCallback(() => {
+    const cached = getCachedCourseSearchIndex(termCode);
+    if (cached) {
+      setSearchIndex(cached);
+      setUseServerFallback(false);
+      setIndexLoading(false);
+      return;
+    }
+    setIndexLoading(true);
+    void loadCourseSearchIndex(termCode).then((docs) => {
+      setIndexLoading(false);
+      if (docs !== null) {
+        setSearchIndex(docs);
+        setUseServerFallback(false);
+      } else {
+        setUseServerFallback(true);
+      }
+    });
+  }, [termCode]);
 
   const onAddOpenChange = useCallback(
     (open: boolean) => {
       setAddOpen(open);
-      if (!open) resetAddPopover();
+      if (!open) {
+        resetAddPopover();
+        return;
+      }
+      beginIndexLoad();
     },
-    [resetAddPopover],
+    [resetAddPopover, beginIndexLoad],
   );
 
-  const runSearch = useCallback(() => {
+  const runServerSearch = useCallback(() => {
     const q = searchQ.trim();
     if (q.length < 2) {
-      setHits([]);
+      setServerHits([]);
       setSearchActiveIndex(-1);
       setSearchFetching(false);
       return;
@@ -96,7 +132,7 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
         const rows = await searchCoursesAction(termCode, q);
         if (seq !== searchSeqRef.current) return;
         startTransition(() => {
-          setHits(rows);
+          setServerHits(rows);
           setSearchActiveIndex(rows.length > 0 ? 0 : -1);
           setSearchFetching(false);
         });
@@ -107,10 +143,26 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
     })();
   }, [searchQ, termCode]);
 
+  const localSearch = searchIndex !== null && !useServerFallback;
+  const hits = useMemo(() => {
+    if (!localSearch || !searchIndex) return serverHits;
+    const q = searchQ.trim();
+    if (q.length < 1) return [];
+    return rankCourses(searchIndex, q);
+  }, [localSearch, searchIndex, searchQ, serverHits]);
+
   useEffect(() => {
-    const t = setTimeout(runSearch, 200);
+    if (!addOpen || localSearch || indexLoading || !useServerFallback) return;
+    const t = setTimeout(runServerSearch, 200);
     return () => clearTimeout(t);
-  }, [runSearch]);
+  }, [addOpen, localSearch, indexLoading, useServerFallback, runServerSearch]);
+
+  useEffect(() => {
+    if (!localSearch) return;
+    startTransition(() => {
+      setSearchActiveIndex(hits.length > 0 ? 0 : -1);
+    });
+  }, [localSearch, hits]);
 
   useEffect(() => {
     if (!picked) {
@@ -174,7 +226,7 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
       });
       await recalculateSolutions();
       setPicked(null);
-      setHits([]);
+      setServerHits([]);
       setSearchQ("");
       setSearchActiveIndex(-1);
       setAddOpen(false);
@@ -197,7 +249,7 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
       }
       setSearchActiveIndex(-1);
       searchSeqRef.current += 1;
-      setHits([]);
+      setServerHits([]);
       const key = courseSolvePackCourseKey(h.subject, h.courseNumber);
       if (solvePacks[key]) {
         startTransition(() => void runAddCourse(h));
@@ -229,6 +281,8 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
   ]);
 
   const searchQueryLen = searchQ.trim().length;
+  const minQueryLen = localSearch ? 1 : 2;
+
   const onSearchKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (hits.length === 0) return;
@@ -270,7 +324,7 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
       <PopoverTrigger asChild>{trigger ?? defaultTrigger}</PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80 max-w-[calc(100vw-2rem)] px-3 pt-3 pb-2"
+        className="w-80 max-w-[calc(100vw-2rem)] overflow-visible px-3 pt-3 pb-2"
       >
         <div className="mb-2 flex items-center justify-between gap-2">
           <Label htmlFor="course-search-toolbar" className="shrink-0 text-muted-foreground">
@@ -285,12 +339,26 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
                 {error}
               </p>
             ) : null}
-            {searchQueryLen > 0 && searchQueryLen < 2 ? (
-              <p className="truncate text-muted-foreground">
-                Type at least 2 characters to search.
+            {indexLoading ? (
+              <p
+                className="flex max-w-full items-center justify-end gap-1.5 truncate text-muted-foreground"
+                role="status"
+              >
+                <Loader2 className="size-3 animate-spin" aria-hidden />
+                Loading catalog&hellip;
               </p>
             ) : null}
-            {searchQueryLen >= 2 && searchFetching ? (
+            {!indexLoading &&
+            searchQueryLen > 0 &&
+            searchQueryLen < minQueryLen ? (
+              <p className="truncate text-muted-foreground">
+                Type at least {minQueryLen} character{minQueryLen > 1 ? "s" : ""} to
+                search.
+              </p>
+            ) : null}
+            {!indexLoading &&
+            searchQueryLen >= minQueryLen &&
+            searchFetching ? (
               <p
                 className="flex max-w-full items-center justify-end gap-1.5 truncate text-muted-foreground"
                 role="status"
@@ -299,7 +367,11 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
                 Searching&hellip;
               </p>
             ) : null}
-            {searchQueryLen >= 2 && !searchFetching && !pending && hits.length === 0 ? (
+            {!indexLoading &&
+            searchQueryLen >= minQueryLen &&
+            !searchFetching &&
+            !pending &&
+            hits.length === 0 ? (
               <p className="truncate text-muted-foreground" role="status">
                 No courses match that search.
               </p>
@@ -329,64 +401,67 @@ export function AddCoursePopover({ termCode, trigger }: Props) {
             ) : null}
           </div>
         </div>
-        <Input
-          id="course-search-toolbar"
-          role="combobox"
-          aria-expanded={hits.length > 0}
-          aria-controls="course-search-toolbar-listbox"
-          aria-activedescendant={
-            searchActiveIndex >= 0
-              ? `course-search-toolbar-hit-${searchActiveIndex}`
-              : undefined
-          }
-          aria-autocomplete="list"
-          value={searchQ}
-          onChange={(e) => {
-            setSearchQ(e.target.value);
-            setSearchActiveIndex(-1);
-          }}
-          onKeyDown={onSearchKeyDown}
-          placeholder="Subject or number"
-          className="min-h-11"
-          autoComplete="off"
-        />
-        {hits.length > 0 ? (
-          <ul
-            id="course-search-toolbar-listbox"
-            className="mt-1 max-h-48 overflow-auto rounded-md border border-border bg-popover shadow-sm"
-            role="listbox"
-            aria-label="Course search results"
-          >
-            {hits.map((h, idx) => (
-              <li key={`${h.subject}-${h.courseNumber}`} role="none">
-                <button
-                  type="button"
-                  id={`course-search-toolbar-hit-${idx}`}
-                  role="option"
-                  aria-selected={searchActiveIndex === idx}
-                  disabled={pending || prefetchPackPending}
-                  className={cn(
-                    "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/60 disabled:pointer-events-none disabled:opacity-50",
-                    picked?.subject === h.subject &&
-                      picked?.courseNumber === h.courseNumber &&
-                      "bg-muted",
-                    searchActiveIndex === idx &&
-                      "bg-muted/80 ring-1 ring-ring/60",
-                  )}
-                  onClick={() => onPickCourseFromSearch(h)}
-                  onMouseEnter={() => setSearchActiveIndex(idx)}
-                >
-                  <span className="font-mono text-foreground">
-                    {h.subjectCourse ?? `${h.subject} ${h.courseNumber}`}
-                  </span>
-                  {h.previewTitle ? (
-                    <span className="text-muted-foreground">{h.previewTitle}</span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <div className="relative">
+          <Input
+            id="course-search-toolbar"
+            role="combobox"
+            aria-expanded={hits.length > 0}
+            aria-controls="course-search-toolbar-listbox"
+            aria-activedescendant={
+              searchActiveIndex >= 0
+                ? `course-search-toolbar-hit-${searchActiveIndex}`
+                : undefined
+            }
+            aria-autocomplete="list"
+            value={searchQ}
+            onChange={(e) => {
+              setSearchQ(e.target.value);
+              setSearchActiveIndex(-1);
+            }}
+            onKeyDown={onSearchKeyDown}
+            placeholder="Course, title, CRN, or instructor"
+            className="min-h-11"
+            autoComplete="off"
+            disabled={indexLoading}
+          />
+          {hits.length > 0 ? (
+            <ul
+              id="course-search-toolbar-listbox"
+              className="absolute inset-x-0 top-full z-[60] mt-1 max-h-48 overflow-auto rounded-md border border-border bg-popover py-1 shadow-md ring-1 ring-foreground/10"
+              role="listbox"
+              aria-label="Course search results"
+            >
+              {hits.map((h, idx) => (
+                <li key={`${h.subject}-${h.courseNumber}`} role="none">
+                  <button
+                    type="button"
+                    id={`course-search-toolbar-hit-${idx}`}
+                    role="option"
+                    aria-selected={searchActiveIndex === idx}
+                    disabled={pending || prefetchPackPending}
+                    className={cn(
+                      "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/60 disabled:pointer-events-none disabled:opacity-50",
+                      picked?.subject === h.subject &&
+                        picked?.courseNumber === h.courseNumber &&
+                        "bg-muted",
+                      searchActiveIndex === idx &&
+                        "bg-muted/80 ring-1 ring-ring/60",
+                    )}
+                    onClick={() => onPickCourseFromSearch(h)}
+                    onMouseEnter={() => setSearchActiveIndex(idx)}
+                  >
+                    <span className="font-mono text-foreground">
+                      {h.subjectCourse ?? `${h.subject} ${h.courseNumber}`}
+                    </span>
+                    {h.previewTitle ? (
+                      <span className="text-muted-foreground">{h.previewTitle}</span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       </PopoverContent>
     </Popover>
   );

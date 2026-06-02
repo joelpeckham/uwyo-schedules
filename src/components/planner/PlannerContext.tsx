@@ -26,6 +26,7 @@ import {
 import type { InfeasibilityHint } from "@/lib/planner/infeasibility-hints";
 import { showPlannerError, showPlannerSuccess } from "@/lib/planner/planner-toast";
 import { courseDisplayTitle } from "@/lib/planner/course-display-title";
+import { prefetchCourseSearchIndex } from "@/lib/planner/course-search-index";
 import {
   auditItemsWithFullSavedSections,
 } from "@/lib/planner/seat-audit";
@@ -747,6 +748,10 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       cancelled = true;
     };
   }, [termCode, loadBootstrap, scheduleRecalculateSolutions]);
+
+  useEffect(() => {
+    prefetchCourseSearchIndex(termCode);
+  }, [termCode]);
 
   useLayoutEffect(() => {
     syncPlannerItemsDataset(plannerItems.length);
