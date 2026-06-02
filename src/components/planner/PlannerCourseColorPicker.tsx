@@ -54,10 +54,7 @@ function PlannerCourseColorPickerInner({
           />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        className="max-w-[min(calc(100vw-2rem),22rem)]"
-      >
+      <PopoverContent className="max-w-[min(calc(100vw-2rem),22rem)]">
         <p className="mb-2 px-0.5 text-xs text-muted-foreground">
           Stripe color on the week calendar
         </p>
