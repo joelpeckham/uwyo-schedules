@@ -4,6 +4,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Inter, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { SkipToMain } from "@/components/seo/SkipToMain";
+import { Toaster } from "@/components/ui/sonner";
 import {
   SITE_DESCRIPTION,
   SITE_DESCRIPTION_SHORT,
@@ -94,6 +95,7 @@ export default function RootLayout({
       >
         <SkipToMain />
         {children}
+        <Toaster />
         <Analytics />
         <SpeedInsights />
       </body>

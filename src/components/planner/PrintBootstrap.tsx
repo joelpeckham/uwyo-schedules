@@ -16,8 +16,6 @@ import {
   applyResolvedSelectionsToPlannerItems,
   decodePrintSelections,
 } from "@/lib/planner/print-state";
-import { DEFAULT_PLANNER_SCHEDULE_FILTERS } from "@/lib/planner/schedule-filters";
-
 const EMPTY_CATALOG: PlannerCatalogJson = {
   sections: [],
   meetings: [],
@@ -64,7 +62,6 @@ export function PrintBootstrap({ termCode, termDescription }: Props) {
         const res = await solveSchedulesAction(
           termCode,
           term.items,
-          DEFAULT_PLANNER_SCHEDULE_FILTERS,
           term.blackouts,
         );
         if (cancelled) return;

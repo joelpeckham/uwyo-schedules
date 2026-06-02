@@ -7,7 +7,6 @@ import {
   computeInfeasibilityHints,
   type InfeasibilityHint,
 } from "./infeasibility-hints";
-import type { PlannerScheduleFilters } from "./schedule-filters";
 import type { ResolvedPlannerSelection } from "./resolve-display-crns-shared";
 import {
   solveSchedulesFromPacks,
@@ -21,10 +20,6 @@ export type SolveWorkerRequest = {
   id: number;
   items: PlannerItemRow[];
   packs: Record<string, CourseSolvePack>;
-  filters: Pick<
-    PlannerScheduleFilters,
-    "requireOpenSections" | "excludeTba" | "excludeOnlineAsync"
-  >;
   blackoutIntervals: TimeInterval[];
   previousSelections?: Record<number, ResolvedPlannerSelection> | null;
   maxSolutions?: number;
@@ -49,9 +44,6 @@ self.onmessage = (ev: MessageEvent<SolveWorkerRequest>) => {
   const timeoutMs = msg.timeoutMs ?? WORKER_SOLVE_TIMEOUT_MS;
 
   const result = solveSchedulesFromPacks(msg.items, msg.packs, {
-    requireOpenSections: msg.filters.requireOpenSections,
-    excludeTba: msg.filters.excludeTba,
-    excludeOnlineAsync: msg.filters.excludeOnlineAsync,
     blackoutIntervals: msg.blackoutIntervals,
     previousSelections: msg.previousSelections,
     maxSolutions: msg.maxSolutions ?? 1,
@@ -65,9 +57,6 @@ self.onmessage = (ev: MessageEvent<SolveWorkerRequest>) => {
       items: msg.items,
       packs: msg.packs,
       blackouts,
-      requireOpenSections: msg.filters.requireOpenSections,
-      excludeTba: msg.filters.excludeTba,
-      excludeOnlineAsync: msg.filters.excludeOnlineAsync,
       catalog: msg.catalog ?? null,
       baseAlreadyInfeasible: msg.baseAlreadyInfeasible ?? true,
     });

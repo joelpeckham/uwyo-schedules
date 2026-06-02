@@ -24,8 +24,13 @@ import {
   requestSolve,
 } from "@/lib/planner/solve-worker-client";
 import type { InfeasibilityHint } from "@/lib/planner/infeasibility-hints";
-import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
-import { DEFAULT_PLANNER_SCHEDULE_FILTERS } from "@/lib/planner/schedule-filters";
+import { showPlannerError } from "@/lib/planner/planner-toast";
+import {
+  parseItemScheduleFilters,
+  serializeItemScheduleFilters,
+  type PlannerItemScheduleFiltersV1,
+  type PlannerScheduleFilters,
+} from "@/lib/planner/schedule-filters";
 import type { CalendarBlock, PlannerItemRow } from "@/lib/planner/data";
 import {
   defaultInstructorPrefs,
@@ -106,9 +111,15 @@ type PlannerDataContextValue = {
   setPlannerItems: (items: PlannerItemRow[]) => void;
   removePlannerItem: (id: number) => void;
   updatePlannerItem: (id: number, patch: Partial<PlannerItemRow>) => void;
+  updateItemScheduleFilters: (
+    itemId: number,
+    patch: Partial<PlannerScheduleFilters>,
+  ) => void;
+  applyScheduleFiltersToAll: (filters: PlannerItemScheduleFiltersV1) => void;
   toggleSectionPin: (itemId: number, scheduleTypeKey: string, sectionCrn: string) => void;
   clearSectionPins: (itemId: number) => void;
   clearAllSectionPins: () => void;
+  clearInstructorPrefs: (itemId: number) => void;
   clearAllInstructorPrefs: () => void;
   setSectionPinFromDrag: (
     itemId: number,
@@ -128,29 +139,15 @@ type PlannerDataContextValue = {
 type PlannerSolveContextValue = {
   effectivePlannerItems: PlannerItemRow[];
   calendarBlocks: CalendarBlock[];
-  syncError: string | null;
-  clearSyncError: () => void;
-  scheduleFeasibilityError: string | null;
-  clearScheduleFeasibilityError: () => void;
   solutions: ScheduleSolution[];
   infeasibilityHints: InfeasibilityHint[];
-  recalculateSolutions: (
-    filterOverrides?: Partial<PlannerScheduleFilters>,
-  ) => Promise<void>;
-  scheduleRecalculateSolutions: (
-    filterOverrides?: Partial<PlannerScheduleFilters>,
-  ) => void;
+  recalculateSolutions: () => Promise<void>;
+  scheduleRecalculateSolutions: () => void;
   isRecalculatingSolutions: boolean;
   hasAttemptedSolve: boolean;
 };
 
 type PlannerUiContextValue = {
-  requireOpenSections: boolean;
-  setRequireOpenSections: (v: boolean) => void;
-  excludeTba: boolean;
-  setExcludeTba: (v: boolean) => void;
-  excludeOnlineAsync: boolean;
-  setExcludeOnlineAsync: (v: boolean) => void;
   blackouts: PlannerBlackoutsDocV1;
   setBlackouts: (
     doc:
@@ -204,21 +201,8 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const [isHydrating, setIsHydrating] = useState(true);
   const [plannerItems, setPlannerItems] = useState<PlannerItemRow[]>([]);
   const [catalog, setCatalog] = useState<PlannerCatalogJson>(EMPTY_CATALOG);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [scheduleFeasibilityError, setScheduleFeasibilityError] = useState<
-    string | null
-  >(null);
 
   const [solutions, setSolutions] = useState<ScheduleSolution[]>([]);
-  const [requireOpenSections, setRequireOpenSections] = useState(
-    DEFAULT_PLANNER_SCHEDULE_FILTERS.requireOpenSections,
-  );
-  const [excludeTba, setExcludeTba] = useState(
-    DEFAULT_PLANNER_SCHEDULE_FILTERS.excludeTba,
-  );
-  const [excludeOnlineAsync, setExcludeOnlineAsync] = useState(
-    DEFAULT_PLANNER_SCHEDULE_FILTERS.excludeOnlineAsync,
-  );
   const [blackouts, setBlackoutsState] = useState<PlannerBlackoutsDocV1>(
     EMPTY_BLACKOUTS,
   );
@@ -236,9 +220,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const recalcDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const recalcFilterOverridesRef = useRef<
-    Partial<PlannerScheduleFilters> | undefined
-  >(undefined);
   const recalcGenRef = useRef(0);
   const solveRequestIdRef = useRef(0);
   const [infeasibilityHints, setInfeasibilityHints] = useState<
@@ -250,9 +231,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   const termRef = useRef(termCode);
   const prefetchGenRef = useRef(0);
   const catalogLoadGenRef = useRef(0);
-  const requireOpenRef = useRef(requireOpenSections);
-  const excludeTbaRef = useRef(excludeTba);
-  const excludeOnlineAsyncRef = useRef(excludeOnlineAsync);
   const blackoutsRef = useRef(blackouts);
   const catalogRef = useRef(catalog);
   const historyApiRef = useRef(createPlannerHistoryStacks());
@@ -278,15 +256,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
   useEffect(() => {
     termRef.current = termCode;
   }, [termCode]);
-  useEffect(() => {
-    requireOpenRef.current = requireOpenSections;
-  }, [requireOpenSections]);
-  useEffect(() => {
-    excludeTbaRef.current = excludeTba;
-  }, [excludeTba]);
-  useEffect(() => {
-    excludeOnlineAsyncRef.current = excludeOnlineAsync;
-  }, [excludeOnlineAsync]);
   useEffect(() => {
     blackoutsRef.current = blackouts;
   }, [blackouts]);
@@ -322,12 +291,10 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     const res = await loadPlannerCatalogForItemsAction(t, items);
     if (myGen !== catalogLoadGenRef.current) return false;
     if (!res.ok) {
-      setSyncError(res.error);
+      showPlannerError(res.error);
       return false;
     }
     setCatalog(res.catalog);
-    setSyncError(null);
-
     void (async () => {
       const enrichRes = await loadPlannerCatalogExamEnrichmentAction(t, items);
       if (myGen !== catalogLoadGenRef.current) return;
@@ -350,11 +317,10 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
         const res = await loadPlannerBootstrapAction(t, items);
         if (myGen !== catalogLoadGenRef.current) return false;
         if (!res.ok) {
-          setSyncError(res.error);
+          showPlannerError(res.error);
           return false;
         }
         setCatalog(res.catalog);
-        setSyncError(null);
         mergeSolvePacks(res.packs);
 
         void (async () => {
@@ -378,26 +344,16 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [mergeSolvePacks],
   );
 
-  const recalculateSolutions = useCallback(
-    async (filterOverrides?: Partial<PlannerScheduleFilters>) => {
+  const recalculateSolutions = useCallback(async () => {
       const myGen = ++recalcGenRef.current;
       recalcDepthRef.current += 1;
       if (recalcDepthRef.current === 1) setIsRecalculatingSolutions(true);
       try {
-        const filters: PlannerScheduleFilters = {
-          requireOpenSections:
-            filterOverrides?.requireOpenSections ?? requireOpenRef.current,
-          excludeTba: filterOverrides?.excludeTba ?? excludeTbaRef.current,
-          excludeOnlineAsync:
-            filterOverrides?.excludeOnlineAsync ?? excludeOnlineAsyncRef.current,
-        };
         const rows = itemsRef.current;
         const packs = solvePacksRef.current;
 
         if (rows.length === 0) {
           if (myGen === recalcGenRef.current) {
-            setSyncError(null);
-            setScheduleFeasibilityError(null);
             setSolutions([]);
             setInfeasibilityHints([]);
           }
@@ -417,7 +373,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
             {
               items: rows,
               packs,
-              filters,
               blackoutIntervals: blackoutIv,
               previousSelections: prevSelections,
               timeoutMs: WORKER_SOLVE_TIMEOUT_MS,
@@ -430,7 +385,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
             cancelSolveRequest(requestId);
             return;
           }
-          setSyncError(null);
           setSolutions(result.solutions);
           setInfeasibilityHints(
             result.solutions.length > 0 ? [] : result.hints,
@@ -473,22 +427,13 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [persistTerm],
   );
 
-  const scheduleRecalculateSolutions = useCallback(
-    (filterOverrides?: Partial<PlannerScheduleFilters>) => {
-      if (filterOverrides) {
-        recalcFilterOverridesRef.current = {
-          ...recalcFilterOverridesRef.current,
-          ...filterOverrides,
-        };
-      }
+  const scheduleRecalculateSolutions = useCallback(() => {
       if (recalcDebounceTimerRef.current) {
         clearTimeout(recalcDebounceTimerRef.current);
       }
       recalcDebounceTimerRef.current = setTimeout(() => {
         recalcDebounceTimerRef.current = null;
-        const overrides = recalcFilterOverridesRef.current;
-        recalcFilterOverridesRef.current = undefined;
-        void recalculateSolutions(overrides);
+        void recalculateSolutions();
       }, 50);
     },
     [recalculateSolutions],
@@ -509,12 +454,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [solvePacks],
   );
 
-  const clearSyncError = useCallback(() => setSyncError(null), []);
-  const clearScheduleFeasibilityError = useCallback(
-    () => setScheduleFeasibilityError(null),
-    [],
-  );
-
   const syncHistoryStacks = useCallback((stacks: PlannerHistoryStacks) => {
     historyStacksRef.current = stacks;
     setCanUndo(stacks.undo.length > 0);
@@ -526,11 +465,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       return capturePlannerHistorySnapshot({
         plannerItems: itemsRef.current,
         blackouts: blackoutsRef.current,
-        filters: {
-          requireOpenSections: requireOpenRef.current,
-          excludeTba: excludeTbaRef.current,
-          excludeOnlineAsync: excludeOnlineAsyncRef.current,
-        },
         solutions: solutionsRef.current,
       });
     }, []);
@@ -585,6 +519,53 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [persistTerm, recordHistorySnapshot],
   );
 
+  const updateItemScheduleFilters = useCallback(
+    (itemId: number, patch: Partial<PlannerScheduleFilters>) => {
+      recordHistorySnapshot();
+      setPlannerItems((prev) => {
+        const next = prev.map((r) => {
+          if (r.id !== itemId) return r;
+          const cur = parseItemScheduleFilters(r.scheduleFilters);
+          return {
+            ...r,
+            scheduleFilters: serializeItemScheduleFilters({
+              v: 1,
+              requireOpenSections:
+                patch.requireOpenSections ?? cur.requireOpenSections,
+              excludeTba: patch.excludeTba ?? cur.excludeTba,
+              excludeOnlineAsync:
+                patch.excludeOnlineAsync ?? cur.excludeOnlineAsync,
+            }),
+          };
+        });
+        itemsRef.current = next;
+        return next;
+      });
+      persistTerm();
+      scheduleRecalculateSolutions();
+    },
+    [persistTerm, recordHistorySnapshot, scheduleRecalculateSolutions],
+  );
+
+  const applyScheduleFiltersToAll = useCallback(
+    (filters: PlannerItemScheduleFiltersV1) => {
+      recordHistorySnapshot();
+      const serialized = serializeItemScheduleFilters(filters);
+      setPlannerItems((prev) => {
+        const next = prev.map((r) =>
+          r.selectionKind === "unresolved"
+            ? { ...r, scheduleFilters: serialized }
+            : r,
+        );
+        itemsRef.current = next;
+        return next;
+      });
+      persistTerm();
+      scheduleRecalculateSolutions();
+    },
+    [persistTerm, recordHistorySnapshot, scheduleRecalculateSolutions],
+  );
+
   const applyHistorySnapshot = useCallback(
     (snap: PlannerHistorySnapshot) => {
       isApplyingHistoryRef.current = true;
@@ -592,18 +573,11 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
         clearTimeout(recalcDebounceTimerRef.current);
         recalcDebounceTimerRef.current = null;
       }
-      recalcFilterOverridesRef.current = undefined;
       recalcGenRef.current += 1;
       itemsRef.current = snap.plannerItems;
       setPlannerItems(snap.plannerItems);
       blackoutsRef.current = snap.blackouts;
       setBlackoutsState(snap.blackouts);
-      requireOpenRef.current = snap.filters.requireOpenSections;
-      setRequireOpenSections(snap.filters.requireOpenSections);
-      excludeTbaRef.current = snap.filters.excludeTba;
-      setExcludeTba(snap.filters.excludeTba);
-      excludeOnlineAsyncRef.current = snap.filters.excludeOnlineAsync;
-      setExcludeOnlineAsync(snap.filters.excludeOnlineAsync);
       solutionsRef.current = snap.solutions;
       setSolutions(snap.solutions);
       persistTerm();
@@ -720,19 +694,15 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       );
       if (
         plannerItemsFeasibility(next, solvePacksRef.current, {
-          requireOpenSections: requireOpenRef.current,
-          excludeTba: excludeTbaRef.current,
-          excludeOnlineAsync: excludeOnlineAsyncRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
           timeoutMs: PREVIEW_FEASIBILITY_TIMEOUT_MS,
         }) === "infeasible"
       ) {
-        setScheduleFeasibilityError(
+        showPlannerError(
           "That section doesn't fit with your other courses and pins.",
         );
         return;
       }
-      setScheduleFeasibilityError(null);
       recordHistorySnapshot();
       setPlannerItems(() => {
         itemsRef.current = next;
@@ -765,19 +735,15 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       if (
         !isRemoval &&
         plannerItemsFeasibility(next, solvePacksRef.current, {
-          requireOpenSections: requireOpenRef.current,
-          excludeTba: excludeTbaRef.current,
-          excludeOnlineAsync: excludeOnlineAsyncRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
           timeoutMs: PREVIEW_FEASIBILITY_TIMEOUT_MS,
         }) === "infeasible"
       ) {
-        setScheduleFeasibilityError(
+        showPlannerError(
           "That pin doesn't fit with your other courses and pins.",
         );
         return;
       }
-      setScheduleFeasibilityError(null);
       recordHistorySnapshot();
       setPlannerItems(() => {
         itemsRef.current = next;
@@ -801,7 +767,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
           ? { ...r, sectionPins: EMPTY_SECTION_PINS }
           : r,
       );
-      setScheduleFeasibilityError(null);
       recordHistorySnapshot();
       setPlannerItems(() => {
         itemsRef.current = next;
@@ -823,7 +788,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
         ? { ...r, sectionPins: EMPTY_SECTION_PINS }
         : r,
     );
-    setScheduleFeasibilityError(null);
     recordHistorySnapshot();
     setPlannerItems(() => {
       itemsRef.current = next;
@@ -832,6 +796,29 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     persistTerm();
     scheduleRecalculateSolutions();
   }, [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot]);
+
+  const clearInstructorPrefs = useCallback(
+    (itemId: number) => {
+      const prev = itemsRef.current;
+      const row = prev.find((r) => r.id === itemId);
+      if (!row || row.selectionKind !== "unresolved") return;
+      const prefs = parseInstructorPrefs(row.instructorPrefs);
+      if (!hasInstructorPrefs(prefs)) return;
+      const next = prev.map((r) =>
+        r.id === itemId && r.selectionKind === "unresolved"
+          ? { ...r, instructorPrefs: defaultInstructorPrefs() }
+          : r,
+      );
+      recordHistorySnapshot();
+      setPlannerItems(() => {
+        itemsRef.current = next;
+        return next;
+      });
+      persistTerm();
+      scheduleRecalculateSolutions();
+    },
+    [persistTerm, scheduleRecalculateSolutions, recordHistorySnapshot],
+  );
 
   const clearAllInstructorPrefs = useCallback(() => {
     const prev = itemsRef.current;
@@ -844,7 +831,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       return { ...r, instructorPrefs: defaultInstructorPrefs() };
     });
     if (courseCount === 0) return;
-    setScheduleFeasibilityError(null);
     recordHistorySnapshot();
     setPlannerItems(() => {
       itemsRef.current = next;
@@ -875,19 +861,15 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       });
       if (
         plannerItemsFeasibility(next, solvePacksRef.current, {
-          requireOpenSections: requireOpenRef.current,
-          excludeTba: excludeTbaRef.current,
-          excludeOnlineAsync: excludeOnlineAsyncRef.current,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackoutsRef.current),
           timeoutMs: PREVIEW_FEASIBILITY_TIMEOUT_MS,
         }) === "infeasible"
       ) {
-        setScheduleFeasibilityError(
+        showPlannerError(
           "That move doesn't fit with your other courses and pins.",
         );
         return;
       }
-      setScheduleFeasibilityError(null);
       recordHistorySnapshot();
       setPlannerItems(() => {
         itemsRef.current = next;
@@ -988,33 +970,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     scheduleRecalculateSolutions,
   ]);
 
-  const setRequireOpenSectionsWithHistory = useCallback(
-    (v: boolean) => {
-      recordHistorySnapshot();
-      setRequireOpenSections(v);
-      scheduleRecalculateSolutions({ requireOpenSections: v });
-    },
-    [recordHistorySnapshot, scheduleRecalculateSolutions],
-  );
-
-  const setExcludeTbaWithHistory = useCallback(
-    (v: boolean) => {
-      recordHistorySnapshot();
-      setExcludeTba(v);
-      scheduleRecalculateSolutions({ excludeTba: v });
-    },
-    [recordHistorySnapshot, scheduleRecalculateSolutions],
-  );
-
-  const setExcludeOnlineAsyncWithHistory = useCallback(
-    (v: boolean) => {
-      recordHistorySnapshot();
-      setExcludeOnlineAsync(v);
-      scheduleRecalculateSolutions({ excludeOnlineAsync: v });
-    },
-    [recordHistorySnapshot, scheduleRecalculateSolutions],
-  );
-
   const dataValue = useMemo<PlannerDataContextValue>(
     () => ({
       termCode,
@@ -1025,9 +980,12 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setPlannerItems: setPlannerItemsFromContext,
       removePlannerItem,
       updatePlannerItem,
+      updateItemScheduleFilters,
+      applyScheduleFiltersToAll,
       toggleSectionPin,
       clearSectionPins,
       clearAllSectionPins,
+      clearInstructorPrefs,
       clearAllInstructorPrefs,
       setSectionPinFromDrag,
       applyPlannerItemSelection,
@@ -1044,9 +1002,12 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
       setPlannerItemsFromContext,
       removePlannerItem,
       updatePlannerItem,
+      updateItemScheduleFilters,
+      applyScheduleFiltersToAll,
       toggleSectionPin,
       clearSectionPins,
       clearAllSectionPins,
+      clearInstructorPrefs,
       clearAllInstructorPrefs,
       setSectionPinFromDrag,
       applyPlannerItemSelection,
@@ -1060,10 +1021,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     () => ({
       effectivePlannerItems,
       calendarBlocks,
-      syncError,
-      clearSyncError,
-      scheduleFeasibilityError,
-      clearScheduleFeasibilityError,
       solutions,
       infeasibilityHints,
       recalculateSolutions,
@@ -1074,10 +1031,6 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
     [
       effectivePlannerItems,
       calendarBlocks,
-      syncError,
-      scheduleFeasibilityError,
-      clearSyncError,
-      clearScheduleFeasibilityError,
       solutions,
       infeasibilityHints,
       recalculateSolutions,
@@ -1089,25 +1042,10 @@ export function PlannerProvider({ termCode, children }: ProviderProps) {
 
   const uiValue = useMemo<PlannerUiContextValue>(
     () => ({
-      requireOpenSections,
-      setRequireOpenSections: setRequireOpenSectionsWithHistory,
-      excludeTba,
-      setExcludeTba: setExcludeTbaWithHistory,
-      excludeOnlineAsync,
-      setExcludeOnlineAsync: setExcludeOnlineAsyncWithHistory,
       blackouts,
       setBlackouts,
     }),
-    [
-      requireOpenSections,
-      excludeTba,
-      excludeOnlineAsync,
-      blackouts,
-      setBlackouts,
-      setRequireOpenSectionsWithHistory,
-      setExcludeTbaWithHistory,
-      setExcludeOnlineAsyncWithHistory,
-    ],
+    [blackouts, setBlackouts],
   );
 
   const historyValue = useMemo<PlannerHistoryContextValue>(

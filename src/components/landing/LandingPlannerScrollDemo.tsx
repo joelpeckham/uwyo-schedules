@@ -259,12 +259,6 @@ function LandingPlannerScrollDemoInner({ heading }: { heading: ReactNode }) {
       <WeekCalendarShell
         sectionId="landing-week-calendar-preview"
         isDragging={dragging}
-        syncError={null}
-        onClearSyncError={() => {}}
-        scheduleFeasibilityError={null}
-        onClearScheduleFeasibilityError={() => {}}
-        swapError={null}
-        onClearSwapError={() => {}}
         isRecalculatingSolutions={false}
         noSchedulesHelp={null}
         toolbar={null}

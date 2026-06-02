@@ -90,10 +90,7 @@ export function CourseSectionPicker({
         return (
           <div
             key={g.scheduleTypeKey}
-            className={cn(
-              "rounded-md border border-border/70 bg-background",
-              !g.isAnchorGroup && "ml-2 border-l-2 border-l-border/60",
-            )}
+            className="rounded-md border border-border/70 bg-background"
           >
             <div className="flex items-center justify-between gap-2 border-b border-border/60 px-2 py-1.5">
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

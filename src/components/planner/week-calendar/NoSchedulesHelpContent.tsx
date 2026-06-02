@@ -10,26 +10,23 @@ import {
 } from "@/lib/planner/no-schedules-help";
 import { plannerHasAnyInstructorPrefs, hasInstructorPrefs, parseInstructorPrefs } from "@/lib/planner/instructor-prefs";
 import { countPlannerSectionPins } from "@/lib/planner/section-pins";
-import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
+import { parseItemScheduleFilters } from "@/lib/planner/schedule-filters";
 import { track } from "@/lib/analytics/track";
+import type { CourseSettingsPanel } from "@/components/planner/CourseSettingsModal";
 import { HintActionButton } from "./HintActionButton";
-import { scrollToId, scrollToIdAndFocus } from "./interaction";
+import { scrollToId } from "./interaction";
 
 type Props = {
   hints: InfeasibilityHint[];
-  requireOpenSections: boolean;
   busyCount: number;
   blackouts: PlannerBlackoutsDocV1;
   plannerItems: PlannerItemRow[];
   canUndo: boolean;
   undo: () => void;
   lastActionWasBusyAddOrUpdate: boolean;
-  setRequireOpenSections: (v: boolean) => void;
-  setExcludeTba: (v: boolean) => void;
-  setExcludeOnlineAsync: (v: boolean) => void;
-  recalculateSolutions: (
-    filterOverrides?: Partial<PlannerScheduleFilters>,
-  ) => Promise<void>;
+  onOpenCourseSettings: (itemId: number, panel?: CourseSettingsPanel) => void;
+  onRelaxFiltersForAllCourses: () => void;
+  recalculateSolutions: () => Promise<void>;
   setBlackouts: (
     doc:
       | PlannerBlackoutsDocV1
@@ -42,16 +39,14 @@ type Props = {
 
 export function NoSchedulesHelpContent({
   hints,
-  requireOpenSections,
   busyCount,
   blackouts,
   plannerItems,
   canUndo,
   undo,
   lastActionWasBusyAddOrUpdate,
-  setRequireOpenSections,
-  setExcludeTba,
-  setExcludeOnlineAsync,
+  onOpenCourseSettings,
+  onRelaxFiltersForAllCourses,
   recalculateSolutions,
   setBlackouts,
   onEditBlackout,
@@ -76,30 +71,30 @@ export function NoSchedulesHelpContent({
   const showDivider =
     visibleSolver.length > 0 && staticKinds.length > 0;
 
+  const scrollToCourseAndOpen = (
+    plannerItemId: number,
+    panel: CourseSettingsPanel = "filters",
+  ) => {
+    scrollToId(`planner-course-${plannerItemId}`);
+    onOpenCourseSettings(plannerItemId, panel);
+  };
+
   const actions = {
-    turnOffExcludeFull: () => {
-      setRequireOpenSections(false);
-      track("planner_exclude_full_toggled", { on: false });
-      void recalculateSolutions({ requireOpenSections: false });
-      scrollToIdAndFocus("planner-filters", "#exclude-full-toggle");
+    relaxExcludeFullForCourse: (plannerItemId: number) => {
+      onOpenCourseSettings(plannerItemId, "filters");
+      scrollToId(`planner-course-${plannerItemId}`);
     },
-    turnOnExcludeFull: () => {
-      setRequireOpenSections(true);
-      track("planner_exclude_full_toggled", { on: true });
-      void recalculateSolutions({ requireOpenSections: true });
-      scrollToIdAndFocus("planner-filters", "#exclude-full-toggle");
+    relaxExcludeTbaForCourse: (plannerItemId: number) => {
+      onOpenCourseSettings(plannerItemId, "filters");
+      scrollToId(`planner-course-${plannerItemId}`);
     },
-    turnOffExcludeTba: () => {
-      setExcludeTba(false);
-      track("planner_exclude_tba_toggled", { on: false });
-      void recalculateSolutions({ excludeTba: false });
-      scrollToIdAndFocus("planner-filters", "#exclude-tba-toggle");
+    relaxExcludeOnlineAsyncForCourse: (plannerItemId: number) => {
+      onOpenCourseSettings(plannerItemId, "filters");
+      scrollToId(`planner-course-${plannerItemId}`);
     },
-    turnOffExcludeOnlineAsync: () => {
-      setExcludeOnlineAsync(false);
-      track("planner_exclude_online_async_toggled", { on: false });
-      void recalculateSolutions({ excludeOnlineAsync: false });
-      scrollToIdAndFocus("planner-filters", "#exclude-online-async-toggle");
+    relaxFiltersForAll: () => {
+      onRelaxFiltersForAllCourses();
+      void recalculateSolutions();
     },
     undoBusy: () => undo(),
     clearAllBusy: () => {
@@ -124,8 +119,7 @@ export function NoSchedulesHelpContent({
       clearAllSectionPins();
     },
     scrollToCourse: (plannerItemId: number) =>
-      scrollToId(`planner-course-${plannerItemId}`),
-    scrollToFilters: () => scrollToId("planner-filters"),
+      scrollToCourseAndOpen(plannerItemId, "filters"),
     onEditBlackout,
   };
 
@@ -172,7 +166,7 @@ export function NoSchedulesHelpContent({
             <StaticHintRow
               key={kind}
               kind={kind}
-              requireOpenSections={requireOpenSections}
+              plannerItems={plannerItems}
               busyCount={busyCount}
               showUndoBusy={showUndoBusy}
               pinCount={pinCount}
@@ -186,16 +180,15 @@ export function NoSchedulesHelpContent({
 }
 
 type HintActions = {
-  turnOffExcludeFull: () => void;
-  turnOnExcludeFull: () => void;
-  turnOffExcludeTba: () => void;
-  turnOffExcludeOnlineAsync: () => void;
+  relaxExcludeFullForCourse: (plannerItemId: number) => void;
+  relaxExcludeTbaForCourse: (plannerItemId: number) => void;
+  relaxExcludeOnlineAsyncForCourse: (plannerItemId: number) => void;
+  relaxFiltersForAll: () => void;
   undoBusy: () => void;
   clearAllBusy: () => void;
   clearAllInstructorPrefs: () => void;
   clearAllSectionPins: () => void;
   scrollToCourse: (plannerItemId: number) => void;
-  scrollToFilters: () => void;
   onEditBlackout: (blackoutId: string) => void;
 };
 
@@ -247,22 +240,41 @@ function SolverHintRow({
     case "relax_exclude_full":
       return (
         <li>
-          <HintActionButton onClick={actions.turnOffExcludeFull}>
-            Turn off “Exclude full”
-          </HintActionButton>
+          {hint.plannerItemId ? (
+            <HintActionButton
+              onClick={() =>
+                actions.relaxExcludeFullForCourse(hint.plannerItemId!)
+              }
+            >
+              Open filters for {courseLabel ?? "this course"}
+            </HintActionButton>
+          ) : (
+            <HintActionButton onClick={actions.relaxFiltersForAll}>
+              Relax filters on all courses
+            </HintActionButton>
+          )}
           <span className="text-muted-foreground">
             {" "}
-            to allow full sections, then turn it on again once you see a pattern
-            that works.
+            to allow full sections.
           </span>
         </li>
       );
     case "relax_exclude_tba":
       return (
         <li>
-          <HintActionButton onClick={actions.turnOffExcludeTba}>
-            Turn off “Exclude TBA times”
-          </HintActionButton>
+          {hint.plannerItemId ? (
+            <HintActionButton
+              onClick={() =>
+                actions.relaxExcludeTbaForCourse(hint.plannerItemId!)
+              }
+            >
+              Open filters for {courseLabel ?? "this course"}
+            </HintActionButton>
+          ) : (
+            <HintActionButton onClick={actions.relaxFiltersForAll}>
+              Relax filters on all courses
+            </HintActionButton>
+          )}
           <span className="text-muted-foreground">
             {" "}
             to allow sections without a set meeting time.
@@ -272,9 +284,19 @@ function SolverHintRow({
     case "relax_exclude_online_async":
       return (
         <li>
-          <HintActionButton onClick={actions.turnOffExcludeOnlineAsync}>
-            Turn off “Exclude online · async”
-          </HintActionButton>
+          {hint.plannerItemId ? (
+            <HintActionButton
+              onClick={() =>
+                actions.relaxExcludeOnlineAsyncForCourse(hint.plannerItemId!)
+              }
+            >
+              Open filters for {courseLabel ?? "this course"}
+            </HintActionButton>
+          ) : (
+            <HintActionButton onClick={actions.relaxFiltersForAll}>
+              Relax filters on all courses
+            </HintActionButton>
+          )}
           <span className="text-muted-foreground">
             {" "}
             to allow asynchronous online sections.
@@ -286,7 +308,12 @@ function SolverHintRow({
         <li>
           {hint.plannerItemId && courseLabel ? (
             <>
-                Go to {courseLabel}. {" "}
+              <HintActionButton
+                onClick={() => actions.scrollToCourse(hint.plannerItemId!)}
+              >
+                Open {courseLabel} settings
+              </HintActionButton>
+              {" · "}
             </>
           ) : null}
           {hint.blackoutId ? (
@@ -306,11 +333,7 @@ function SolverHintRow({
               {" · "}
             </>
           ) : null}
-          <HintActionButton onClick={actions.scrollToFilters}>
-            Relax filters
-          </HintActionButton>
           <span className="text-muted-foreground">
-            {" "}
             if every section pattern for this course hits your busy times.
           </span>
         </li>
@@ -327,7 +350,7 @@ function SolverHintRow({
 
 type StaticRowProps = {
   kind: StaticNoScheduleHintKind;
-  requireOpenSections: boolean;
+  plannerItems: PlannerItemRow[];
   busyCount: number;
   showUndoBusy: boolean;
   pinCount: number;
@@ -336,33 +359,34 @@ type StaticRowProps = {
 
 function StaticHintRow({
   kind,
-  requireOpenSections,
+  plannerItems,
   busyCount,
   showUndoBusy,
   pinCount,
   actions,
 }: StaticRowProps) {
+  const anyExcludeFull = plannerItems.some(
+    (item) =>
+      item.selectionKind === "unresolved" &&
+      parseItemScheduleFilters(item.scheduleFilters).requireOpenSections,
+  );
+
   switch (kind) {
     case "toggle_exclude_full":
-      return requireOpenSections ? (
+      return anyExcludeFull ? (
         <li>
-          <HintActionButton onClick={actions.turnOffExcludeFull}>
-            Turn off “Exclude full”
+          <HintActionButton onClick={actions.relaxFiltersForAll}>
+            Relax “Exclude full” on all courses
           </HintActionButton>
           <span className="text-muted-foreground">
             {" "}
-            (then turn it on again if you need open seats only).
+            to allow full sections.
           </span>
         </li>
       ) : (
         <li>
-          <HintActionButton onClick={actions.turnOnExcludeFull}>
-            Try “Exclude full”
-          </HintActionButton>
-          <span className="text-muted-foreground">
-            {" "}
-            if you want only open seats.
-          </span>
+          Turn on “Exclude full” in a course&rsquo;s settings if you want only
+          open seats.
         </li>
       );
     case "edit_busy":

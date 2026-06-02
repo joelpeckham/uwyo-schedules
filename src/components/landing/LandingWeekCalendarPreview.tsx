@@ -63,12 +63,6 @@ export function LandingWeekCalendarPreview() {
       <WeekCalendarShell
         sectionId="landing-week-calendar-preview"
         isDragging={false}
-        syncError={null}
-        onClearSyncError={() => {}}
-        scheduleFeasibilityError={null}
-        onClearScheduleFeasibilityError={() => {}}
-        swapError={null}
-        onClearSwapError={() => {}}
         isRecalculatingSolutions={false}
         noSchedulesHelp={null}
         toolbar={null}

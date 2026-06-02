@@ -8,6 +8,7 @@ import {
   PLANNER_LOCAL_STORAGE_KEY,
   writeTerm,
 } from "@/lib/planner/local-state";
+import { defaultItemScheduleFilters } from "@/lib/planner/schedule-filters";
 
 const storage = new Map<string, string>();
 
@@ -50,6 +51,7 @@ describe("planner-bootstrap", () => {
           linkedBundleId: null,
           instructorPrefs: { v: 1, primary: [] },
           sectionPins: { v: 1, byType: {} },
+          scheduleFilters: defaultItemScheduleFilters(),
         },
       ],
     });

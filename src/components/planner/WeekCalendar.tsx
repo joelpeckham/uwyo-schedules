@@ -37,6 +37,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Ban, Minus, Redo2, Undo2, ZoomIn } from "lucide-react";
+import { showPlannerError } from "@/lib/planner/planner-toast";
 import { Button } from "@/components/ui/button";
 import {
   usePlannerData,
@@ -55,7 +56,6 @@ import {
   SNAP_MAX_DIST_PX,
 } from "./week-calendar/interaction";
 import { NoSchedulesHelpContent } from "./week-calendar/NoSchedulesHelpContent";
-import { ScheduleHelpDialog } from "./week-calendar/schedule-help-dialog";
 import { WeekCalendarToolbar } from "./week-calendar/WeekCalendarToolbar";
 import {
   groupBlackoutsByDay,
@@ -82,16 +82,26 @@ import {
   usePrefersReducedMotion,
 } from "@/components/landing/motion/usePrefersReducedMotion";
 import { ExportMenu } from "./ExportMenu";
+import { AddCoursePopover } from "./AddCoursePopover";
+import { PlannerSettingsMenu } from "./PlannerSettingsMenu";
+import type { CourseSettingsPanel } from "./CourseSettingsModal";
+import { defaultItemScheduleFilters } from "@/lib/planner/schedule-filters";
 
 type Props = {
+  termCode: string;
   onBlockActivate: (block: CalendarBlock) => void;
+  onOpenCourseSettings: (itemId: number, panel?: CourseSettingsPanel) => void;
 };
 
 const WEEK_VIEWPORT_STYLE = {
   height: PLANNER_WEEK_VIEWPORT_HEIGHT,
 } as const;
 
-export function WeekCalendar({ onBlockActivate }: Props) {
+export function WeekCalendar({
+  termCode,
+  onBlockActivate,
+  onOpenCourseSettings,
+}: Props) {
   const {
     catalog,
     plannerItems,
@@ -102,6 +112,7 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     toggleSectionPin,
     clearAllInstructorPrefs,
     clearAllSectionPins,
+    applyScheduleFiltersToAll,
   } = usePlannerData();
   const {
     calendarBlocks: blocks,
@@ -110,22 +121,9 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     recalculateSolutions,
     isRecalculatingSolutions,
     hasAttemptedSolve,
-    syncError,
-    clearSyncError,
-    scheduleFeasibilityError,
-    clearScheduleFeasibilityError,
     infeasibilityHints,
   } = usePlannerSolve();
-  const {
-    blackouts,
-    setBlackouts,
-    requireOpenSections,
-    setRequireOpenSections,
-    excludeTba,
-    setExcludeTba,
-    excludeOnlineAsync,
-    setExcludeOnlineAsync,
-  } = usePlannerUi();
+  const { blackouts, setBlackouts } = usePlannerUi();
   const { showTransitionWarnings, autoPinAfterMove } = usePlannerViewSettings();
   const { canUndo, canRedo, undo, redo, lastActionWasBusyAddOrUpdate } =
     usePlannerHistory();
@@ -158,7 +156,6 @@ export function WeekCalendar({ onBlockActivate }: Props) {
     anchorMinutes: number;
   } | null>(null);
 
-  const [swapError, setSwapError] = useState<string | null>(null);
   const [courseDragSession, setCourseDragSession] =
     useState<CourseDragSession | null>(null);
   const hasMounted = useHasMounted();
@@ -671,23 +668,12 @@ export function WeekCalendar({ onBlockActivate }: Props) {
         b.sectionScheduleTypeKey,
         candidateCrns,
         {
-          requireOpenSections,
-          excludeTba,
-          excludeOnlineAsync,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackouts),
         },
       );
       return result;
     },
-    [
-      plannerItems,
-      plannerItemsById,
-      solvePacks,
-      requireOpenSections,
-      excludeTba,
-      excludeOnlineAsync,
-      blackouts,
-    ],
+    [plannerItems, plannerItemsById, solvePacks, blackouts],
   );
 
 type CoursePointerLike = Pick<
@@ -741,9 +727,6 @@ type CoursePointerLike = Pick<
           draggedPlannerItem: item,
           otherEffectiveItems: effectivePlannerItems,
           blackoutIntervals: blackoutsDocToTimeIntervals(blackouts),
-          requireOpenSections,
-          excludeTba,
-          excludeOnlineAsync,
           seatsByCrn: mergedPackConstraintMaps.seatsByCrn,
           facultyByCrn: mergedPackConstraintMaps.facultyByCrn,
           scheduleTypeByCrn: mergedPackConstraintMaps.scheduleTypeByCrn,
@@ -813,11 +796,17 @@ type CoursePointerLike = Pick<
       pickCourseSnap,
       pinDragFeasiblePinnedCrnsForBlock,
       scheduleDragFrame,
-      requireOpenSections,
-      excludeTba,
-      excludeOnlineAsync,
     ],
   );
+
+  const handleRelaxFiltersForAllCourses = useCallback(() => {
+    applyScheduleFiltersToAll({
+      ...defaultItemScheduleFilters(),
+      requireOpenSections: false,
+      excludeTba: false,
+      excludeOnlineAsync: false,
+    });
+  }, [applyScheduleFiltersToAll]);
 
   const processCoursePointerUp = useCallback(
     (e: CoursePointerLike) => {
@@ -861,7 +850,7 @@ type CoursePointerLike = Pick<
               sourceMeetingId: block.meetingId,
             }, catalog);
             if (!res.ok) {
-              setSwapError(res.error);
+              showPlannerError(res.error);
               return;
             }
             if (baseItem.selectionKind === "unresolved") {
@@ -946,8 +935,6 @@ type CoursePointerLike = Pick<
   const onCourseBlockPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>, block: CalendarBlock) => {
       if (e.button !== 0) return;
-      setSwapError(null);
-      clearScheduleFeasibilityError();
       const el = e.currentTarget;
       const br = el.getBoundingClientRect();
       courseGrabOffsetRef.current = {
@@ -977,7 +964,7 @@ type CoursePointerLike = Pick<
         capturedCourseBlockElRef.current = null;
       }
     },
-    [clearScheduleFeasibilityError],
+    [],
   );
 
   const onCourseBlockPointerMove = useCallback(
@@ -1089,86 +1076,94 @@ type CoursePointerLike = Pick<
     <>
     <WeekCalendarShell
       isDragging={isCourseDragging}
-      syncError={syncError}
-      onClearSyncError={clearSyncError}
-      scheduleFeasibilityError={scheduleFeasibilityError}
-      onClearScheduleFeasibilityError={clearScheduleFeasibilityError}
-      swapError={swapError}
-      onClearSwapError={() => setSwapError(null)}
       isRecalculatingSolutions={isRecalculatingSolutions}
+      alertTrailing={<PlannerSettingsMenu />}
       toolbar={
         <WeekCalendarToolbar
           plannerItemCount={plannerItems.length}
-          exportSlot={<ExportMenu />}
-          actions={
+          leading={
             <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 touch-manipulation"
-                aria-label="Undo"
-                title="Undo (⌘Z)"
-                disabled={!canUndo}
-                onClick={undo}
-              >
-                <Undo2 className="size-4" aria-hidden />
-                <span className="ml-1.5 hidden @2xl/toolbar:inline">Undo</span>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 touch-manipulation"
-                aria-label="Redo"
-                title="Redo (⇧⌘Z)"
-                disabled={!canRedo}
-                onClick={redo}
-              >
-                <Redo2 className="size-4" aria-hidden />
-                <span className="ml-1.5 hidden @2xl/toolbar:inline">Redo</span>
-              </Button>
-              <Button
-                type="button"
-                variant={markBusyMode ? "default" : "outline"}
-                size="sm"
-                className="h-9 touch-manipulation"
-                aria-pressed={markBusyMode}
-                aria-label={
-                  markBusyMode ? "Stop marking busy time" : "Mark busy time"
-                }
-                onClick={() => {
-                  setMarkBusyMode((v) => !v);
-                  blackoutDragRef.current = null;
-                  setDragPreview(null);
-                }}
-              >
-                <Ban className="size-4" aria-hidden />
-                <span className="ml-1.5 hidden @2xl/toolbar:inline">
-                  Mark busy time
-                </span>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-lg"
-                className="touch-manipulation"
-                aria-label="Zoom week view out"
-                onClick={zoomCalendarOut}
-              >
-                <Minus className="size-4" aria-hidden />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-lg"
-                className="touch-manipulation"
-                aria-label="Zoom week view in"
-                onClick={zoomCalendarIn}
-              >
-                <ZoomIn className="size-4" aria-hidden />
-              </Button>
-              <ScheduleHelpDialog />
+              <ExportMenu />
+              <div className="inline-flex items-center overflow-hidden rounded-md border border-input">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="touch-manipulation rounded-none border-0"
+                  aria-label="Zoom week view out"
+                  onClick={zoomCalendarOut}
+                >
+                  <Minus className="size-4" aria-hidden />
+                </Button>
+                <span className="h-5 w-px bg-border" aria-hidden />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="touch-manipulation rounded-none border-0"
+                  aria-label="Zoom week view in"
+                  onClick={zoomCalendarIn}
+                >
+                  <ZoomIn className="size-4" aria-hidden />
+                </Button>
+              </div>
+              <div className="inline-flex items-center overflow-hidden rounded-md border border-input">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="touch-manipulation rounded-none border-0"
+                  aria-label="Undo"
+                  title="Undo (⌘Z)"
+                  disabled={!canUndo}
+                  onClick={undo}
+                >
+                  <Undo2 className="size-4" aria-hidden />
+                </Button>
+                <span className="h-5 w-px bg-border" aria-hidden />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="touch-manipulation rounded-none border-0"
+                  aria-label="Redo"
+                  title="Redo (⇧⌘Z)"
+                  disabled={!canRedo}
+                  onClick={redo}
+                >
+                  <Redo2 className="size-4" aria-hidden />
+                </Button>
+              </div>
+            </>
+          }
+          trailing={
+            <>
+              <div className="inline-flex items-center overflow-hidden rounded-md border border-input">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="lg"
+                  className={cn(
+                    "touch-manipulation rounded-none border-0",
+                    markBusyMode && "bg-muted text-foreground",
+                  )}
+                  aria-pressed={markBusyMode}
+                  aria-label={
+                    markBusyMode ? "Stop marking busy time" : "Mark busy time"
+                  }
+                  onClick={() => {
+                    setMarkBusyMode((v) => !v);
+                    blackoutDragRef.current = null;
+                    setDragPreview(null);
+                  }}
+                >
+                  <Ban className="size-4" aria-hidden />
+                  <span className="ml-1.5 hidden @2xl/toolbar:inline">
+                    Mark busy time
+                  </span>
+                </Button>
+              </div>
+              <AddCoursePopover termCode={termCode} />
             </>
           }
         />
@@ -1177,16 +1172,14 @@ type CoursePointerLike = Pick<
         showNoSchedulesHelp ? (
           <NoSchedulesHelpContent
             hints={infeasibilityHints}
-            requireOpenSections={requireOpenSections}
             busyCount={busyCount}
             blackouts={blackouts}
             plannerItems={effectivePlannerItems}
             canUndo={canUndo}
             undo={undo}
             lastActionWasBusyAddOrUpdate={lastActionWasBusyAddOrUpdate}
-            setRequireOpenSections={setRequireOpenSections}
-            setExcludeTba={setExcludeTba}
-            setExcludeOnlineAsync={setExcludeOnlineAsync}
+            onOpenCourseSettings={onOpenCourseSettings}
+            onRelaxFiltersForAllCourses={handleRelaxFiltersForAllCourses}
             recalculateSolutions={recalculateSolutions}
             setBlackouts={setBlackouts}
             onEditBlackout={handleEditBlackoutById}

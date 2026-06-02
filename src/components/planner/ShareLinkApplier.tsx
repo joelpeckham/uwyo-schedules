@@ -4,7 +4,11 @@ import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { addCourseLocal } from "@/lib/planner/add-course-local";
-import { decodeShareState } from "@/lib/planner/share-state";
+import {
+  decodeShareState,
+  scheduleFiltersFromSharePin,
+} from "@/lib/planner/share-state";
+import { writeTerm } from "@/lib/planner/local-state";
 import { parseBlackoutsItemsArray } from "@/lib/planner/blackouts";
 
 import { usePlannerData, usePlannerUi } from "./PlannerContext";
@@ -49,7 +53,16 @@ export function ShareLinkApplier({ termCode }: Props) {
           subject: pin.sub,
           courseNumber: pin.num,
         });
-        if (res.ok) items = res.items;
+        if (!res.ok) continue;
+        items = res.items.map((row) =>
+          row.subject === pin.sub && row.courseNumber === pin.num
+            ? {
+                ...row,
+                scheduleFilters: scheduleFiltersFromSharePin(pin.sf),
+              }
+            : row,
+        );
+        writeTerm(termCode, { items });
       }
       if (items !== plannerItems) {
         setPlannerItems(items);

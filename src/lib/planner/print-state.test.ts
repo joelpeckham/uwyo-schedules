@@ -17,6 +17,7 @@ const minimalCatalog: PlannerCatalogJson = {
       scheduleTypeDescription: "Lecture",
       sequenceNumber: "1",
       subjectCourse: "MATH 2200",
+      courseTitle: "Calculus I",
       instructionalMethod: "TR",
       instructionalMethodDescription: "Traditional",
       creditHours: 3,

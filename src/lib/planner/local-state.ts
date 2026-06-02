@@ -6,6 +6,11 @@
 import type { PlannerBlackoutsDocV1 } from "@/lib/planner/blackouts";
 import { parseBlackoutsJson } from "@/lib/planner/blackouts";
 import type { PlannerItemRow } from "@/lib/planner/data";
+import { defaultInstructorPrefs } from "@/lib/planner/instructor-prefs";
+import {
+  parseItemScheduleFilters,
+  serializeItemScheduleFilters,
+} from "@/lib/planner/schedule-filters";
 
 export const PLANNER_LOCAL_STORAGE_KEY = "uwyoschedule:planner:v2";
 
@@ -42,6 +47,58 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
+/** Ensure legacy localStorage rows have per-course schedule filters. */
+function normalizePlannerItem(raw: unknown): PlannerItemRow | null {
+  if (!isRecord(raw)) return null;
+  const id =
+    typeof raw.id === "number" && Number.isFinite(raw.id) ? Math.floor(raw.id) : null;
+  if (id == null) return null;
+  const subject = typeof raw.subject === "string" ? raw.subject : "";
+  const courseNumber =
+    typeof raw.courseNumber === "string" ? raw.courseNumber : "";
+  const displayColor =
+    typeof raw.displayColor === "string" ? raw.displayColor : "#888888";
+  const termCode = typeof raw.termCode === "string" ? raw.termCode : "";
+  const selectionKind =
+    raw.selectionKind === "single_crn" ||
+    raw.selectionKind === "linked_bundle" ||
+    raw.selectionKind === "unresolved"
+      ? raw.selectionKind
+      : "unresolved";
+  return {
+    id,
+    sessionId: typeof raw.sessionId === "string" ? raw.sessionId : "",
+    termCode,
+    subject,
+    courseNumber,
+    displayColor,
+    selectionKind,
+    anchorCrn:
+      typeof raw.anchorCrn === "string" || raw.anchorCrn === null
+        ? raw.anchorCrn
+        : null,
+    linkedBundleId:
+      typeof raw.linkedBundleId === "number" && Number.isFinite(raw.linkedBundleId)
+        ? Math.floor(raw.linkedBundleId)
+        : null,
+    instructorPrefs: raw.instructorPrefs ?? defaultInstructorPrefs(),
+    sectionPins: raw.sectionPins ?? { v: 1, byType: {} },
+    scheduleFilters: serializeItemScheduleFilters(
+      parseItemScheduleFilters(raw.scheduleFilters),
+    ),
+  } as PlannerItemRow;
+}
+
+function normalizePlannerItems(items: unknown): PlannerItemRow[] {
+  if (!Array.isArray(items)) return [];
+  const out: PlannerItemRow[] = [];
+  for (const raw of items) {
+    const row = normalizePlannerItem(raw);
+    if (row) out.push(row);
+  }
+  return out;
+}
+
 function parseDoc(raw: unknown): PlannerLocalDoc | null {
   if (!isRecord(raw) || raw.v !== 2) return null;
   const nextId =
@@ -52,9 +109,7 @@ function parseDoc(raw: unknown): PlannerLocalDoc | null {
   if (isRecord(raw.terms)) {
     for (const [termCode, termRaw] of Object.entries(raw.terms)) {
       if (!termCode.trim() || !isRecord(termRaw)) continue;
-      const items = Array.isArray(termRaw.items)
-        ? (termRaw.items as PlannerItemRow[])
-        : [];
+      const items = normalizePlannerItems(termRaw.items);
       terms[termCode] = {
         items,
         blackouts: parseBlackoutsJson(termRaw.blackouts),

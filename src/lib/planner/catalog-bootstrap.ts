@@ -32,6 +32,7 @@ type SectionRow = {
   scheduleTypeDescription: string | null;
   sequenceNumber: string | null;
   subjectCourse: string | null;
+  courseTitle: string | null;
   instructionalMethod: string | null;
   instructionalMethodDescription: string | null;
   creditHours: number | null;
@@ -47,6 +48,7 @@ function decodeSectionRow(r: SectionRow): SectionRow {
     scheduleTypeDescription: decodeHtmlEntities(r.scheduleTypeDescription),
     sequenceNumber: decodeHtmlEntities(r.sequenceNumber),
     subjectCourse: decodeHtmlEntities(r.subjectCourse),
+    courseTitle: decodeHtmlEntities(r.courseTitle),
     instructionalMethod: decodeHtmlEntities(r.instructionalMethod),
     instructionalMethodDescription: decodeHtmlEntities(
       r.instructionalMethodDescription,
@@ -103,6 +105,7 @@ async function resolvePlannerCatalogAllCrns(
             scheduleTypeDescription: schema.sections.scheduleTypeDescription,
             sequenceNumber: schema.sections.sequenceNumber,
             subjectCourse: schema.sections.subjectCourse,
+            courseTitle: schema.sections.courseTitle,
             instructionalMethod: schema.sections.instructionalMethod,
             instructionalMethodDescription:
               schema.sections.instructionalMethodDescription,
@@ -271,6 +274,7 @@ export async function loadPlannerCatalogCore(
       scheduleTypeDescription: schema.sections.scheduleTypeDescription,
       sequenceNumber: schema.sections.sequenceNumber,
       subjectCourse: schema.sections.subjectCourse,
+      courseTitle: schema.sections.courseTitle,
       instructionalMethod: schema.sections.instructionalMethod,
       instructionalMethodDescription:
         schema.sections.instructionalMethodDescription,
@@ -395,6 +399,7 @@ export async function loadPlannerCatalogCore(
         scheduleTypeDescription: schema.sections.scheduleTypeDescription,
         sequenceNumber: schema.sections.sequenceNumber,
         subjectCourse: schema.sections.subjectCourse,
+        courseTitle: schema.sections.courseTitle,
         instructionalMethod: schema.sections.instructionalMethod,
         instructionalMethodDescription:
           schema.sections.instructionalMethodDescription,

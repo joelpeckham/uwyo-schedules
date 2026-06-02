@@ -12,6 +12,7 @@ export type ClientCatalogSection = {
   scheduleTypeDescription: string | null;
   sequenceNumber: string | null;
   subjectCourse: string | null;
+  courseTitle: string | null;
   instructionalMethod: string | null;
   instructionalMethodDescription: string | null;
   /** Credit hours from `sections.creditHours`. May be null for sections like labs. */

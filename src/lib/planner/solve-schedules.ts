@@ -2,7 +2,6 @@ import type { Database } from "@/db/index";
 import * as schema from "@/db/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { buildDeliveryModeByCrn } from "@/lib/sections/delivery-mode";
-import type { PlannerScheduleFilters } from "./schedule-filters";
 import {
   listLinkedBundleOptionsForAnchors,
   listSectionsForCourse,
@@ -479,11 +478,11 @@ export async function solveSchedulesForTerm(
   db: Database,
   termCode: string,
   items: PlannerItemRow[],
-  opts: PlannerScheduleFilters & {
+  opts: {
     maxSolutions?: number;
     timeoutMs?: number;
     blackoutIntervals?: TimeInterval[];
-  },
+  } = {},
 ): Promise<SolveSchedulesResult> {
   const maxSolutions = opts.maxSolutions ?? DEFAULT_MAX_SOLUTIONS;
   const timeoutMs = opts.timeoutMs ?? 2000;
@@ -604,12 +603,10 @@ export async function solveSchedulesForTerm(
   >();
   const scheduleTypeByCrn = new Map<string, string | null>();
   for (const r of secRows) {
-    if (opts.requireOpenSections) {
-      seatsByCrn.set(r.crn, {
-        seatsAvailable: r.seatsAvailable,
-        openSection: r.openSection,
-      });
-    }
+    seatsByCrn.set(r.crn, {
+      seatsAvailable: r.seatsAvailable,
+      openSection: r.openSection,
+    });
     scheduleTypeByCrn.set(r.crn, r.scheduleTypeDescription);
   }
 
@@ -638,9 +635,6 @@ export async function solveSchedulesForTerm(
     scheduleTypeByCrn,
     seatsByCrn,
     deliveryModeByCrn,
-    requireOpenSections: opts.requireOpenSections,
-    excludeTba: opts.excludeTba,
-    excludeOnlineAsync: opts.excludeOnlineAsync,
     blackoutIntervals,
     maxSolutions,
     timeoutMs,

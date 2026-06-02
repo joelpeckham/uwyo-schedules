@@ -6,7 +6,6 @@
  */
 
 import { createDb } from "@/db/index";
-import type { PlannerScheduleFilters } from "@/lib/planner/schedule-filters";
 import type { CourseSolvePack } from "@/lib/planner/solve-schedules-core";
 import type { SolveSchedulesResult } from "@/lib/planner/solve-schedules";
 import {
@@ -67,7 +66,6 @@ function distinctCoursesFromItems(
 export async function solveSchedulesAction(
   termCode: string,
   items: PlannerItemRow[],
-  filters: PlannerScheduleFilters,
   blackouts: PlannerBlackoutsDocV1,
 ): Promise<
   | { ok: true; result: SolveSchedulesResult }
@@ -80,7 +78,6 @@ export async function solveSchedulesAction(
     if (!termCode) return { ok: false, error: "Missing term." };
     const db = createDb();
     const result = await solveSchedulesForTerm(db, termCode, items, {
-      ...filters,
       blackoutIntervals: blackoutsDocToTimeIntervals(
         parseBlackoutsJson(blackouts),
       ),

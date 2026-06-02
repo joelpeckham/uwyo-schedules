@@ -4,19 +4,19 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import type { CalendarBlock } from "@/lib/planner/data";
-import { usePlannerViewSettings } from "@/lib/planner/planner-view-settings";
 
-import { CourseManager } from "./CourseManager";
-import { NotOnGridRail, useNotOnGridRailRows } from "./NotOnGridRail";
 import { PlannerBootstrap } from "./PlannerBootstrap";
 import { PlannerProvider } from "./PlannerContext";
 import { PlannerEmptyHeroSlot } from "./PlannerEmptyHeroSlot";
-import { PlannerCollapsibleSlot } from "./PlannerCollapsibleSlot";
 import { ShareLinkApplier } from "./ShareLinkApplier";
-import { FiltersCard } from "./FiltersCard";
 import { PlannerHydrationGate } from "./PlannerHydrationGate";
 import { PlannerIntroHeader } from "./PlannerIntroHeader";
 import { WeekCalendar } from "./WeekCalendar";
+import { CourseCarousel } from "./CourseCarousel";
+import {
+  CourseSettingsModal,
+  type CourseSettingsPanel,
+} from "./CourseSettingsModal";
 
 const SectionJsonModal = dynamic(
   () => import("./SectionJsonModal").then((m) => m.SectionJsonModal),
@@ -32,8 +32,10 @@ type Props = {
 export function HomePlanner({ termCode, hasData }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCrn, setModalCrn] = useState<string | null>(null);
-  const { showCourseSelector, showFilters } = usePlannerViewSettings();
-  const showLeftColumn = showCourseSelector || showFilters;
+  const [settingsItemId, setSettingsItemId] = useState<number | null>(null);
+  const [settingsPanel, setSettingsPanel] =
+    useState<CourseSettingsPanel>("filters");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const onBlockActivate = useCallback((block: CalendarBlock) => {
     setModalCrn(block.sectionCrn);
@@ -44,6 +46,15 @@ export function HomePlanner({ termCode, hasData }: Props) {
     setModalCrn(crn);
     setModalOpen(true);
   }, []);
+
+  const onOpenCourseSettings = useCallback(
+    (itemId: number, panel: CourseSettingsPanel = "filters") => {
+      setSettingsItemId(itemId);
+      setSettingsPanel(panel);
+      setSettingsOpen(true);
+    },
+    [],
+  );
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">
@@ -60,28 +71,19 @@ export function HomePlanner({ termCode, hasData }: Props) {
                 <ShareLinkApplier termCode={termCode} />
               </Suspense>
               <PlannerHydrationGate>
-                <div
-                  className={
-                    showLeftColumn
-                      ? "lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-6"
-                      : undefined
-                  }
-                >
-                  {showLeftColumn ? (
-                    <div className="min-w-0 space-y-4">
-                      {showCourseSelector ? (
-                        <CourseManager key={termCode} termCode={termCode} />
-                      ) : null}
-                      {showFilters ? <FiltersCard /> : null}
-                    </div>
-                  ) : null}
-                  <PlannerCalendarColumn
-                    termCode={termCode}
-                    onBlockActivate={onBlockActivate}
-                    onCrnActivate={onCrnActivate}
-                  />
-                </div>
+                <PlannerCalendarColumn
+                  termCode={termCode}
+                  onBlockActivate={onBlockActivate}
+                  onCrnActivate={onCrnActivate}
+                  onOpenCourseSettings={onOpenCourseSettings}
+                />
               </PlannerHydrationGate>
+              <CourseSettingsModal
+                itemId={settingsItemId}
+                initialPanel={settingsPanel}
+                open={settingsOpen}
+                onOpenChange={setSettingsOpen}
+              />
             </PlannerProvider>
             {modalOpen ? (
               <SectionJsonModal
@@ -102,22 +104,25 @@ function PlannerCalendarColumn({
   termCode,
   onBlockActivate,
   onCrnActivate,
+  onOpenCourseSettings,
 }: {
   termCode: string;
   onBlockActivate: (block: CalendarBlock) => void;
   onCrnActivate: (crn: string) => void;
+  onOpenCourseSettings: (itemId: number, panel?: CourseSettingsPanel) => void;
 }) {
-  const offGridRows = useNotOnGridRailRows();
-
-  const showOffGridRail = offGridRows.length > 0;
-
   return (
-    <div className="mt-6 flex min-w-0 flex-col lg:mt-0">
+    <div className="flex min-w-0 flex-col gap-4">
+      <CourseCarousel
+        onOpenCourseSettings={(id) => onOpenCourseSettings(id)}
+        onCrnActivate={onCrnActivate}
+      />
       <PlannerEmptyHeroSlot termCode={termCode} />
-      <WeekCalendar onBlockActivate={onBlockActivate} />
-      <PlannerCollapsibleSlot show={showOffGridRail} className={showOffGridRail ? "mt-4" : undefined}>
-        <NotOnGridRail onCrnActivate={onCrnActivate} />
-      </PlannerCollapsibleSlot>
+      <WeekCalendar
+        termCode={termCode}
+        onBlockActivate={onBlockActivate}
+        onOpenCourseSettings={onOpenCourseSettings}
+      />
     </div>
   );
 }

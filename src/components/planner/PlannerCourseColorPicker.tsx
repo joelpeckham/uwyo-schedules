@@ -15,16 +15,19 @@ const COLS = COURSE_COLOR_GRID[0]?.length ?? 1;
 type Props = {
   displayColor: string;
   disabled?: boolean;
+  variant?: "swatch" | "dot";
   onPick: (hex: string) => void;
 };
 
 function PlannerCourseColorPickerInner({
   displayColor,
   disabled,
+  variant = "swatch",
   onPick,
 }: Props) {
   const [open, setOpen] = useState(false);
   const current = displayColor.trim().toLowerCase();
+  const isDot = variant === "dot";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -34,11 +37,19 @@ function PlannerCourseColorPickerInner({
           variant="outline"
           size="sm"
           disabled={disabled}
-          className="h-8 w-10 shrink-0 border-border p-0"
+          className={cn(
+            "shrink-0 border-border p-0",
+            isDot ? "size-5 rounded-full" : "h-8 w-10",
+          )}
           aria-label="Course calendar color"
         >
           <span
-            className="block size-full rounded-[min(var(--radius-md),8px)] border border-border/80"
+            className={cn(
+              "block border border-border/80",
+              isDot
+                ? "size-full rounded-full"
+                : "size-full rounded-[min(var(--radius-md),8px)]",
+            )}
             style={{ backgroundColor: displayColor }}
           />
         </Button>
@@ -65,7 +76,8 @@ function PlannerCourseColorPickerInner({
                   type="button"
                   className={cn(
                     "aspect-square min-h-6 min-w-0 rounded-md border border-border/60 outline-none transition-transform hover:scale-105 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40",
-                    picked && "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
+                    picked &&
+                      "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
                   )}
                   style={{ backgroundColor: hex }}
                   aria-label={`Set course color ${hex}`}

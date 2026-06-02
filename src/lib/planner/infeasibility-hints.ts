@@ -1,11 +1,12 @@
 import { blackoutsDocToTimeIntervals, type PlannerBlackoutsDocV1 } from "./blackouts";
 import type { PlannerCatalogJson } from "./client/catalog-types";
 import type { PlannerItemRow } from "./data";
-import type { PlannerScheduleFilters } from "./schedule-filters";
+import { scheduleFiltersFromItem } from "./schedule-filters";
 import {
   courseSolvePackCourseKey,
   intervalsOverlap,
   meetingRowToIntervals,
+  patchItemsScheduleFilters,
   solveSchedulesFromPacks,
   type CourseSolvePack,
   type TimeInterval,
@@ -35,7 +36,7 @@ function intervalsCrossList(a: TimeInterval[], b: TimeInterval[]): boolean {
   return false;
 }
 
-type InfeasibilityHintParams = PlannerScheduleFilters & {
+type InfeasibilityHintParams = {
   items: PlannerItemRow[];
   packs: Record<string, CourseSolvePack>;
   blackouts: PlannerBlackoutsDocV1;
@@ -45,39 +46,25 @@ type InfeasibilityHintParams = PlannerScheduleFilters & {
   baseAlreadyInfeasible?: boolean;
 };
 
+function courseLabel(item: PlannerItemRow): string {
+  return `${item.subject} ${item.courseNumber}`;
+}
+
 /**
  * When the planner has courses but no valid combined schedule, return short
  * user-facing hints (best-effort, not exhaustive proof).
- *
- * When the caller already knows the base solve is infeasible (e.g. the
- * planner just received an empty-solutions response from the server), pass
- * `baseAlreadyInfeasible: true` to skip the redundant base DFS pass.
  */
 export function computeInfeasibilityHints(
   params: InfeasibilityHintParams,
 ): InfeasibilityHint[] {
-  const {
-    items,
-    packs,
-    blackouts,
-    requireOpenSections,
-    excludeTba,
-    excludeOnlineAsync,
-    catalog,
-    baseAlreadyInfeasible = false,
-  } = params;
+  const { items, packs, blackouts, catalog, baseAlreadyInfeasible = false } =
+    params;
   if (items.length === 0) return [];
 
   const blackoutIntervals = blackoutsDocToTimeIntervals(blackouts);
-  const activeFilters: PlannerScheduleFilters = {
-    requireOpenSections,
-    excludeTba,
-    excludeOnlineAsync,
-  };
 
   if (!baseAlreadyInfeasible) {
     const base = solveSchedulesFromPacks(items, packs, {
-      ...activeFilters,
       blackoutIntervals,
       maxSolutions: 1,
     });
@@ -86,12 +73,8 @@ export function computeInfeasibilityHints(
 
   const hints: InfeasibilityHint[] = [];
 
-  // Only run the relaxed-busy DFS if there are blackouts to relax — without
-  // any blackouts the result would equal the base solve we already proved
-  // infeasible.
   if (blackoutIntervals.length > 0) {
     const withoutBusy = solveSchedulesFromPacks(items, packs, {
-      ...activeFilters,
       blackoutIntervals: [],
       maxSolutions: 1,
     });
@@ -104,51 +87,75 @@ export function computeInfeasibilityHints(
     }
   }
 
-  if (requireOpenSections) {
-    const withSeatsOff = solveSchedulesFromPacks(items, packs, {
-      ...activeFilters,
-      requireOpenSections: false,
-      blackoutIntervals,
-      maxSolutions: 1,
-    });
-    if (withSeatsOff.solutions.length > 0) {
-      hints.push({
-        kind: "relax_exclude_full",
-        message:
-          "Turn off “Exclude full” to allow full sections, then turn it on again once you see a pattern that works.",
+  for (const item of items) {
+    if (item.selectionKind !== "unresolved") continue;
+    const f = scheduleFiltersFromItem(item.scheduleFilters);
+    if (f.requireOpenSections) {
+      const relaxed = patchItemsScheduleFilters(
+        items,
+        { requireOpenSections: false },
+        { itemId: item.id },
+      );
+      const probe = solveSchedulesFromPacks(relaxed, packs, {
+        blackoutIntervals,
+        maxSolutions: 1,
       });
+      if (probe.solutions.length > 0) {
+        hints.push({
+          kind: "relax_exclude_full",
+          message: `Turn off “Exclude full” for ${courseLabel(item)} to allow full sections.`,
+          plannerItemId: item.id,
+        });
+        break;
+      }
     }
   }
 
-  if (excludeTba) {
-    const withTbaAllowed = solveSchedulesFromPacks(items, packs, {
-      ...activeFilters,
-      excludeTba: false,
-      blackoutIntervals,
-      maxSolutions: 1,
-    });
-    if (withTbaAllowed.solutions.length > 0) {
-      hints.push({
-        kind: "relax_exclude_tba",
-        message:
-          "Turn off “Exclude TBA times” to allow sections without a set meeting time.",
+  for (const item of items) {
+    if (item.selectionKind !== "unresolved") continue;
+    const f = scheduleFiltersFromItem(item.scheduleFilters);
+    if (f.excludeTba) {
+      const relaxed = patchItemsScheduleFilters(
+        items,
+        { excludeTba: false },
+        { itemId: item.id },
+      );
+      const probe = solveSchedulesFromPacks(relaxed, packs, {
+        blackoutIntervals,
+        maxSolutions: 1,
       });
+      if (probe.solutions.length > 0) {
+        hints.push({
+          kind: "relax_exclude_tba",
+          message: `Turn off “Exclude TBA times” for ${courseLabel(item)} to allow sections without a set meeting time.`,
+          plannerItemId: item.id,
+        });
+        break;
+      }
     }
   }
 
-  if (excludeOnlineAsync) {
-    const withOnlineAsyncAllowed = solveSchedulesFromPacks(items, packs, {
-      ...activeFilters,
-      excludeOnlineAsync: false,
-      blackoutIntervals,
-      maxSolutions: 1,
-    });
-    if (withOnlineAsyncAllowed.solutions.length > 0) {
-      hints.push({
-        kind: "relax_exclude_online_async",
-        message:
-          "Turn off “Exclude online · async” to allow asynchronous online sections.",
+  for (const item of items) {
+    if (item.selectionKind !== "unresolved") continue;
+    const f = scheduleFiltersFromItem(item.scheduleFilters);
+    if (f.excludeOnlineAsync) {
+      const relaxed = patchItemsScheduleFilters(
+        items,
+        { excludeOnlineAsync: false },
+        { itemId: item.id },
+      );
+      const probe = solveSchedulesFromPacks(relaxed, packs, {
+        blackoutIntervals,
+        maxSolutions: 1,
       });
+      if (probe.solutions.length > 0) {
+        hints.push({
+          kind: "relax_exclude_online_async",
+          message: `Turn off “Exclude online · async” for ${courseLabel(item)} to allow asynchronous online sections.`,
+          plannerItemId: item.id,
+        });
+        break;
+      }
     }
   }
 
@@ -184,21 +191,21 @@ export function computeInfeasibilityHints(
       }
 
       if (allHitBlackout) {
-        const label = `${item.subject} ${item.courseNumber}`;
+        const label = courseLabel(item);
         const firstBo = blackouts.items[0];
         const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         if (firstBo) {
           const day = dayNames[firstBo.dayIndex] ?? "that day";
           hints.push({
             kind: "course_busy_conflict",
-            message: `Every section pattern we see for ${label} crosses your busy time on ${day} — remove the course, clear that busy block, or relax other filters.`,
+            message: `Every section pattern we see for ${label} crosses your busy time on ${day} — remove the course, clear that busy block, or relax filters for this course.`,
             plannerItemId: item.id,
             blackoutId: firstBo.id,
           });
         } else {
           hints.push({
             kind: "course_busy_conflict",
-            message: `Every section pattern for ${label} conflicts with a busy time — try clearing busy blocks or removing the course.`,
+            message: `Every section pattern for ${label} conflicts with a busy time — try clearing busy blocks or relaxing filters for this course.`,
             plannerItemId: item.id,
           });
         }

@@ -16,6 +16,22 @@
  */
 
 import type { PlannerBlackoutsDocV1 } from "./blackouts";
+import {
+  defaultItemScheduleFilters,
+  parseItemScheduleFilters,
+  serializeItemScheduleFilters,
+  type PlannerItemScheduleFiltersV1,
+} from "./schedule-filters";
+
+/** Compact per-course schedule filters in share links (1 = on / exclude, 0 = off). */
+export type SharePinFiltersV1 = {
+  /** Exclude full sections */
+  f?: 0 | 1;
+  /** Exclude TBA */
+  t?: 0 | 1;
+  /** Exclude online · async */
+  o?: 0 | 1;
+};
 
 export type SharePinV1 = {
   /** Subject ("MATH"). */
@@ -26,6 +42,8 @@ export type SharePinV1 = {
   crn: string | null;
   /** Linked-bundle id if pinned, else null. */
   lbid: number | null;
+  /** Per-course schedule filters; omitted = all three exclusions on (default). */
+  sf?: SharePinFiltersV1;
 };
 
 type ShareStateV1 = {
@@ -101,11 +119,22 @@ export function decodeShareState(raw: string): ShareStateV1 | null {
     if (typeof p !== "object" || p == null) continue;
     const r = p as Record<string, unknown>;
     if (typeof r.sub !== "string" || typeof r.num !== "string") continue;
+    let sf: SharePinFiltersV1 | undefined;
+    if (typeof r.sf === "object" && r.sf != null) {
+      const s = r.sf as Record<string, unknown>;
+      const f = s.f === 0 || s.f === 1 ? s.f : undefined;
+      const t = s.t === 0 || s.t === 1 ? s.t : undefined;
+      const o = s.o === 0 || s.o === 1 ? s.o : undefined;
+      if (f !== undefined || t !== undefined || o !== undefined) {
+        sf = { ...(f !== undefined ? { f } : {}), ...(t !== undefined ? { t } : {}), ...(o !== undefined ? { o } : {}) };
+      }
+    }
     pins.push({
       sub: r.sub,
       num: r.num,
       crn: typeof r.crn === "string" ? r.crn : null,
       lbid: typeof r.lbid === "number" ? r.lbid : null,
+      ...(sf ? { sf } : {}),
     });
   }
   const bo: { d: number; s: number; e: number; l?: string }[] = [];
@@ -128,4 +157,38 @@ export function decodeShareState(raw: string): ShareStateV1 | null {
     }
   }
   return { v: 1, t: obj.t, pins, bo };
+}
+
+/** Decode compact share filters into a planner item scheduleFilters doc. */
+export function scheduleFiltersFromSharePin(
+  sf?: SharePinFiltersV1,
+): PlannerItemScheduleFiltersV1 {
+  const d = defaultItemScheduleFilters();
+  if (!sf) return d;
+  return serializeItemScheduleFilters({
+    v: 1,
+    requireOpenSections: sf.f === 0 ? false : d.requireOpenSections,
+    excludeTba: sf.t === 0 ? false : d.excludeTba,
+    excludeOnlineAsync: sf.o === 0 ? false : d.excludeOnlineAsync,
+  });
+}
+
+/** Encode item filters for share when any differ from default (all exclusions on). */
+export function shareFiltersFromItem(
+  scheduleFilters: unknown,
+): SharePinFiltersV1 | undefined {
+  const f = parseItemScheduleFilters(scheduleFilters);
+  const d = defaultItemScheduleFilters();
+  if (
+    f.requireOpenSections === d.requireOpenSections &&
+    f.excludeTba === d.excludeTba &&
+    f.excludeOnlineAsync === d.excludeOnlineAsync
+  ) {
+    return undefined;
+  }
+  return {
+    f: f.requireOpenSections ? 1 : 0,
+    t: f.excludeTba ? 1 : 0,
+    o: f.excludeOnlineAsync ? 1 : 0,
+  };
 }

@@ -1,37 +1,32 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Check, ChevronDown, Copy, Download, Link2, Printer } from "lucide-react";
+import { Copy, Download, Link2, Printer, SquareArrowUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { collectDisplayCrnsForItems } from "@/lib/planner/client/derive";
 import { buildIcsForPlannerWeek } from "@/lib/planner/ics";
 import { encodePrintSelections } from "@/lib/planner/print-state";
-import { encodeShareState, type SharePinV1 } from "@/lib/planner/share-state";
+import {
+  encodeShareState,
+  shareFiltersFromItem,
+  type SharePinV1,
+} from "@/lib/planner/share-state";
+import {
+  showPlannerError,
+  showPlannerSuccess,
+} from "@/lib/planner/planner-toast";
 import { track } from "@/lib/analytics/track";
 import { cn } from "@/lib/utils";
 
 import { usePlannerData, usePlannerSolve, usePlannerUi } from "./PlannerContext";
-
-type Status = "idle" | "ok" | "err";
 
 export function ExportMenu() {
   const { termCode, plannerItems, catalog } = usePlannerData();
   const { effectivePlannerItems } = usePlannerSolve();
   const { blackouts } = usePlannerUi();
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState<Status>("idle");
-  const [statusMessage, setStatusMessage] = useState<string>("");
-
-  const flash = useCallback((kind: Status, msg: string) => {
-    setStatus(kind);
-    setStatusMessage(msg);
-    window.setTimeout(() => {
-      setStatus((cur) => (cur === kind ? "idle" : cur));
-      setStatusMessage("");
-    }, 2200);
-  }, []);
 
   const crns = collectDisplayCrnsForItems(effectivePlannerItems, catalog);
   const disabled = crns.length === 0;
@@ -41,24 +36,24 @@ export function ExportMenu() {
     try {
       await navigator.clipboard.writeText(crns.join(" "));
       track("planner_export_used", { format: "crns" });
-      flash("ok", "Copied CRNs (space-separated).");
+      showPlannerSuccess("Copied CRNs (space-separated).");
     } catch {
-      flash("err", "Couldn't copy. Try manually selecting text.");
+      showPlannerError("Couldn't copy. Try manually selecting text.");
     }
     setOpen(false);
-  }, [crns, flash]);
+  }, [crns]);
 
   const onCopyOnePerLine = useCallback(async () => {
     if (crns.length === 0) return;
     try {
       await navigator.clipboard.writeText(crns.join("\n"));
       track("planner_export_used", { format: "crn_list" });
-      flash("ok", "Copied CRNs (one per line).");
+      showPlannerSuccess("Copied CRNs (one per line).");
     } catch {
-      flash("err", "Couldn't copy. Try manually selecting text.");
+      showPlannerError("Couldn't copy. Try manually selecting text.");
     }
     setOpen(false);
-  }, [crns, flash]);
+  }, [crns]);
 
   const onDownloadIcs = useCallback(() => {
     const text = buildIcsForPlannerWeek({
@@ -76,14 +71,14 @@ export function ExportMenu() {
       a.click();
       a.remove();
       track("planner_export_used", { format: "ics" });
-      flash("ok", "Downloaded .ics file.");
+      showPlannerSuccess("Downloaded .ics file.");
     } catch {
-      flash("err", "Couldn't download. Try the print view instead.");
+      showPlannerError("Couldn't download. Try the print view instead.");
     } finally {
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
     setOpen(false);
-  }, [termCode, effectivePlannerItems, catalog, flash]);
+  }, [termCode, effectivePlannerItems, catalog]);
 
   const onPrint = useCallback(() => {
     track("planner_export_used", { format: "print" });
@@ -96,15 +91,20 @@ export function ExportMenu() {
   }, [termCode, effectivePlannerItems]);
 
   const onShareLink = useCallback(async () => {
-    const pins: SharePinV1[] = plannerItems.map((it) => ({
-      sub: it.subject,
-      num: it.courseNumber,
-      crn:
-        it.selectionKind === "single_crn" || it.selectionKind === "linked_bundle"
-          ? it.anchorCrn ?? null
-          : null,
-      lbid: it.selectionKind === "linked_bundle" ? it.linkedBundleId ?? null : null,
-    }));
+    const pins: SharePinV1[] = plannerItems.map((it) => {
+      const sf = shareFiltersFromItem(it.scheduleFilters);
+      return {
+        sub: it.subject,
+        num: it.courseNumber,
+        crn:
+          it.selectionKind === "single_crn" || it.selectionKind === "linked_bundle"
+            ? it.anchorCrn ?? null
+            : null,
+        lbid:
+          it.selectionKind === "linked_bundle" ? it.linkedBundleId ?? null : null,
+        ...(sf ? { sf } : {}),
+      };
+    });
     const code = encodeShareState({
       termCode,
       pins,
@@ -114,91 +114,71 @@ export function ExportMenu() {
     try {
       await navigator.clipboard.writeText(url);
       track("planner_share_link_copied", { length: url.length });
-      flash("ok", "Share link copied to clipboard.");
+      showPlannerSuccess("Share link copied to clipboard.");
     } catch {
-      flash("err", "Couldn't copy share link.");
+      showPlannerError("Couldn't copy share link.");
     }
     setOpen(false);
-  }, [plannerItems, termCode, blackouts, flash]);
+  }, [plannerItems, termCode, blackouts]);
 
   return (
-    <div className="flex min-w-0 flex-col items-start gap-1.5">
-      <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen}>
+      <div className="inline-flex items-center overflow-hidden rounded-md border border-input">
         <PopoverTrigger asChild>
           <Button
             type="button"
-            variant="outline"
-            size="lg"
-            className="h-9 touch-manipulation"
+            variant="ghost"
+            size="icon-lg"
+            className="touch-manipulation rounded-none border-0"
             disabled={disabled}
-            aria-label="Copy or export schedule"
+            aria-label="Export schedule"
           >
-            <Copy className="size-4 @sm/toolbar:mr-1.5" aria-hidden />
-            <span className="hidden @sm/toolbar:inline">Copy / export</span>
-            <ChevronDown
-              className="size-3.5 opacity-60 @sm/toolbar:ml-1.5"
-              aria-hidden
-            />
+            <SquareArrowUp className="size-4" aria-hidden />
           </Button>
         </PopoverTrigger>
-        <PopoverContent
-          align="end"
-          className="w-64 p-1 text-sm"
-          aria-label="Export menu"
-        >
-          <ExportItem
-            icon={<Copy className="size-4" />}
-            label="Copy CRNs (space-separated)"
-            description="Default — paste into Banner."
-            onClick={onCopySpaceSeparated}
-            disabled={disabled}
-          />
-          <ExportItem
-            icon={<Copy className="size-4" />}
-            label="Copy CRNs (one per line)"
-            description="For lists and notes."
-            onClick={onCopyOnePerLine}
-            disabled={disabled}
-          />
-          <ExportItem
-            icon={<Download className="size-4" />}
-            label="Download .ics"
-            description="Import into Apple, Google, or Outlook."
-            onClick={onDownloadIcs}
-            disabled={disabled}
-          />
-          <ExportItem
-            icon={<Printer className="size-4" />}
-            label="Print view"
-            description="Opens a clean, paperable schedule."
-            onClick={onPrint}
-            disabled={disabled}
-          />
-          <ExportItem
-            icon={<Link2 className="size-4" />}
-            label="Copy share link"
-            description="Anyone with the link sees this schedule."
-            onClick={onShareLink}
-            disabled={plannerItems.length === 0}
-          />
-        </PopoverContent>
-      </Popover>
-      {status !== "idle" ? (
-        <span
-          className={cn(
-            "flex w-full min-w-0 items-center gap-1.5 text-xs",
-            status === "ok" ? "text-muted-foreground" : "text-destructive",
-          )}
-          aria-live="polite"
-          role="status"
-        >
-          {status === "ok" ? (
-            <Check className="size-3.5 shrink-0 text-primary" aria-hidden strokeWidth={2.5} />
-          ) : null}
-          {statusMessage}
-        </span>
-      ) : null}
-    </div>
+      </div>
+      <PopoverContent
+        align="start"
+        className="w-64 p-1 text-sm"
+        aria-label="Export menu"
+      >
+        <ExportItem
+          icon={<Copy className="size-4" />}
+          label="Copy CRNs (space-separated)"
+          description="Default — paste into Banner."
+          onClick={onCopySpaceSeparated}
+          disabled={disabled}
+        />
+        <ExportItem
+          icon={<Copy className="size-4" />}
+          label="Copy CRNs (one per line)"
+          description="For lists and notes."
+          onClick={onCopyOnePerLine}
+          disabled={disabled}
+        />
+        <ExportItem
+          icon={<Download className="size-4" />}
+          label="Download .ics"
+          description="Import into Apple, Google, or Outlook."
+          onClick={onDownloadIcs}
+          disabled={disabled}
+        />
+        <ExportItem
+          icon={<Printer className="size-4" />}
+          label="Print view"
+          description="Opens a clean, paperable schedule."
+          onClick={onPrint}
+          disabled={disabled}
+        />
+        <ExportItem
+          icon={<Link2 className="size-4" />}
+          label="Copy share link"
+          description="Anyone with the link sees this schedule."
+          onClick={onShareLink}
+          disabled={plannerItems.length === 0}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 

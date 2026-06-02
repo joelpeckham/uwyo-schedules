@@ -3,8 +3,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 type PlannerViewSettings = {
-  showCourseSelector: boolean;
-  showFilters: boolean;
+  courseCarouselExpanded: boolean;
   showTransitionWarnings: boolean;
   autoPinAfterMove: boolean;
 };
@@ -12,8 +11,7 @@ type PlannerViewSettings = {
 const STORAGE_KEY = "uwyoschedule:planner:view:v1";
 
 const DEFAULT_SETTINGS: PlannerViewSettings = {
-  showCourseSelector: true,
-  showFilters: true,
+  courseCarouselExpanded: true,
   showTransitionWarnings: true,
   autoPinAfterMove: true,
 };
@@ -28,15 +26,15 @@ function isRecord(x: unknown): x is Record<string, unknown> {
 
 function parseSettings(raw: unknown): PlannerViewSettings {
   if (!isRecord(raw)) return DEFAULT_SETTINGS;
+  const legacyExpanded =
+    typeof raw.showCourseSelector === "boolean"
+      ? raw.showCourseSelector
+      : undefined;
   return {
-    showCourseSelector:
-      typeof raw.showCourseSelector === "boolean"
-        ? raw.showCourseSelector
-        : DEFAULT_SETTINGS.showCourseSelector,
-    showFilters:
-      typeof raw.showFilters === "boolean"
-        ? raw.showFilters
-        : DEFAULT_SETTINGS.showFilters,
+    courseCarouselExpanded:
+      typeof raw.courseCarouselExpanded === "boolean"
+        ? raw.courseCarouselExpanded
+        : legacyExpanded ?? DEFAULT_SETTINGS.courseCarouselExpanded,
     showTransitionWarnings:
       typeof raw.showTransitionWarnings === "boolean"
         ? raw.showTransitionWarnings
@@ -127,13 +125,12 @@ export function usePlannerViewSettings() {
     getServerSnapshot,
   );
 
-  const setShowCourseSelector = useCallback((showCourseSelector: boolean) => {
-    updateSettings({ showCourseSelector });
-  }, []);
-
-  const setShowFilters = useCallback((showFilters: boolean) => {
-    updateSettings({ showFilters });
-  }, []);
+  const setCourseCarouselExpanded = useCallback(
+    (courseCarouselExpanded: boolean) => {
+      updateSettings({ courseCarouselExpanded });
+    },
+    [],
+  );
 
   const setShowTransitionWarnings = useCallback(
     (showTransitionWarnings: boolean) => {
@@ -148,8 +145,7 @@ export function usePlannerViewSettings() {
 
   return {
     ...settings,
-    setShowCourseSelector,
-    setShowFilters,
+    setCourseCarouselExpanded,
     setShowTransitionWarnings,
     setAutoPinAfterMove,
   };

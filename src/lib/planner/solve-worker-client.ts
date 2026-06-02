@@ -5,7 +5,6 @@ import {
 } from "./infeasibility-hints";
 import type { PlannerBlackoutsDocV1 } from "./blackouts";
 import type { PlannerItemRow } from "./data";
-import type { PlannerScheduleFilters } from "./schedule-filters";
 import type { ResolvedPlannerSelection } from "./resolve-display-crns-shared";
 import {
   solveSchedulesFromPacks,
@@ -30,10 +29,6 @@ type SolveWithHintsResult = {
 type RequestSolveParams = {
   items: PlannerItemRow[];
   packs: Record<string, CourseSolvePack>;
-  filters: Pick<
-    PlannerScheduleFilters,
-    "requireOpenSections" | "excludeTba" | "excludeOnlineAsync"
-  >;
   blackoutIntervals: TimeInterval[];
   previousSelections?: Record<number, ResolvedPlannerSelection> | null;
   maxSolutions?: number;
@@ -100,9 +95,6 @@ function getWorker(): Worker | null {
 function solveSynchronously(params: RequestSolveParams): SolveWithHintsResult {
   const timeoutMs = params.timeoutMs ?? WORKER_SOLVE_TIMEOUT_MS;
   const result = solveSchedulesFromPacks(params.items, params.packs, {
-    requireOpenSections: params.filters.requireOpenSections,
-    excludeTba: params.filters.excludeTba,
-    excludeOnlineAsync: params.filters.excludeOnlineAsync,
     blackoutIntervals: params.blackoutIntervals,
     previousSelections: params.previousSelections,
     maxSolutions: params.maxSolutions ?? 1,
@@ -116,9 +108,6 @@ function solveSynchronously(params: RequestSolveParams): SolveWithHintsResult {
       items: params.items,
       packs: params.packs,
       blackouts,
-      requireOpenSections: params.filters.requireOpenSections,
-      excludeTba: params.filters.excludeTba,
-      excludeOnlineAsync: params.filters.excludeOnlineAsync,
       catalog: params.catalog ?? null,
       baseAlreadyInfeasible: true,
     });
@@ -154,7 +143,6 @@ export function requestSolve(
       id,
       items: params.items,
       packs: params.packs,
-      filters: params.filters,
       blackoutIntervals: params.blackoutIntervals,
       previousSelections: params.previousSelections,
       maxSolutions: params.maxSolutions,

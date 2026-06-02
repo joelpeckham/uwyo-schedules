@@ -9,6 +9,7 @@ import {
   type Ref,
 } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { plannerGridBlockInteractive } from "@/lib/planner/planner-interactive-surface";
 import {
   calendarBlockCornerInsetPx,
   calendarBlockPaddingPx,
@@ -446,7 +447,10 @@ const WeekCalendarDayColumn = memo(function WeekCalendarDayColumn({
           b.likelyExam &&
             "border-dashed border-muted-foreground/50 bg-[repeating-linear-gradient(-52deg,transparent,transparent_5px,rgba(0,0,0,0.04)_5px,rgba(0,0,0,0.04)_6px)]",
           isInteractive &&
-            "touch-none select-none cursor-pointer active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            cn(
+              "touch-none select-none cursor-pointer focus-visible:ring-offset-2",
+              plannerGridBlockInteractive,
+            ),
           !enableMagicMove && dimmed && "opacity-35",
           extraClass,
         )}

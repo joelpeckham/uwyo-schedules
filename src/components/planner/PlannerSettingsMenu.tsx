@@ -14,12 +14,10 @@ import { usePlannerViewSettings } from "@/lib/planner/planner-view-settings";
 
 export function PlannerSettingsMenu() {
   const {
-    showCourseSelector,
-    showFilters,
+    courseCarouselExpanded,
     showTransitionWarnings,
     autoPinAfterMove,
-    setShowCourseSelector,
-    setShowFilters,
+    setCourseCarouselExpanded,
     setShowTransitionWarnings,
     setAutoPinAfterMove,
   } = usePlannerViewSettings();
@@ -29,12 +27,12 @@ export function PlannerSettingsMenu() {
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="outline"
-          size="icon-sm"
-          className="touch-manipulation"
+          variant="ghost"
+          size="icon-lg"
+          className="shrink-0 touch-manipulation text-muted-foreground hover:text-foreground"
           aria-label="Planner settings"
         >
-          <Settings className="size-4" aria-hidden />
+          <Settings className="size-5" aria-hidden />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-0">
@@ -44,27 +42,24 @@ export function PlannerSettingsMenu() {
           </p>
           <div className="mt-3 flex flex-col gap-3">
             <SettingSwitchRow
-              id="planner-show-course-selector"
-              label="Course selector"
-              checked={showCourseSelector}
-              onCheckedChange={setShowCourseSelector}
+              id="planner-course-carousel-expanded"
+              label="Course carousel"
+              checked={courseCarouselExpanded}
+              onCheckedChange={setCourseCarouselExpanded}
             />
-            <SettingSwitchRow
-              id="planner-show-filters"
-              label="Filters"
-              checked={showFilters}
-              onCheckedChange={setShowFilters}
-            />
-          </div>
-        </div>
-        <div className="border-t border-border px-4 py-3">
-          <div className="flex flex-col gap-3">
             <SettingSwitchRow
               id="planner-show-transition-warnings"
               label="Transition-time warnings"
               checked={showTransitionWarnings}
               onCheckedChange={setShowTransitionWarnings}
             />
+          </div>
+        </div>
+        <div className="border-t border-border px-4 py-3">
+          <p className="font-heading text-sm font-medium text-foreground">
+            Solver
+          </p>
+          <div className="mt-3 flex flex-col gap-3">
             <SettingSwitchRow
               id="planner-auto-pin-after-move"
               label="Auto-pin after move"

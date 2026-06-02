@@ -272,6 +272,12 @@ export const plannerItems = pgTable(
     sectionPins: jsonb("section_pins")
       .notNull()
       .default(sql`'{"v":1,"byType":{}}'::jsonb`),
+    /** Per-course solve filters — `{ v:1, requireOpenSections, excludeTba, excludeOnlineAsync }`. */
+    scheduleFilters: jsonb("schedule_filters")
+      .notNull()
+      .default(
+        sql`'{"v":1,"requireOpenSections":true,"excludeTba":true,"excludeOnlineAsync":true}'::jsonb`,
+      ),
   },
   (t) => [
     index("planner_items_session_term_idx").on(t.sessionId, t.termCode),

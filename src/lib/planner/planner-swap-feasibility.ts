@@ -13,9 +13,9 @@ import {
   meetingRowToIntervals,
   type CourseSolvePack,
   type ScheduleCandidate,
-  type SolveScheduleFilterOpts,
   type TimeInterval,
 } from "./solve-schedules-core";
+import { scheduleFiltersFromItem } from "./schedule-filters";
 import {
   candidateViolatesDeliveryFilters,
   type DeliveryMode,
@@ -115,16 +115,13 @@ export function filterFeasibleSwapGhosts(params: {
    * into one full DFS solve per ghost.
    */
   pinDragFeasiblePinnedCrns?: ReadonlySet<string> | null;
-} & SolveScheduleFilterOpts): SwapGhostMeeting[] {
+}): SwapGhostMeeting[] {
   const {
     catalog,
     draggedBlock,
     draggedPlannerItem,
     otherEffectiveItems,
     blackoutIntervals,
-    requireOpenSections,
-    excludeTba,
-    excludeOnlineAsync,
     seatsByCrn,
     facultyByCrn,
     scheduleTypeByCrn,
@@ -133,7 +130,11 @@ export function filterFeasibleSwapGhosts(params: {
     pinDragFeasiblePinnedCrns,
   } = params;
 
-  const deliveryFilters = { excludeTba, excludeOnlineAsync };
+  const draggedFilters = scheduleFiltersFromItem(draggedPlannerItem.scheduleFilters);
+  const deliveryFilters = {
+    excludeTba: draggedFilters.excludeTba,
+    excludeOnlineAsync: draggedFilters.excludeOnlineAsync,
+  };
 
   const membersByBundleId = buildMembersByBundleId(
     catalog.linkedBundleMembers,
@@ -184,7 +185,10 @@ export function filterFeasibleSwapGhosts(params: {
     const crns = resolveItemDisplayCrns(patched, membersByBundleId);
     if (crns.length === 0) continue;
 
-    if (requireOpenSections && !allCrnsHaveOpenSeats(crns, seatsByCrn)) {
+    if (
+      draggedFilters.requireOpenSections &&
+      !allCrnsHaveOpenSeats(crns, seatsByCrn)
+    ) {
       continue;
     }
 

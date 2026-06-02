@@ -4,17 +4,13 @@ import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { WeekCalendarAlertSlot } from "./WeekCalendarAlertSlot";
 import { NoSchedulesHelpOverlay } from "./NoSchedulesHelpOverlay";
+import { WeekCalendarBuildingOverlay } from "./WeekCalendarBuildingOverlay";
 
 type WeekCalendarShellProps = {
   sectionId?: string;
   isDragging: boolean;
-  syncError: string | null;
-  onClearSyncError: () => void;
-  scheduleFeasibilityError: string | null;
-  onClearScheduleFeasibilityError: () => void;
-  swapError: string | null;
-  onClearSwapError: () => void;
   isRecalculatingSolutions: boolean;
+  alertTrailing?: ReactNode;
   toolbar: ReactNode;
   noSchedulesHelp: ReactNode | null;
   children: ReactNode;
@@ -24,13 +20,8 @@ type WeekCalendarShellProps = {
 export function WeekCalendarShell({
   sectionId = "planner-week-calendar",
   isDragging,
-  syncError,
-  onClearSyncError,
-  scheduleFeasibilityError,
-  onClearScheduleFeasibilityError,
-  swapError,
-  onClearSwapError,
   isRecalculatingSolutions,
+  alertTrailing,
   toolbar,
   noSchedulesHelp,
   children,
@@ -48,18 +39,11 @@ export function WeekCalendarShell({
         Week view shows Monday through Friday by default. Saturday and Sunday
         appear when a course or busy time uses those days.
       </p>
-      <WeekCalendarAlertSlot
-        syncError={syncError}
-        onClearSyncError={onClearSyncError}
-        scheduleFeasibilityError={scheduleFeasibilityError}
-        onClearScheduleFeasibilityError={onClearScheduleFeasibilityError}
-        swapError={swapError}
-        onClearSwapError={onClearSwapError}
-        isRecalculatingSolutions={isRecalculatingSolutions}
-      />
+      <WeekCalendarAlertSlot trailing={alertTrailing} />
       {toolbar}
       <div className="relative">
         {children}
+        <WeekCalendarBuildingOverlay show={isRecalculatingSolutions} />
         <NoSchedulesHelpOverlay show={noSchedulesHelp != null}>
           {noSchedulesHelp}
         </NoSchedulesHelpOverlay>

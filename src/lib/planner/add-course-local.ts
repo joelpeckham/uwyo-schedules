@@ -2,6 +2,7 @@ import { pickUnusedCourseColor } from "@/lib/planner/course-colors";
 import { MAX_PLANNER_COURSES_PER_TERM } from "@/lib/planner/constants";
 import type { PlannerItemRow } from "@/lib/planner/data";
 import { defaultInstructorPrefs } from "@/lib/planner/instructor-prefs";
+import { defaultItemScheduleFilters } from "@/lib/planner/schedule-filters";
 import {
   allocateNextItemId,
   DUPLICATE_COURSE_ERROR,
@@ -51,6 +52,7 @@ export function addCourseLocal(input: {
     linkedBundleId: null,
     instructorPrefs: defaultInstructorPrefs(),
     sectionPins: EMPTY_SECTION_PINS,
+    scheduleFilters: defaultItemScheduleFilters(),
   };
   const items = [...term.items, item];
   writeTerm(input.termCode, { items });

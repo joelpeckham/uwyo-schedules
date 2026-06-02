@@ -7,12 +7,6 @@ import {
 
 const EMPTY_BLACKOUTS = { v: 1 as const, items: [] };
 
-const baseFilters = {
-  requireOpenSections: true,
-  excludeTba: true,
-  excludeOnlineAsync: true,
-};
-
 const sampleSolution = {
   score: 0,
   selections: {
@@ -31,7 +25,6 @@ function snap(
   return capturePlannerHistorySnapshot({
     plannerItems: items as never,
     blackouts: EMPTY_BLACKOUTS,
-    filters: baseFilters,
     solutions,
   });
 }
@@ -43,7 +36,6 @@ describe("capturePlannerHistorySnapshot", () => {
     const captured = capturePlannerHistorySnapshot({
       plannerItems: [{ id: 1 }] as never,
       blackouts: EMPTY_BLACKOUTS,
-      filters: baseFilters,
       solutions: [],
     });
     expect(captured.plannerItems).toHaveLength(1);
@@ -59,7 +51,6 @@ describe("capturePlannerHistorySnapshot", () => {
     const captured = capturePlannerHistorySnapshot({
       plannerItems: [{ id: 1 }] as never,
       blackouts: EMPTY_BLACKOUTS,
-      filters: baseFilters,
       solutions: [sampleSolution],
     });
     expect(captured.solutions[0]?.selections[1]?.anchorCrn).toBe("12345");

@@ -88,7 +88,7 @@ export function PlannerEmptyHero({ termCode }: Props) {
               number={1}
               icon={<Plus className="size-4" />}
               title="Search"
-              body="Tap Add beside Your courses, search by subject or number, and pick a result."
+              body='Tap "Add course" in the calendar toolbar, search by subject or number, and pick a result.'
             />
             <Step
               number={2}

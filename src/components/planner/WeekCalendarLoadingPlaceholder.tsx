@@ -1,3 +1,6 @@
+import { Loader2 } from "lucide-react";
+
+import { CALENDAR_SCRIM_GRADIENT } from "./week-calendar/calendar-scrim-gradient";
 import { WeekCalendarGridSkeleton } from "./week-calendar/WeekCalendarGridSkeleton";
 
 /**
@@ -11,7 +14,7 @@ export function WeekCalendarLoadingPlaceholder() {
       aria-busy
       aria-label="Loading calendar"
     >
-      <div className="h-10 border-b border-border bg-muted/10" aria-hidden />
+      <div className="h-11 border-b border-border bg-muted/10" aria-hidden />
       <div className="border-b border-border p-3 sm:p-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between xl:gap-4">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -30,7 +33,16 @@ export function WeekCalendarLoadingPlaceholder() {
         </div>
         <div className="mt-2 h-4 w-full max-w-md rounded bg-muted/50" />
       </div>
-      <WeekCalendarGridSkeleton />
+      <div className="relative">
+        <WeekCalendarGridSkeleton />
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center backdrop-blur-[2px]"
+          style={{ background: CALENDAR_SCRIM_GRADIENT }}
+          aria-hidden
+        >
+          <Loader2 className="size-8 shrink-0 animate-spin text-muted-foreground" />
+        </div>
+      </div>
     </section>
   );
 }
