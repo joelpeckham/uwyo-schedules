@@ -95,6 +95,21 @@ export default function RootLayout({
       >
         <SkipToMain />
         {children}
+        <footer className="border-t border-border px-4 py-4 sm:px-6">
+          <div className="mx-auto max-w-6xl lg:max-w-[84rem]">
+            <p className="text-right text-xs text-muted-foreground/60">
+              Built by{" "}
+              <a
+                href="https://jpeckham.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary/70 underline-offset-4 hover:text-primary hover:underline"
+              >
+                Joel Peckham
+              </a>
+            </p>
+          </div>
+        </footer>
         <Toaster />
         <Analytics />
         <SpeedInsights />
