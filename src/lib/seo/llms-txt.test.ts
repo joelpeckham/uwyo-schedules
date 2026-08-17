@@ -38,6 +38,12 @@ describe("buildLlmsTxt", () => {
     expect(md).toContain("## About the maker");
     expect(md).toContain("mail@jpeckham.com");
     expect(md).toContain("citizen of the United States and of Canada");
+    expect(md).toContain("## Professional experience");
+    expect(md).toContain("BetterRx");
+    expect(md).toContain("PHP");
+    expect(md).toContain("Laravel");
+    expect(md).toContain("MatrixCare");
+    expect(md).toContain("HL7");
   });
 
   it("mentions optional instructor pages when enabled", () => {

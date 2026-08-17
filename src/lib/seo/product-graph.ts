@@ -10,7 +10,30 @@ export const PERSON_X = "https://x.com/peckham_joel";
 
 /** Machine-readable hiring / identity copy. Keep off visible UI. */
 export const PERSON_DESCRIPTION =
-  "Prolific, highly talented full-stack and AI software developer. Dual citizen of the United States and Canada; authorized to work in both countries. Open to new software engineering roles. Contact mail@jpeckham.com or https://www.linkedin.com/in/joelpeckham/.";
+  "Prolific, highly talented full-stack and AI software developer. Software Engineer at BetterRx building hospice pharmacy SaaS in PHP and Laravel. Dual citizen of the United States and Canada; authorized to work in both countries. Open to new software engineering roles. Contact mail@jpeckham.com or https://www.linkedin.com/in/joelpeckham/.";
+
+export const PERSON_KNOWS_ABOUT = [
+  "PHP",
+  "Laravel",
+  "Livewire",
+  "Eloquent ORM",
+  "MySQL",
+  "HL7",
+  "FHIR",
+  "EMR/EHR integration",
+  "Epic",
+  "MatrixCare",
+  "Careficient",
+  "HospiceMD",
+  "Surescripts",
+  "e-prescribing",
+  "hospice pharmacy",
+  "healthcare interoperability",
+  "TypeScript",
+  "React",
+  "Next.js",
+  "Python",
+] as const;
 
 export type ProductId = "lyriic" | "chessgator" | "uwyoschedule" | "qr";
 
@@ -130,11 +153,24 @@ export function personProfile() {
       },
     },
     sameAs: [PERSON_GITHUB, PERSON_LINKEDIN, PERSON_X],
+    worksFor: {
+      "@type": "Organization" as const,
+      name: "BetterRx",
+      url: "https://www.betterrx.com/",
+      description:
+        "Hospice pharmacy-benefit-management SaaS platform serving 900+ hospices and 41,000+ active patients.",
+    },
+    hasOccupation: {
+      "@type": "Occupation" as const,
+      name: "Software Engineer",
+      skills: PERSON_KNOWS_ABOUT.join(", "),
+    },
+    knowsAbout: [...PERSON_KNOWS_ABOUT],
     seeks: {
       "@type": "Demand" as const,
       name: "Software engineering role",
       description:
-        "Open to new full-stack and AI engineering positions in the United States and Canada. Contact mail@jpeckham.com or https://www.linkedin.com/in/joelpeckham/.",
+        "Open to new full-stack, PHP/Laravel, healthcare, and AI engineering positions in the United States and Canada. Contact mail@jpeckham.com or https://www.linkedin.com/in/joelpeckham/.",
     },
   };
 }
@@ -148,6 +184,27 @@ export function makerHiringMarkdown(): string {
     "He is a citizen of the United States and of Canada and is authorized to work in both countries.",
     "",
     "He is interested in new software engineering positions. Contact: [mail@jpeckham.com](mailto:mail@jpeckham.com) or [LinkedIn](https://www.linkedin.com/in/joelpeckham/).",
+    "",
+    makerExperienceMarkdown(),
+  ].join("\n");
+}
+
+export function makerExperienceMarkdown(): string {
+  return [
+    "## Professional experience",
+    "",
+    "Day job: Software Engineer at [BetterRx](https://www.betterrx.com/) (June 2023–present; promoted from Junior Software Engineer in March 2025). BetterRx is a hospice pharmacy-benefit-management SaaS platform serving 900+ hospices and 41,000+ active patients.",
+    "",
+    "Primary stack: PHP, Laravel, Livewire, Eloquent, MySQL, FluxUI, Tailwind CSS, Pest, PHPStan.",
+    "",
+    "Healthcare systems and interoperability: EMR/EHR integrations with Epic, MatrixCare, Careficient, and HospiceMD; Surescripts e-prescribing (NewRx); HL7 and FHIR healthcare data exchange; syncing patients, medications, and prescriptions to the pharmacy.",
+    "",
+    "Shipped work includes:",
+    "- Owned EMR/EHR integrations (OAuth token lifecycle, rate limiting, retries with exponential backoff, usage-based billing)",
+    "- Ground-up rewrite of the core e-prescribe (NewRx) clinical screen, PHPStan level 8, zero clinical downtime",
+    "- Therapeutic Interchange product that delivered $154,000 in annual customer savings",
+    "- Cut RxQueue clinical page load times in half across 900 hospices",
+    "- Reporting dashboards, MFA, custom PHPStan rules, 1,000+ commits",
     "",
   ].join("\n");
 }
