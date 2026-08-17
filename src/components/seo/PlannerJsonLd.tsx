@@ -1,4 +1,5 @@
 import { JsonLd } from "@/components/seo/JsonLd";
+import { personRef, relatedApps } from "@/lib/seo/product-graph";
 import { absoluteUrl } from "@/lib/seo/site";
 
 const PLANNER_FEATURE_LIST = [
@@ -25,6 +26,13 @@ export function PlannerJsonLd() {
     offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
     browserRequirements: "Requires JavaScript.",
     publisher: { "@id": absoluteUrl("/#organization") },
+    author: personRef(),
+    creator: personRef(),
+    sameAs: [
+      "https://jpeckham.com/projects/uwyo-schedule/",
+      "https://github.com/joelpeckham/uwyo-schedules",
+    ],
+    isRelatedTo: relatedApps("uwyoschedule"),
   };
 
   return <JsonLd data={app} />;

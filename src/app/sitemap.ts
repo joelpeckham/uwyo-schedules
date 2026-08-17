@@ -81,6 +81,18 @@ export default async function sitemap(props: {
         changeFrequency: "daily",
         priority: 0.9,
       },
+      {
+        url: `${base}/llms.txt`,
+        lastModified: now,
+        changeFrequency: "monthly",
+        priority: 0.3,
+      },
+      {
+        url: `${base}/llms-full.txt`,
+        lastModified: now,
+        changeFrequency: "monthly",
+        priority: 0.2,
+      },
     ];
 
     const subjectsByTerm = await Promise.all(

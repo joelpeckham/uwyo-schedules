@@ -1,10 +1,10 @@
+import { personRef } from "@/lib/seo/product-graph";
 import { absoluteUrl } from "@/lib/seo/site";
 
 export const uwyoOrganization = {
-  "@type": "Organization" as const,
+  "@type": "CollegeOrUniversity" as const,
   name: "University of Wyoming",
   url: "https://www.uwyo.edu/",
-  sameAs: ["https://www.uwyo.edu/"],
 };
 
 export function uwyoschedulePublisher() {
@@ -13,5 +13,6 @@ export function uwyoschedulePublisher() {
     name: "uwyoschedule",
     url: absoluteUrl("/"),
     logo: absoluteUrl("/brand/logo-wordmark.svg"),
+    founder: personRef(),
   };
 }

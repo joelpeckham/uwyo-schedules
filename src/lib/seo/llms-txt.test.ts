@@ -32,6 +32,9 @@ describe("buildLlmsTxt", () => {
     expect(plannerIdx).toBeLessThan(homeLinkIdx);
     expect(md).toContain("## Planner capabilities");
     expect(homeIdx).toBeGreaterThan(-1);
+    expect(md).toContain("## Also by Joel Peckham");
+    expect(md).toContain("https://jpeckham.com/llms.txt");
+    expect(md).toContain("https://lyriic.com/");
   });
 
   it("mentions optional instructor pages when enabled", () => {
@@ -55,5 +58,15 @@ describe("buildLlmsFullTxt", () => {
     const md = buildLlmsFullTxt(base, { includeInstructorPages: false });
     expect(md).toContain(`${base}/sitemap.xml`);
     expect(md).toContain(`${base}/llms.txt`);
+  });
+
+  it("cross-links sibling products and the portfolio", () => {
+    const md = buildLlmsFullTxt(base, { includeInstructorPages: false });
+    expect(md).toContain("## Also by Joel Peckham");
+    expect(md).toContain("https://jpeckham.com/llms.txt");
+    expect(md).toContain("https://lyriic.com/llms.txt");
+    expect(md).toContain("https://chessgator.com/llms.txt");
+    expect(md).toContain("https://qr.jpeckham.com/llms.txt");
+    expect(md).not.toContain("- [uwyoschedule](https://uwyoschedule.org/)");
   });
 });

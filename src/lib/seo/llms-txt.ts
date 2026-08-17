@@ -3,6 +3,8 @@
  * `siteUrl` must have no trailing slash (same as SITE_URL).
  */
 
+import { alsoByJoelMarkdown } from "@/lib/seo/product-graph";
+
 type LlmsTxtOptions = {
   /** When true, mention /instructors/* SEO pages (matches sitemap when SEO_INSTRUCTOR_PAGES is on). */
   includeInstructorPages: boolean;
@@ -55,6 +57,8 @@ export function buildLlmsTxt(
     `- [Sitemap](${u("/sitemap.xml", siteUrl)}): All indexable URLs.`,
     `- [Robots](${u("/robots.txt", siteUrl)}): Crawl rules (API routes are disallowed).`,
     `- [Full LLM context](${u("/llms-full.txt", siteUrl)}): Longer site description and URL patterns.`,
+    "",
+    alsoByJoelMarkdown("uwyoschedule").trimEnd(),
   ];
 
   if (options.includeInstructorPages) {
@@ -120,6 +124,7 @@ For every current indexable URL (including dynamic term and course pages), use t
 - [${siteUrl}/llms.txt](${u("/llms.txt", siteUrl)}) — Short curated map.
 - [${siteUrl}/robots.txt](${u("/robots.txt", siteUrl)}) — Crawler access rules.
 
+${alsoByJoelMarkdown("uwyoschedule")}
 `;
 }
 

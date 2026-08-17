@@ -102,7 +102,7 @@ export default function RootLayout({
               <a
                 href="https://jpeckham.com"
                 target="_blank"
-                rel="noopener noreferrer"
+                rel="author noopener noreferrer"
                 className="text-primary/70 underline-offset-4 hover:text-primary hover:underline"
               >
                 Joel Peckham

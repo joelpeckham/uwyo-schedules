@@ -1,9 +1,11 @@
 import { JsonLd } from "@/components/seo/JsonLd";
 import { HOME_FAQ_ITEMS } from "@/lib/seo/home-faq";
+import { personRef } from "@/lib/seo/product-graph";
 import { SITE_DESCRIPTION_SHORT, absoluteUrl } from "@/lib/seo/site";
 
 /** Organization + FAQPage for the marketing home (`/`). WebApplication lives on `/planner` via PlannerJsonLd. */
 export function HomeOrgFaqJsonLd() {
+  const person = personRef();
   const org = {
     "@type": "Organization",
     "@id": absoluteUrl("/#organization"),
@@ -17,7 +19,17 @@ export function HomeOrgFaqJsonLd() {
       addressRegion: "WY",
       addressCountry: "US",
     },
-    sameAs: ["https://www.uwyo.edu/"],
+    founder: person,
+    author: person,
+    sameAs: [
+      "https://jpeckham.com/projects/uwyo-schedule/",
+      "https://github.com/joelpeckham/uwyo-schedules",
+    ],
+    about: {
+      "@type": "CollegeOrUniversity",
+      name: "University of Wyoming",
+      url: "https://www.uwyo.edu/",
+    },
   };
 
   const faq = {
@@ -32,5 +44,5 @@ export function HomeOrgFaqJsonLd() {
     })),
   };
 
-  return <JsonLd data={[org, faq]} />;
+  return <JsonLd data={[person, org, faq]} />;
 }

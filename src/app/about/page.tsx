@@ -3,6 +3,7 @@ import { AppLink } from "@/components/seo/AppLink";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SiteChrome } from "@/components/seo/SiteChrome";
 import { absoluteUrl } from "@/lib/seo/site";
+import { personRef } from "@/lib/seo/product-graph";
 import { uwyoschedulePublisher } from "@/lib/seo/schema-org";
 
 export const metadata: Metadata = {
@@ -21,7 +22,7 @@ export default function AboutPage() {
     "@context": "https://schema.org",
     "@type": "Article",
     headline: "About uwyoschedule",
-    author: uwyoschedulePublisher(),
+    author: personRef(),
     publisher: uwyoschedulePublisher(),
     mainEntityOfPage: absoluteUrl("/about"),
     dateModified: "2025-04-27",
