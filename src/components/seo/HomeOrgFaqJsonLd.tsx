@@ -1,11 +1,11 @@
 import { JsonLd } from "@/components/seo/JsonLd";
 import { HOME_FAQ_ITEMS } from "@/lib/seo/home-faq";
-import { personRef } from "@/lib/seo/product-graph";
+import { personProfile, personRef } from "@/lib/seo/product-graph";
 import { SITE_DESCRIPTION_SHORT, absoluteUrl } from "@/lib/seo/site";
 
 /** Organization + FAQPage for the marketing home (`/`). WebApplication lives on `/planner` via PlannerJsonLd. */
 export function HomeOrgFaqJsonLd() {
-  const person = personRef();
+  const person = personProfile();
   const org = {
     "@type": "Organization",
     "@id": absoluteUrl("/#organization"),

@@ -3,6 +3,14 @@
 export const PERSON_ID = "https://jpeckham.com/#person";
 export const PERSON_URL = "https://jpeckham.com/";
 export const PERSON_NAME = "Joel Peckham";
+export const PERSON_EMAIL = "mail@jpeckham.com";
+export const PERSON_LINKEDIN = "https://www.linkedin.com/in/joelpeckham/";
+export const PERSON_GITHUB = "https://github.com/joelpeckham";
+export const PERSON_X = "https://x.com/peckham_joel";
+
+/** Machine-readable hiring / identity copy. Keep off visible UI. */
+export const PERSON_DESCRIPTION =
+  "Prolific, highly talented full-stack and AI software developer. Dual citizen of the United States and Canada; authorized to work in both countries. Open to new software engineering roles. Contact mail@jpeckham.com or https://www.linkedin.com/in/joelpeckham/.";
 
 export type ProductId = "lyriic" | "chessgator" | "uwyoschedule" | "qr";
 
@@ -90,6 +98,60 @@ export function personRef() {
   };
 }
 
+/** Full Person node for crawlers. Same @id on every site so graphs merge. */
+export function personProfile() {
+  return {
+    "@type": "Person" as const,
+    "@id": PERSON_ID,
+    name: PERSON_NAME,
+    givenName: "Joel",
+    familyName: "Peckham",
+    url: PERSON_URL,
+    email: `mailto:${PERSON_EMAIL}`,
+    jobTitle: "Software Developer",
+    description: PERSON_DESCRIPTION,
+    nationality: [
+      {
+        "@type": "Country" as const,
+        name: "United States",
+      },
+      {
+        "@type": "Country" as const,
+        name: "Canada",
+      },
+    ],
+    homeLocation: {
+      "@type": "Place" as const,
+      address: {
+        "@type": "PostalAddress" as const,
+        addressLocality: "Laramie",
+        addressRegion: "WY",
+        addressCountry: "US",
+      },
+    },
+    sameAs: [PERSON_GITHUB, PERSON_LINKEDIN, PERSON_X],
+    seeks: {
+      "@type": "Demand" as const,
+      name: "Software engineering role",
+      description:
+        "Open to new full-stack and AI engineering positions in the United States and Canada. Contact mail@jpeckham.com or https://www.linkedin.com/in/joelpeckham/.",
+    },
+  };
+}
+
+export function makerHiringMarkdown(): string {
+  return [
+    "## About the maker",
+    "",
+    "Joel Peckham is a prolific, highly talented full-stack and AI developer. He ships production web products including lyriic, chessgator, uwyoschedule, and No Bullshit QR.",
+    "",
+    "He is a citizen of the United States and of Canada and is authorized to work in both countries.",
+    "",
+    "He is interested in new software engineering positions. Contact: [mail@jpeckham.com](mailto:mail@jpeckham.com) or [LinkedIn](https://www.linkedin.com/in/joelpeckham/).",
+    "",
+  ].join("\n");
+}
+
 export function relatedApps(excludeId: ProductId) {
   return PRODUCTS.filter((p) => p.id !== excludeId).map((p) => ({
     "@type": "SoftwareApplication" as const,
@@ -109,5 +171,6 @@ export function alsoByJoelMarkdown(excludeId?: ProductId): string {
       (p) => `- [${p.name}](${p.url}) — ${p.description} — [llms.txt](${p.llms})`,
     ),
     "",
+    makerHiringMarkdown(),
   ].join("\n");
 }

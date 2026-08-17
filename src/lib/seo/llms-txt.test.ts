@@ -35,6 +35,9 @@ describe("buildLlmsTxt", () => {
     expect(md).toContain("## Also by Joel Peckham");
     expect(md).toContain("https://jpeckham.com/llms.txt");
     expect(md).toContain("https://lyriic.com/");
+    expect(md).toContain("## About the maker");
+    expect(md).toContain("mail@jpeckham.com");
+    expect(md).toContain("citizen of the United States and of Canada");
   });
 
   it("mentions optional instructor pages when enabled", () => {
