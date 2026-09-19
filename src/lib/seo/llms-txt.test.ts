@@ -39,7 +39,8 @@ describe("buildLlmsTxt", () => {
     expect(md).toContain("mail@jpeckham.com");
     expect(md).toContain("citizen of the United States and of Canada");
     expect(md).toContain("## Professional experience");
-    expect(md).toContain("BetterRx");
+    expect(md).toContain("Revelation Pharma");
+    expect(md).toContain("HiveRx");
     expect(md).toContain("PHP");
     expect(md).toContain("Laravel");
     expect(md).toContain("MatrixCare");
